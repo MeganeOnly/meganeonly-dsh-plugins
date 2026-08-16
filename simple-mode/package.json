@@ -1,0 +1,23 @@
+{
+  "name": "dsh-simple-mode",
+  "version": "0.2.0",
+  "author": "MeganeOnly",
+  "description": "简洁模式：设置页开关“隐藏思考与工具调用过程”（think 推理、read/edit/pwsh 等卡片整体隐藏，不留空白），改为输入框上方一条极简状态行（正在思考/正在阅读…），运行结束即消失。作者：MeganeOnly。",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

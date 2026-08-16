@@ -1,0 +1,26 @@
+{
+  "name": "dsh-plugin-manager",
+  "version": "0.2.0",
+  "author": "MeganeOnly",
+  "description": "常驻插件管理器：在设置页列出所有非系统常驻插件（含作者署名），一键启用/停用（写入 web profile 的 cordis.patch.yml，通常热重载生效，个别需重启）。作者：MeganeOnly。",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

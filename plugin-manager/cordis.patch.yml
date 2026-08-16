@@ -1,0 +1,4 @@
+# dsh-plugin-manager bundle patch：向 web profile 的插件名册插入自身一行。
+- insert:
+    - id: plugin-manager
+      name: dsh-plugin-manager
