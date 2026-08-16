@@ -2,9 +2,10 @@
 
 作者：MeganeOnly
 
-一组面向 DeepSeek Harness（DSH）web profile 的**常驻插件**（每次启动自动加载）。
+一组面向 DeepSeek Harness（DSH）web profile 的**常驻插件**。
 三个插件都遵循同一套结构：宿主半端（Cordis 插件）+ 浏览器半端（`__ModuleLoader__` bundle）。
-我本身不是专业开发者，这套代码是我边学边写的，功能可能简陋，但都是实际在用的。
+作者本人并没有编成能力，除了README的少数部分之外的所有内容都是用ai写的。
+
 
 ## 仓库结构
 
