@@ -75,7 +75,9 @@
 - 拦截点：`agent/pre-step` 事件（waterfall），只拒绝含用户真实输入（`source.kind === 'user'`）的步，不误杀高峰开始前已在运行的任务；
 - 高峰时段（北京时间，UTC+8 无夏令时）：8:50–12:00、13:50–18:00，含高峰前 10 分钟；
 - 被拦截的消息按会话暂存到 profile 目录的 `.peak-hour-lock-queue.json`，高峰期结束后再等 2 分钟缓冲，经 `agent.followup` 逐条自动补发（每条独立成轮）；
-- 输入框上方显示状态行：高峰期提示、已暂存条数、预计补发时刻（轮询 `/api/peak-hour-lock/status`，失败时本地兜底）。
+- 补发目标永远是消息被拦截时所在的会话：会话不活跃时先经 `ctx.agents.resume({ resumeSessionId })` 从磁盘恢复再投递；恢复失败的会话退避 10 分钟重试，并在状态行提示手动处理；
+- 输入框上方显示状态行：高峰期提示、已暂存条数、预计补发时刻（轮询 `/api/peak-hour-lock/status`，失败时本地兜底）；预计时刻已过或恢复失败时不再显示过期时间，如实提示；
+- 状态行右侧"管理"按钮展开面板：查看 / 编辑 / 删除 / 立即发送单条暂存消息（`GET|POST /api/peak-hour-lock/queue`，编辑只动文本 part，图片等非文本 part 原样保留）。
 
 ### simple-mode — 简洁模式
 

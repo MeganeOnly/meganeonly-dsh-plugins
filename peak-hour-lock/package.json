@@ -1,8 +1,8 @@
 {
   "name": "dsh-peak-hour-lock",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "MeganeOnly",
-  "description": "北京时间高峰时段（8:50-12:00、13:50-18:00，含高峰前10分钟）拦截发送：消息暂存保留，高峰期结束后（约2分钟）自动补发，不再产生双倍费用。作者：MeganeOnly。",
+  "description": "北京时间高峰时段（8:50-12:00、13:50-18:00）拦截发送：消息暂存保留，高峰期结束后（约2分钟）自动补发回原会话（不活跃会话自动从磁盘恢复）；输入框上方可查看/编辑/删除/立即发送暂存消息。作者：MeganeOnly。",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
