@@ -1,0 +1,6 @@
+# dsh-peak-hour-lock bundle patch：向 web profile 的插件名册插入自身一行。
+# 该行同时挂载双端：Host 侧（agent/pre-step 拦截，拒绝高峰期的用户输入步）与
+# 浏览器侧（dsh.client 包，由 client-modules 扫描并服务 lib/client.js 前端包）。
+- insert:
+    - id: peak-hour-lock
+      name: dsh-peak-hour-lock

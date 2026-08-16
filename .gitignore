@@ -1,0 +1,15 @@
+# 依赖
+node_modules/
+
+# 日志与临时文件
+*.log
+*.tmp
+*.bak
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 运行时状态（各插件写入 profile 目录，不会出现在本仓库，防御性忽略）
+.peak-hour-lock-queue.json
