@@ -1,0 +1,26 @@
+{
+  "name": "dsh-mcp-manager",
+  "version": "0.1.0",
+  "author": "MeganeOnly",
+  "description": "MCP 管理器：在设置页列出所有 MCP 服务器（连接状态 + 工具清单 + 端点/凭据摘要，凭据值不外发），一键启用/停用（写入 web profile 的 cordis.patch.yml，重启 DSH 后生效）。作者：MeganeOnly。",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

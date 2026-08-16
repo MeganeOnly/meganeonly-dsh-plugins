@@ -1,0 +1,26 @@
+{
+  "name": "dsh-skill-manager",
+  "version": "0.1.0",
+  "author": "MeganeOnly",
+  "description": "Skill 管理器：在设置页列出用户级 skill（含作者署名），一键启用/停用。停用 = 注册高优先级影子条目遮蔽原 skill（不改 SKILL.md 文件），即时生效无需重启。作者：MeganeOnly。",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# dsh-usage-stats bundle patch：向 web profile 的插件名册插入自身一行。
+# Host 侧注册 /api/usage-stats/summary 聚合路由；浏览器侧在设置页加"使用统计"页。
+- insert:
+    - id: usage-stats
+      name: dsh-usage-stats

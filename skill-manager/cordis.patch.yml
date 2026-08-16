@@ -1,0 +1,4 @@
+# dsh-skill-manager bundle patch：向 web profile 的插件名册插入自身一行。
+- insert:
+    - id: skill-manager
+      name: dsh-skill-manager
