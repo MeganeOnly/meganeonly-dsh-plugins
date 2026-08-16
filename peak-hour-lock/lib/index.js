@@ -14,7 +14,8 @@
  * 退避 10 分钟后重试，期间标记为 blocked 供 UI 提示手动处理）。
  *
  * 管理接口（GET/POST /api/peak-hour-lock/queue）：查看 / 编辑 / 删除 /
- * 立即发送单条暂存消息，配合浏览器半端的管理面板使用。
+ * 清空 / 立即发送单条暂存消息，配合浏览器半端的管理面板使用。
+ * 立即发送在高峰期内被拒绝（409 in-peak），避免 followup 再次被拦截导致循环入队。
  *
  * 北京时间 = UTC+8（无夏令时），用当日分钟数表示时刻。
  */
@@ -73,9 +74,11 @@ function toRecord(msg) {
   return { id: msg.id, role: msg.role, content: msg.content, source: msg.source }
 }
 
-/** 暂存条目的纯文本视图（多个 text part 以换行拼接）。 */
+/** 暂存条目的纯文本视图（纯字符串 content 直接返回，多 text part 以换行拼接）。 */
 function entryText(entry) {
-  const parts = Array.isArray(entry.message?.content) ? entry.message.content : []
+  const content = entry.message?.content
+  if (typeof content === 'string') return content
+  const parts = Array.isArray(content) ? content : []
   return parts
     .filter((part) => part && part.type === 'text' && typeof part.text === 'string')
     .map((part) => part.text)
@@ -84,6 +87,7 @@ function entryText(entry) {
 
 /** 用新文本重建 content：非 text part（如图片）原样保留，text 合并为一个 part。 */
 function contentWithText(content, text) {
+  if (typeof content === 'string') return [{ type: 'text', text }]
   const rest = (Array.isArray(content) ? content : []).filter((part) => !(part && part.type === 'text'))
   return [...rest, { type: 'text', text }]
 }
@@ -195,10 +199,14 @@ export function apply(ctx) {
     if (userMsgs.length === 0) return next()
     const sessionId = payload.agent.id
     await serial(async () => {
+      let added = 0
       for (const msg of userMsgs) {
+        // 按 message.id 去重：同一条消息（如重试触发的重复 pre-step）不重复入队
+        if (queue.entries.some((e) => e.message?.id === msg.id)) continue
         queue.entries.push({ sessionId, message: toRecord(msg), ts: Date.now() })
+        added += 1
       }
-      await saveQueue(ctx, queue)
+      if (added > 0) await saveQueue(ctx, queue)
     })
     return { kind: 'reject' }
   })
@@ -206,6 +214,7 @@ export function apply(ctx) {
   // 2) 高峰期结束（+OFFSET 缓冲）后自动补发暂存消息
   function flushPending() {
     serial(async () => {
+      if (inPeakWindow()) return // 防御：补发消息若被拦截会重新入队，高峰期绝不补发
       if (queue.entries.length === 0) return
       const snapshot = queue.entries.slice()
       const remain = []
@@ -270,7 +279,19 @@ export function apply(ctx) {
           if (blocked === 0 && queue.entries.length > 0) flushAt = Date.now() // 即将自动发出
         }
       }
-      json(res, 200, { ok: true, inPeak: inPeakWindow(), queued: queue.entries.length, flushAt, blocked })
+      json(res, 200, {
+        ok: true,
+        inPeak: inPeakWindow(),
+        queued: queue.entries.length,
+        flushAt,
+        blocked,
+        now: Date.now(),
+        config: {
+          peak1: [PEAK_1_START, PEAK_1_END],
+          peak2: [PEAK_2_START, PEAK_2_END],
+          offsetMinutes: OFFSET_MINUTES,
+        },
+      })
       return Promise.resolve()
     },
   })
@@ -302,11 +323,18 @@ export function apply(ctx) {
           return
         }
         const { action, id, text } = body
-        if (action !== 'update' && action !== 'delete' && action !== 'send') {
+        if (action !== 'update' && action !== 'delete' && action !== 'send' && action !== 'clear') {
           json(res, 400, { ok: false, error: 'unknown-action' })
           return
         }
         await serial(async () => {
+          if (action === 'clear') {
+            // 清空全部暂存（不投递）
+            queue.entries = []
+            await saveQueue(ctx, queue)
+            json(res, 200, { ok: true })
+            return
+          }
           const index = queue.entries.findIndex((entry) => entry.message?.id === id)
           if (index === -1) {
             json(res, 404, { ok: false, error: 'not-found' })
@@ -330,12 +358,17 @@ export function apply(ctx) {
             return
           }
           // action === 'send'：立即投递，成功才出队
+          // 高峰期禁止：followup 会再次触发 pre-step 拦截 → 消息只是重新入队
+          if (inPeakWindow()) {
+            json(res, 409, { ok: false, error: 'in-peak' })
+            return
+          }
           const sent = await deliver(entry, true)
           if (!sent) {
             json(res, 503, { ok: false, error: 'session-unavailable' })
             return
           }
-          queue.entries.splice(queue.entries.indexOf(entry), 1)
+          queue.entries.splice(index, 1)
           await saveQueue(ctx, queue)
           json(res, 200, { ok: true })
         })
