@@ -33,6 +33,7 @@ const PEAK_2_END = 1080 // 18:00
 const OFFSET_MINUTES = 2 // 高峰期结束后再等 2 分钟补发
 const OFFSET_MS = OFFSET_MINUTES * 60 * 1000
 const RESUME_RETRY_MS = 10 * 60 * 1000 // 会话恢复失败后的退避时长
+const STARTUP_GRACE_MS = 2 * 60 * 1000 // 启动遗留条目先等 2 分钟再自动补发（留出管理窗口）
 const QUEUE_FILENAME = '.peak-hour-lock-queue.json'
 const API_STATUS = '/api/peak-hour-lock/status'
 const API_QUEUE = '/api/peak-hour-lock/queue'
@@ -137,6 +138,7 @@ function readJsonBody(req) {
 
 export function apply(ctx) {
   const queue = { entries: [] }
+  const loadedAt = Date.now() // 插件本次启动时刻（启动遗留缓冲计时用）
   let lastInPeak = inPeakWindow() // 启动时刻的高峰状态
   let peakEndedAt = null // 本次高峰结束时刻（ms）；null = 尚未观察到出高峰
   const resumeFailedAt = new Map() // sessionId → 上次 resume 失败时刻（退避用）
@@ -228,8 +230,11 @@ export function apply(ctx) {
       peakEndedAt = Date.now() // 刚出高峰，开始缓冲计时
     }
     if (queue.entries.length === 0) return
-    // 一直非高峰（含启动遗留）→ 立即补发；刚出高峰 → 等满 OFFSET 缓冲
-    if (peakEndedAt === null || Date.now() - peakEndedAt >= OFFSET_MS) {
+    // 刚出高峰 → 等满 OFFSET 缓冲；启动遗留（进程外暂存的旧条目）→ 给
+    // STARTUP_GRACE 缓冲，让用户先在管理面板查看/编辑/删除再自动补发
+    if (peakEndedAt !== null) {
+      if (Date.now() - peakEndedAt >= OFFSET_MS) flushPending()
+    } else if (Date.now() - loadedAt >= STARTUP_GRACE_MS) {
       flushPending()
     }
   }, 10000)
@@ -252,6 +257,9 @@ export function apply(ctx) {
           flushAt = beijingDateAt(end) + OFFSET_MS
         } else if (peakEndedAt !== null) {
           const t = peakEndedAt + OFFSET_MS
+          if (t > Date.now()) flushAt = t
+        } else {
+          const t = loadedAt + STARTUP_GRACE_MS
           if (t > Date.now()) flushAt = t
         }
         if (flushAt === null) {
