@@ -2,9 +2,9 @@
 
 作者：MeganeOnly
 
-一组面向 DeepSeek Harness（DSH）web profile 的**常驻插件**（每次启动自动加载）。
+一组面向 DeepSeek Harness（DSH）web profile 的**常驻插件**。
 各插件都遵循同一套结构：宿主半端（Cordis 插件）+ 浏览器半端（`__ModuleLoader__` bundle）。
-我本身不是专业开发者，这套代码是我边学边写的，功能可能简陋，但都是实际在用的。
+作者本人并没有编成能力，除了README的少数部分之外的所有内容都是用ai写的。
 
 ## 仓库结构
 
@@ -55,8 +55,8 @@
 - 设置页新增"Skill 管理"页（紧跟"插件管理"）：搜索（按名称 / 描述 / 作者）、分组（启用中 / 已停用 / 项目级 / 诊断）、一键启用 / 停用；行内容呈现参考 ZCode 的 skill 列表（名称 + 描述 + 来源 / 作者）；
 - 停用实现：向 `ctx.skills` 注册 rank 50 的高优先级 provider，为停用名单里的 skill 提供同名"影子"条目遮蔽原条目，并把 invocation 双关（模型目录不出现、`/name` 手动调用也不注入）——**不改动任何 SKILL.md 文件**；停用按 skill 名全局生效（含项目级）；
 - **即时生效，无需重启**：变更后调用 provider 的 `control.invalidate()`，DSH 的 skill 目录在下一轮对话自动发布更新（与插件启停需重启不同）；
-- **项目级视角**：按最近一个会话的 cwd 解析项目根（`ctx.sessions.list` + `ctx.agents.get(id).session.header.cwd`），"项目级"分组展示并可启停；
-- **诊断**：同名 skill 出现在多个根目录时显示遮蔽关系（谁生效、谁被遮蔽）；`DSH_HOME` 指向别处时默认主目录（`~/.dsh/skills`）下的 skill 永不被扫描——以"未被扫描的目录（死副本）"警示；行内"遮蔽 N"徽章提示同名多来源；
+- 项目级视角：按最近一个会话的 cwd 解析项目根（`ctx.sessions.list` + `ctx.agents.get(id).session.header.cwd`），"项目级"分组展示并可启停；
+- 诊断：同名 skill 出现在多个根目录时显示遮蔽关系（谁生效、谁被遮蔽）；`DSH_HOME` 指向别处时默认主目录（`~/.dsh/skills`）下的 skill 永不被扫描——以"未被扫描的目录（死副本）"警示；行内"遮蔽 N"徽章提示同名多来源；
 - 停用名单持久化在 web profile 根的 `.skill-manager.json`（临时文件 + rename 原子写）；名单里文件已不存在的 skill 显示"文件缺失"幽灵行，可重新启用移出名单；
 - skill 名字以 SKILL.md frontmatter 的 `name` 为准（与 DSH 一致），作者署名读 `metadata.author`（官方约定；兼容顶层 `author`，string 或 `{name}` 均可，自动 trim）；管理范围 = 用户级目录（`DSH_HOME/skills`、`~/.agents/skills`）+ 最近会话的项目根；目录内的 junction / 符号链接会跟随（与 DSH 官方 provider 一致）；
 - 作者为 `MeganeOnly` 的 skill（本人所写）行首标绿并带"我的"标记——改 `lib/client.js` 里的 `MINE_AUTHOR` 即可调整。
