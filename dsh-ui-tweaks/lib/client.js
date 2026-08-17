@@ -1,30 +1,24 @@
 /**
- * dsh-ui-tweaks — 浏览器半端（web client bundle，作者：MeganeOnly）
+ * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
- * v0.3.0 起：弃用 settingsScope + DSH settings namespace，tweak 状态完全
- * 由浏览器侧用 localStorage 自管。根因是 DSH API gateway
- * (`@deepseek-ai/dsh-host-apiproxy`) 对 settings.describe 响应有
- * `exposedNamespaces()` 硬编码白名单（agent-loop / shell / locale /
- * permission / ui-conversation / ui-theme / web-search-deepseek /
- * ui-onboarding / settings），所有第三方 host-plane 插件的 namespace
- * （包括 ui-tweaks / pet / live-stats / ssh / task-board / remote-web-ui /
- * skin-center 等）都被 silent filter 掉，client 端 settingsScope 永远
- * status="unavailable"。详见 DECISIONS.md C003 与 README v0.3.0 段。
+ * v0.3.1 起：UiTweaksSection 自包含（不依赖 props.initialState），直接传
+ * 函数组件引用给 ctx.slots.register（与 dsh-usage-stats 同模式）；React
+ * key 用 jsx 第三参数而非 spread props（消除 React "key in spread" 警告）。
  *
- * 与 DSH 设置页集成：注册独立顶层 `settings.section` slot
- * （id="ui-tweaks", order=5），用 React 函数组件 `UiTweaksSection` 渲染
- * TWEAKS 列表。每条 tweak：标题 + 描述 + 开关 + 可选数字输入。状态变化
- * 立即写 localStorage + 重生成 CSS 注入 <head>。不走 staging/save。
+ * 数据通路：tweak 状态完全由浏览器侧用 localStorage 自管（不再走 DSH
+ * settingsScope / DSH settings namespace）。根因是 DSH API gateway
+ * `@deepseek-ai/dsh-host-apiproxy` 的 `exposedNamespaces()` 硬编码白名单
+ * 只覆盖 8 个 DSH 内置 namespace，第三方 host-plane 插件 namespace 全部
+ * silent filter。详见 DECISIONS.md C003。
  *
- * 加新 tweak 两步（TWEAKS 数组是单一数据源）：
- *   1. lib/client.js TWEAKS 数组 push 一条
- *      （id/name/description/configKeys.enabled/configKeys.value/
- *       defaults.enabled/defaults.value/buildCSS(state)）
- *   2. 不需要改其它代码（React UI 按 TWEAKS 数组自动渲染，
- *      CSS 生成按 TWEAKS 数组自动构建，loadState/saveState 自动覆盖）
+ * UI 集成：注册 settings.section slot（id="ui-tweaks", order=5），用 React
+ * 函数组件 UiTweaksSection 渲染 TWEAKS 列表；每条 tweak 一个 row：标题 +
+ * 描述 + 开关 + 可选数字输入。状态变化立即写 localStorage + 重生成 CSS
+ * 注入 <head>。不走 staging/save。
  *
- * 不需要改 host half——v0.3.0 起 host half 退化为零副作用 placeholder
- * （lib/index.js）。
+ * 加新 tweak：往 lib/client.js 的 TWEAKS 数组 push 一条 + 不需要改其它
+ * 代码（React UI 按 TWEAKS 数组自动渲染，CSS 生成按 TWEAKS 数组自动构建，
+ * loadState/saveState 自动覆盖）。
  */
 window.__ModuleLoader__.load({
   id: "dsh-ui-tweaks",
@@ -45,18 +39,18 @@ window.__ModuleLoader__.load({
     /**
      * 集中维护的 UI 微调清单。每条 tweak：
      *   - id：稳定标识（注入 CSS 注释 + React key）
-     *   - name / description：人类可读
-     *   - configKeys.enabled / configKeys.value：状态字段名
+     *   - name：人类可读标题
+     *   - description：人类可读说明（用户视角，不写开发者术语）
+     *   - configKeys.enabled / configKeys.value：localStorage 持久化的字段名
      *     （若 enabled == value 表示此 tweak 只有开关没有参数）
-     *   - defaults：未设值时的默认（持久化损坏或首次使用时）
-     *   - buildCSS(state)：根据当前 settings 生成 CSS 字符串；
-     *     返回 null 表示不注入（tweak 关闭）
+     *   - defaults：未设值时的默认
+     *   - buildCSS(state)：根据当前 settings 生成 CSS 字符串；返回 null 表示不注入
      */
     var TWEAKS = [
       {
         id: "conversation-shift",
-        name: "对话左移让位",
-        description: "让 DSH 主框架的 centerCol（对话列容器）永久右缩 N 像素，给右侧面板（如任务池抽屉）让出空间。与 task-pool 抽屉状态解耦——开关开启后始终生效，不依赖抽屉是否打开。",
+        name: "对话区右缩",
+        description: "把中间的对话窗口从右边压缩 N 像素，给右侧面板腾出空间。",
         configKeys: { enabled: "conversationShift", value: "conversationShiftPx" },
         defaults: { enabled: false, value: 380 },
         buildCSS: function (state) {
@@ -75,10 +69,7 @@ window.__ModuleLoader__.load({
     // "localStorage 持久化降级" + "schema 演进不升 localStorage key"）
     // ====================================================================
 
-    /**
-     * 探针可用性（QuotaExceededError / SecurityError → storage = undefined，
-     * load 返回空、save 静默跳过；功能仍可用、刷新即丢、console.warn）。
-     */
+    /** 探针可用性。storage 不可用时 = undefined，load 返回默认、save 静默跳过。 */
     var storage = null;
     try {
       var probeKey = STORAGE_KEY + "__probe__";
@@ -100,11 +91,7 @@ window.__ModuleLoader__.load({
       return state;
     }
 
-    /**
-     * 从 storage 读 state，与 defaultState 合并（缺字段默认 false / 0）。
-     * 损坏（JSON.parse 抛错）则静默回退到默认，不抛错
-     * （dsh-persistent-plugin-authoring §三）。
-     */
+    /** 从 storage 读 state，与 defaultState 合并（缺字段默认 false / 0）。损坏则回退默认。 */
     function loadState() {
       var state = defaultState();
       if (!storage) return state;
@@ -122,10 +109,7 @@ window.__ModuleLoader__.load({
       return state;
     }
 
-    /**
-     * 写 state 到 storage（始终写当前完整 state，无稀疏 patch；
-     * 缺字段在下次 load 时被 defaultState 补回——隐式迁移路径）。
-     */
+    /** 写 state 到 storage（始终写完整 state，无稀疏 patch）。 */
     function saveState(state) {
       if (!storage) return;
       try {
@@ -136,7 +120,7 @@ window.__ModuleLoader__.load({
           out[t.configKeys.value] = state[t.configKeys.value];
         }
         storage.setItem(STORAGE_KEY, JSON.stringify(out));
-      } catch (e) { /* 静默：QuotaExceededError 等不影响当前 session */ }
+      } catch (e) { /* 静默 */ }
     }
 
     // ====================================================================
@@ -153,10 +137,7 @@ window.__ModuleLoader__.load({
       return blocks.join("\n\n");
     }
 
-    /**
-     * 注入主 CSS 标签（去重 + 重建）。即使未打开设置页也需运行，
-     * 否则 DSH 启动后 tweak 状态在 localStorage 里但 CSS 不会生效。
-     */
+    /** 注入主 CSS 标签（去重 + 重建）。即使未打开设置页也需运行。 */
     function injectCSS(state) {
       var old = document.querySelector("style[data-plugin-css=\"" + MAIN_CSS_TAG_ID + "\"]");
       if (old) old.remove();
@@ -169,10 +150,7 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag);
     }
 
-    /**
-     * section 自身样式（与 DSH 原生设置页 token 对齐；v0.2.1 起保留）。
-     * 仅注入一次。
-     */
+    /** section section 样式（与 DSH 原生设置页 token 对齐）。仅注入一次。 */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
       ".DTPD_section h2{margin:0;font-size:18px;font-weight:600}\n" +
@@ -208,7 +186,7 @@ window.__ModuleLoader__.load({
 
     /**
      * 单条 tweak 的 row：标题 + 描述 + 开关 + 可选数字输入。
-     * 状态变化通过 setState（顶层 UiTweaksSection 用 useState 管 state）。
+     * 无 props 依赖（state/setState 从父传），关闭后数字框 disabled。
      */
     function TweakRow(props) {
       var t = props.tweak;
@@ -225,14 +203,12 @@ window.__ModuleLoader__.load({
       var setDraft = draftState[1];
       react.useEffect(function () { setDraft(String(value)); }, [value]);
 
-      var rows = [
+      var children = [
         jsxRuntime.jsxs("div", {
-          key: "head",
           className: "DTPD_itemHead",
           children: [
-            jsxRuntime.jsx("h3", { key: "name", className: "DTPD_itemName", children: t.name }),
+            jsxRuntime.jsx("h3", { className: "DTPD_itemName", children: t.name }),
             jsxRuntime.jsx("input", {
-              key: "switch",
               type: "checkbox",
               className: "DTPD_switch",
               role: "switch",
@@ -247,22 +223,16 @@ window.__ModuleLoader__.load({
             })
           ]
         }),
-        jsxRuntime.jsx("p", { key: "desc", className: "DTPD_itemDesc", children: t.description })
+        jsxRuntime.jsx("p", { className: "DTPD_itemDesc", children: t.description })
       ];
 
       if (hasValueInput) {
-        rows.push(
+        children.push(
           jsxRuntime.jsxs("div", {
-            key: "valueRow",
             className: "DTPD_valueRow",
             children: [
-              jsxRuntime.jsx("label", {
-                key: "label",
-                className: "DTPD_valueLabel",
-                children: "像素值"
-              }),
+              jsxRuntime.jsx("label", { className: "DTPD_valueLabel", children: "像素值" }),
               jsxRuntime.jsx("input", {
-                key: "input",
                 className: "DTPD_input",
                 type: "number",
                 min: 0,
@@ -283,7 +253,6 @@ window.__ModuleLoader__.load({
                 }
               }),
               jsxRuntime.jsx("span", {
-                key: "px",
                 style: { color: "var(--dsw-alias-label-tertiary)", fontSize: "12px" },
                 children: "px"
               })
@@ -293,23 +262,24 @@ window.__ModuleLoader__.load({
       }
 
       return jsxRuntime.jsx("li", {
-        key: t.id,
         className: "DTPD_item",
         "data-tweak-id": t.id,
-        children: rows
+        children: children
       });
     }
 
     /**
-     * 顶级 section 组件。props.initialState 来自 apply 时的 loadState()；
-     * React useState 接管后续变化。useEffect 监听 state 变化触发持久化 +
-     * CSS 重注入（让 toggle 立即可见，且关闭浏览器再开 tweak 仍然生效）。
+     * 顶级 section 组件。自包含——不依赖 props，直接在内部 useState 用
+     * loadState() 做 lazy init（与 dsh-usage-stats 的 UsageStatsPage 同模式：
+     * 直接传给 ctx.slots.register 作为函数组件引用，DSH slot 框架按
+     * <UiTweaksSection /> 渲染）。
      */
-    function UiTweaksSection(props) {
-      var stateState = react.useState(props.initialState);
+    function UiTweaksSection() {
+      var stateState = react.useState(loadState);
       var state = stateState[0];
       var setState = stateState[1];
 
+      // 状态变化时持久化 + CSS 重注入（toggle 立即可见 + 跨重启生效）
       react.useEffect(function () {
         saveState(state);
         injectCSS(state);
@@ -327,17 +297,9 @@ window.__ModuleLoader__.load({
       return jsxRuntime.jsxs("div", {
         className: "DTPD_section",
         children: [
-          jsxRuntime.jsx("h2", { key: "title", children: "界面微调" }),
-          jsxRuntime.jsx("p", {
-            key: "intro",
-            className: "DTPD_intro",
-            children: "DSH 外观微调合集。每条 tweak 立即生效，CSS 注入到 <head>。状态存于本机 localStorage（dsh-ui-tweaks/state）。"
-          }),
-          jsxRuntime.jsx("ul", {
-            key: "list",
-            className: "DTPD_list",
-            children: rows
-          })
+          jsxRuntime.jsx("h2", { children: "界面微调" }),
+          jsxRuntime.jsx("p", { className: "DTPD_intro", children: "DSH 外观微调合集。状态存于本机 localStorage（dsh-ui-tweaks/state）。" }),
+          jsxRuntime.jsx("ul", { className: "DTPD_list", children: rows })
         ]
       });
     }
@@ -347,16 +309,17 @@ window.__ModuleLoader__.load({
     // ====================================================================
 
     function apply(ctx) {
-      // 1) 加载持久化状态（无 storage 时回退默认）
-      var state = loadState();
-
-      // 2) 即便用户没打开设置页，tweak 状态也立即生效
-      //    （DSH 启动时跑一次；后续用户改值时由 UiTweaksSection 的 useEffect 触发）
-      injectCSS(state);
+      // 1) 注入初始 CSS：即便用户没打开设置页，tweak 状态也立即生效
+      //    （DSH 启动时跑一次；后续用户改值由 UiTweaksSection 的 useEffect 触发）
+      injectCSS(loadState());
       injectSectionCSS();
 
-      // 3) 注册 settings.section slot
+      // 2) 注册 settings.section slot
       //    order=5 排在 "通用"(0) 之后、"插件"(15) 之前
+      //    thunk 返回 React 元素（与 dshmarket 同模式；DSH slot 框架调
+      //    thunk 拿元素 → 渲染）。UiTweaksSection 自包含（无 props 依赖，
+      //    内部 useState 用 loadState() 做 lazy init），调用时 props=null
+      //    不会崩。
       ctx.slots.inject("settings.section", function () {
         return ctx.slots.register({
           name: "settings.section",
@@ -364,9 +327,10 @@ window.__ModuleLoader__.load({
           order: 5,
           label: function () { return "界面微调"; }
         }, function () {
-          // 直接调用视图函数返回元素树（dsh-persistent-plugin-authoring §三 末尾
-          // "视图函数作为组件类型传入时被错误边界吞掉"——用 jsx(...) 包裹而非传组件类型）
-          return jsxRuntime.jsx(UiTweaksSection, { initialState: state });
+          // 传 {} 而非 null/undefined：React 18 dev mode 的 jsx-runtime
+          // 对 props=undefined 抛 hasOwnProperty.call 错误（实测）。
+          // UiTweaksSection 自包含，不读 props。
+          return jsxRuntime.jsx(UiTweaksSection, {});
         });
       });
     }
