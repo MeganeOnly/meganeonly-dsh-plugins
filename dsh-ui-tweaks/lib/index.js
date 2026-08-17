@@ -1,37 +1,28 @@
 /**
  * dsh-ui-tweaks — Host 半端（Cordis 插件，作者：MeganeOnly）
  *
- * 注册 DSH settings namespace "ui-tweaks" + schemastery schema，让每条 tweak
- * 在 DSH 设置页里都有对应的开关 / 输入控件。schema 字段与 client 端
- * TWEAKS 数组的 configKeys 严格对齐。
+ * v0.3.0 起：退化为零副作用 placeholder。
  *
- * 副作用全在 client 端（CSS 注入），host 端只做 schema 注册，不做副作用。
- */
-
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
-import z from "schemastery";
-
-const NAMESPACE = settingsNamespace("ui-tweaks");
-
-/**
- * 每加一条 tweak（client 端 TWEAKS 数组），在这里同步加一个字段。
- * - type: boolean → 渲染为开关
- * - type: number  → 渲染为数字输入
+ * tweak 状态由 client half 用浏览器 localStorage 自管（lib/client.js），
+ * 不再走 DSH settings namespace。根因：DSH API gateway
+ * (`@deepseek-ai/dsh-host-apiproxy`) 的 `exposedNamespaces()` 硬编码
+ * 白名单只覆盖 DSH 内置的 8 个 namespace，所有第三方 host-plane 插件的
+ * settings.describe 响应都被 silent filter，client 端 settingsScope
+ * 永远 status="unavailable"。详见 DECISIONS.md C003。
  *
- * ui-tweaks 只管 UI 类微调；其它插件的自身行为设置（如 dsh-task-pool 的
- * "发送后删除"开关）在各自插件内管理，不归到这个 namespace。
+ * 保留此文件 + cordis.patch.yml 的 `- id: ui-tweaks, name: dsh-ui-tweaks`
+ * 是为了维持 loader 注册行有效（loader 需要 import 一个 host half 模块；
+ * bundle patch 里 `name` 字段指向这里）。彻底删除会让 loader 找不到
+ * module 而失败。apply 内部空操作即可——cordis 把 host fiber 当
+ * zero-side-effect 占位即可。
+ *
+ * 不再 import `@deepseek-ai/dsh-settings` / `schemastery`，package.json
+ * 已移除对应 peerDependencies 与 dependencies。
  */
-const Config = z.object({
-  conversationShift: z.boolean().default(false),
-  conversationShiftPx: z.number().default(380),
-});
 
 export const name = "dsh-ui-tweaks";
-export const inject = ["settings"];
+export const inject = [];
 
-export function apply(ctx) {
-  installSettingsSection(ctx, NAMESPACE, Config, {}, {
-    setSource: () => {},
-    onChange: () => {},
-  });
+export function apply() {
+  // no-op: tweak 状态在浏览器侧用 localStorage 自管
 }
