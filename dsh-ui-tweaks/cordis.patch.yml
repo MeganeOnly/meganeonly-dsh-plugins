@@ -1,0 +1,8 @@
+# dsh-ui-tweaks bundle patch: inserts the dual-face plugin row into the web
+# profile roster. Host half is a zero-side-effect placeholder; browser half
+# injects a single <style> tag whose body is built from the TWEAKS array in
+# lib/client.js — a flat list of { id, name, enabled, css } entries that
+# defines every visual tweak the plugin applies.
+- insert:
+    - id: ui-tweaks
+      name: dsh-ui-tweaks

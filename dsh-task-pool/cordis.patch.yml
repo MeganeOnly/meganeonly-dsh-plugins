@@ -1,0 +1,6 @@
+# dsh-task-pool bundle patch: inserts the dual-face plugin row into the web
+# profile roster. Host half (exports ".") is a zero-side-effect placeholder;
+# browser half (exports "./client") mounts the single-column inbox view.
+- insert:
+    - id: task-pool
+      name: dsh-task-pool

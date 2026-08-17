@@ -1,6 +1,18 @@
 # dsh-peak-hour-lock bundle patch：向 web profile 的插件名册插入自身一行。
 # 该行同时挂载双端：Host 侧（agent/pre-step 拦截，拒绝高峰期的用户输入步）与
 # 浏览器侧（dsh.client 包，由 client-modules 扫描并服务 lib/client.js 前端包）。
+#
+# config.lockModels：模型白名单；只有当前会话的 provider/model 命中规则才拦截。
+# DSH 里同一个名字（如 "DeepSeek"）可能挂着多套 provider route —— 官方
+# deepseek-official、第三方 OpenAI 兼容转发、本地 Ollama 镜像、openrouter
+# 转发等 —— 但只有官方 route 受 DeepSeek API 的峰谷定价影响。model 字段
+# 写 '*' 通配该 provider 下全部模型；写具体 id 则精确匹配。
+# 默认锁住官方 deepseek-official 下全部模型；如要锁更多 provider 或反之
+# 只想锁个别具体模型，把下面 config.lockModels 改成所需列表即可。
 - insert:
     - id: peak-hour-lock
       name: dsh-peak-hour-lock
+      config:
+        lockModels:
+          - provider: deepseek-official
+            model: '*'

@@ -6,9 +6,19 @@
  * 只拒绝包含用户真实输入（source.kind === 'user'）的步；工具续步/上下文步放行，
  * 避免误杀高峰开始前已在运行的任务。
  *
+ * 模型白名单（config.lockModels）：插件只在当前会话真正调用白名单内的
+ * provider/model 时才拦截。DSH 里同一个名字（如 "DeepSeek"）可能挂着多套
+ * provider route —— 官方 deepseek-official、第三方 OpenAI 兼容转发、
+ * 本地 Ollama 镜像、openrouter 转发等 —— 但只有官方 route 受 DeepSeek
+ * API 的峰谷定价影响。默认白名单为 [{ provider: 'deepseek-official',
+ * model: '*' }]，未命中规则时放行（不拦截）。规则可在 cordis.patch.yml
+ * 里覆盖（`config.lockModels` 列表 + 可选 `config.matchAllWhenEmpty`
+ * 兜底）。
+ *
  * 暂存补发：高峰期被拦截的用户消息不再丢弃，按会话暂存到持久化队列
- * （profile 目录 .peak-hour-lock-queue.json）；高峰期结束后默认再等 2 分钟
- * 缓冲，经 agent.followup 逐条自动补发（每条独立成轮）。
+ * （profile 目录 .peak-hour-lock-queue.json），并附上拦截时拿到的
+ * {provider, model} 让 UI 能确认锁的就是该会话的目标模型；高峰期结束后
+ * 默认再等 2 分钟缓冲，经 agent.followup 逐条自动补发（每条独立成轮）。
  * 补发目标永远是消息被拦截时所在的那个会话：会话不活跃时先经
  * ctx.agents.resume({ resumeSessionId }) 从磁盘恢复（resume 失败的会话
  * 退避 10 分钟后重试，期间标记为 blocked 供 UI 提示手动处理）。
@@ -16,6 +26,9 @@
  * 管理接口（GET/POST /api/peak-hour-lock/queue）：查看 / 编辑 / 删除 /
  * 清空 / 立即发送单条暂存消息，配合浏览器半端的管理面板使用。
  * 立即发送在高峰期内被拒绝（409 in-peak），避免 followup 再次被拦截导致循环入队。
+ *
+ * 陈旧条目清理（v0.3.3）：启动时清理超过 staleAfterMs（默认 7 天）的暂存条目，
+ * 状态 API 返回 stalePrunedAtBoot 让 UI 显示清理数量；staleAfterMs: 0 关闭。
  *
  * 北京时间 = UTC+8（无夏令时），用当日分钟数表示时刻。
  */
@@ -35,10 +48,68 @@ const OFFSET_MINUTES = 2 // 高峰期结束后再等 2 分钟补发
 const OFFSET_MS = OFFSET_MINUTES * 60 * 1000
 const RESUME_RETRY_MS = 10 * 60 * 1000 // 会话恢复失败后的退避时长
 const STARTUP_GRACE_MS = 2 * 60 * 1000 // 启动遗留条目先等 2 分钟再自动补发（留出管理窗口）
+const DEFAULT_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000 // 默认 7 天：超过此时长的陈旧条目在 plugin 启动时被清理
 const QUEUE_FILENAME = '.peak-hour-lock-queue.json'
 const API_STATUS = '/api/peak-hour-lock/status'
 const API_QUEUE = '/api/peak-hour-lock/queue'
 const MAX_BODY_BYTES = 1024 * 1024
+
+/**
+ * 默认白名单：DSH 官方 DeepSeek provider route。DSH 同名 "DeepSeek" 可能挂多套
+ * provider（官方、第三方转发、本地 Ollama 镜像等），仅官方受峰谷定价。
+ * 用户可经 cordis.patch.yml 的 config.lockModels 覆盖（数组 + 通配 model: '*'）。
+ */
+const DEFAULT_LOCK_MODELS = [{ provider: 'deepseek-official', model: '*' }]
+
+/** 解析 staleAfterMs 配置：缺省用 7 天；非正数视作关闭（不清陈旧条目）。 */
+function resolveStaleAfterMs(raw) {
+  if (raw === undefined || raw === null) return DEFAULT_STALE_AFTER_MS
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return DEFAULT_STALE_AFTER_MS
+  if (n <= 0) return Infinity // 关闭陈旧清理
+  return Math.floor(n)
+}
+
+/** 解析并校验 lockModels 配置：缺省用默认值；每项 {provider, model} 必须是字符串。 */
+function resolveLockModels(raw) {
+  if (!Array.isArray(raw)) return DEFAULT_LOCK_MODELS.slice()
+  const rules = []
+  for (const [index, entry] of raw.entries()) {
+    if (entry == null || typeof entry !== 'object') continue
+    const provider = typeof entry.provider === 'string' ? entry.provider.trim() : ''
+    const model = typeof entry.model === 'string' ? entry.model.trim() : ''
+    if (provider.length === 0 || model.length === 0) continue
+    rules.push({ provider, model })
+  }
+  return rules.length > 0 ? rules : DEFAULT_LOCK_MODELS.slice()
+}
+
+/**
+ * 当前会话的 {provider, model} 是否命中白名单。
+ * - options 缺失 → 不锁（防御性放行：未配置 provider/model 的 agent 不应被误拦）；
+ * - 通配 model '*' 命中该 provider 下任意模型；
+ * - 精确 model 完全相等才算命中。
+ */
+function matchesLockRule(options, rules) {
+  if (options == null) return false
+  const provider = typeof options.provider === 'string' ? options.provider : ''
+  const model = typeof options.model === 'string' ? options.model : ''
+  if (provider.length === 0) return false
+  for (const rule of rules) {
+    if (rule.provider !== provider) continue
+    if (rule.model === '*') return true
+    if (rule.model === model) return true
+  }
+  return false
+}
+
+/** 把当前 agent 的 options 归一成 {provider, model|null}（持久化与 API 用）。 */
+function describeModel(options) {
+  if (options == null) return { provider: '', model: null }
+  const provider = typeof options.provider === 'string' ? options.provider : ''
+  const model = typeof options.model === 'string' ? options.model : null
+  return { provider, model }
+}
 
 function beijingMinutes() {
   const now = new Date(Date.now() + 8 * 3600 * 1000)
@@ -140,12 +211,18 @@ function readJsonBody(req) {
   })
 }
 
-export function apply(ctx) {
+export function apply(ctx, config) {
+  const lockModels = resolveLockModels(config?.lockModels)
+  const staleAfterMs = resolveStaleAfterMs(config?.staleAfterMs)
   const queue = { entries: [] }
   const loadedAt = Date.now() // 插件本次启动时刻（启动遗留缓冲计时用）
   let lastInPeak = inPeakWindow() // 启动时刻的高峰状态
   let peakEndedAt = null // 本次高峰结束时刻（ms）；null = 尚未观察到出高峰
   const resumeFailedAt = new Map() // sessionId → 上次 resume 失败时刻（退避用）
+  // 最近一次拦截时的模型（status API 用，让 UI 显示"刚才锁住的会话用的什么模型"）
+  let lastIntercepted = { provider: '', model: null }
+  // 本次启动清理掉的陈旧条目数（status API 用）
+  let stalePrunedAtBoot = 0
 
   // 串行化所有队列读写（拦截写入与补发清空不能交错，避免覆盖丢数据）
   let chain = Promise.resolve()
@@ -155,10 +232,15 @@ export function apply(ctx) {
     return run
   }
 
-  // 启动时先载入持久化队列（首个拦截/补发会 await 本链）
+  // 启动时先载入持久化队列（首个拦截/补发会 await 本链），并清理超过 staleAfterMs 的陈旧条目
   serial(async () => {
     const loaded = await loadQueue(ctx)
-    queue.entries = loaded.entries
+    const before = loaded.entries.length
+    const cutoff = Date.now() - staleAfterMs
+    const kept = loaded.entries.filter((e) => typeof e.ts === 'number' && e.ts >= cutoff)
+    stalePrunedAtBoot = before - kept.length
+    queue.entries = kept
+    if (stalePrunedAtBoot > 0) await saveQueue(ctx, queue)
   }).catch(() => {})
 
   /**
@@ -195,6 +277,10 @@ export function apply(ctx) {
   // 1) 高峰期拦截：暂存用户消息，不调用模型
   ctx.on('agent/pre-step', async (payload, next) => {
     if (!inPeakWindow()) return next()
+    // 白名单判定：当前会话的 provider/model 不在 lockModels 内 → 直接放行。
+    // 这样第三方转发 / 本地镜像 / openrouter 之类的"DeepSeek"不会被误锁。
+    const model = describeModel(payload.agent?.options)
+    if (!matchesLockRule(payload.agent?.options, lockModels)) return next()
     const userMsgs = payload.messages.filter((msg) => msg.source?.kind === 'user')
     if (userMsgs.length === 0) return next()
     const sessionId = payload.agent.id
@@ -203,10 +289,18 @@ export function apply(ctx) {
       for (const msg of userMsgs) {
         // 按 message.id 去重：同一条消息（如重试触发的重复 pre-step）不重复入队
         if (queue.entries.some((e) => e.message?.id === msg.id)) continue
-        queue.entries.push({ sessionId, message: toRecord(msg), ts: Date.now() })
+        queue.entries.push({
+          sessionId,
+          message: toRecord(msg),
+          model,
+          ts: Date.now(),
+        })
         added += 1
       }
-      if (added > 0) await saveQueue(ctx, queue)
+      if (added > 0) {
+        lastIntercepted = model
+        await saveQueue(ctx, queue)
+      }
     })
     return { kind: 'reject' }
   })
@@ -286,10 +380,15 @@ export function apply(ctx) {
         flushAt,
         blocked,
         now: Date.now(),
+        lastIntercepted,
+        // 本次启动清理掉的陈旧条目数（> staleAfterMs）；UI 可据此显示"清理了 N 条 X 天前的暂存"
+        stalePrunedAtBoot,
         config: {
           peak1: [PEAK_1_START, PEAK_1_END],
           peak2: [PEAK_2_START, PEAK_2_END],
           offsetMinutes: OFFSET_MINUTES,
+          staleAfterMs: staleAfterMs === Infinity ? 0 : staleAfterMs,
+          lockModels,
         },
       })
       return Promise.resolve()
@@ -306,6 +405,7 @@ export function apply(ctx) {
           id: entry.message?.id,
           ts: entry.ts,
           sessionId: entry.sessionId,
+          model: entry.model ?? { provider: '', model: null },
           text: entryText(entry),
           blocked: resumeFailedAt.has(entry.sessionId),
         }))

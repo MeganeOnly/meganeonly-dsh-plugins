@@ -1,0 +1,29 @@
+{
+  "name": "dsh-ui-tweaks",
+  "version": "0.2.1",
+  "author": "MeganeOnly",
+  "description": "DSH 外观设计微调合集（v0.2.1：补 React section 组件）。集中维护一组个人对 DSH shell 外观的微调。每条 tweak 是 lib/client.js TWEAKS 数组的一项（id + name + configKeys + defaults + buildCSS）。host half 注册 schemastery schema（当前含 conversationShift + conversationShiftPx）+ client half 用 settingsScope 订阅变化动态生成 CSS。**v0.2.0 仅注册 schema，DSH 设置页不会自动渲染 namespace——v0.2.1 bug fix：client half 新增独立顶层 '界面微调' section（order=5，介于通用 0 与插件 15 之间），用 React 组件直接渲染开关/数字输入并立即写入 settings**。加新 tweak：往 TWEAKS push 一条 + 在 schema 加字段。当前包含 conversation-shift（让 DSH centerCol 永久右缩 N 像素，与 task-pool 抽屉状态解耦）。作者：MeganeOnly。",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-settings": "*"
+  },
+  "dependencies": {
+    "schemastery": "^3.18.0"
+  }
+}

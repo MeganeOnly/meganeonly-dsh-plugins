@@ -16,6 +16,8 @@
 | `peak-hour-lock` | `dsh-peak-hour-lock` | 北京时间高峰时段拦截发送，消息暂存，结束后自动补发，避免高峰产生双倍模型费用 |
 | `simple-mode` | `dsh-simple-mode` | 简洁模式：隐藏思考过程与工具调用卡片，只在输入框上方显示一条极简状态行 |
 | `usage-stats` | `dsh-usage-stats` | 使用统计：跨会话汇总 token 用量（模型侧精确值）、按日趋势、按模型分解、会话与工具排行 |
+| `dsh-task-pool` | `dsh-task-pool` | 任务池：右上角 FAB + 右侧 380px 抽屉，本地收集想法的池子（localStorage 持久化，零 token 消耗）；卡片就地展开可"发送到当前对话"（二次确认 + 4 秒倒计时，发完默认删除可关） |
+| `dsh-ui-tweaks` | `dsh-ui-tweaks` | 外观微调合集：当前含对话列永久右缩让位（`conversationShift` / `conversationShiftPx`）+ 任务池"发送后删除"开关（`taskPoolDeleteAfterSend`，跨插件）；走 DSH 设置页渲染控件，client 动态生成 CSS |
 
 ## 环境要求
 
@@ -95,6 +97,27 @@
 - 增量缓存：每个会话文件按 `(size, mtimeMs)` 记在 profile 目录 `.usage-stats-cache.json`（原子写），没变不重解——全量冷解约数秒（47 会话实测 7.8s），之后近零开销；"强制重算"按钮可 `?force=1` 绕过；
 - 宿主半端启动即预热一次，首次打开设置页即有数据；API：`GET /api/usage-stats/summary`。
 
+### dsh-task-pool — 任务池
+
+- 右上角 FAB（`top: 56px`，44×44 圆形，DSH 风格浅色卡片按钮）唤起右侧 380px 抽屉，**不遮挡对话**（与 v0.1.0 中心覆盖模式的根本区别）；
+- 抽屉 header 常驻 inline input：回车即新建任务、失焦不做任何事；📌 钉住 → 下次启动自动展开；× 关闭 → 仅会话级隐藏；
+- 卡片就地展开编辑（标题 / 描述 / 删除 / 收起），拖动 handle 上下重排，状态全部 localStorage（key `dsh.taskPool.v1`，v3 schema 含 `tasks / pinned / deleteAfterSend`，v1/v2 自动兼容）；
+- "📨 发送到当前对话"走两次点击：第一次进入 armed 态（橙色脉冲 + 文字"再点一次确认发送（N）"含 4→3→2→1 倒计时），4 秒内再点才通过 `sessions.binding(...).session.driver.prompt([...])` 真发；超时/切换自动撤销——**唯一 token 路径，用户主动操作才触发**；
+- v0.5.3 起**发送成功后默认从池子删除任务**（全局开关，非 per-task），关掉可保留供"再发一次"场景；
+- host half 零副作用（`apply` 为空函数），不注册 system prompt 段、不注册 HTTP、不注入服务——按用户意图"本地收集想法"严守隐式 token 成本；
+- 用纯 DOM 实现（不引 React）——React 受控组件在 drag-and-drop 中经常干扰 dragover 事件，纯 DOM + 局部 patch 更可控。
+
+### dsh-ui-tweaks — 外观微调合集
+
+- 集中维护一组对 DSH shell 视觉的微调：每条 tweak 是 `lib/client.js` `TWEAKS` 数组里的一项（`id / name / description / configKeys / defaults / buildCSS(state)`），与 host half `lib/index.js` 的 schemastery `Config` 字段严格对齐；
+- host half 注册 settings namespace `ui-tweaks` + schemastery schema → DSH 设置页"界面微调"section 自动渲染每个 tweak 的开关 / 数字输入（无需自定义 React card）；
+- client half 用 `settingsScope.bind({ namespace: "ui-tweaks" })` 订阅变化，**动态生成 CSS** 注入 `<head>`（`data-plugin-css="dsh-ui-tweaks/main.css"`）；
+- 当前包含：
+  - `conversation-shift`：让 `[class*="centerCol"]`（DSH 当前版本用 CSS module hash 类名，substring 匹配跨重启稳定）`padding-right` 加 N 像素，给右侧面板让位；与 task-pool 抽屉状态**解耦**，开关开即永久生效；
+  - `taskPoolDeleteAfterSend`：**跨插件**字段，task-pool 发送后是否删除任务的全局开关（默认 `true`）；
+- 加新调整只需 3 步：TWEAKS 数组 push 一条 + schema 加字段 + 不需要改其它代码；
+- DSH selector 历史踩坑：旧选择器 `[data-pane="conversation"]` 在 DSH 当前版本已失效（layout 改用 CSS module 类名），新选择器用 `[class*="centerCol"]` substring 匹配。
+
 ## 技术要点（写给自己备忘，也欢迎指正）
 
 - 浏览器半端格式：`window.__ModuleLoader__.load({ id, factory })`，依赖经 `require()` 从 shell 模块表取得，可手写、无需构建工具；
@@ -104,6 +127,42 @@
 - skill 停用走 `ctx.skills.registerProvider` 高优先级遮蔽（rank 50 低于文件系统来源 100–600），影子条目 invocation 双 false 即彻底不可调用，`control.invalidate()` 让 skill 目录即时更新；
 - MCP 服务器 = 名册里 `@deepseek-ai/dsh-mcp-client` 条目 + 各自 config；连接状态看 `entry.fiber.state`（数字枚举 0–5），工具清单按 `mcp__<serverName>__` 前缀过滤 `ctx.tools.schemas()`（详见 mcp-manager）；
 - 会话日志 `session.jsonl.zstd` 是**多 frame 拼接**的 zstd 容器（追加写、每批一帧），`zstdDecompressSync` 只解第一帧；须先按 zstd 帧头/块头结构性扫描边界再逐帧解（usage-stats 的 `scanZstdFrames`），Node 22 内置 zlib 即可，零依赖。
+
+## 诊断流程
+
+踩坑时按这张流程图定位（写给自己，下次踩坑不用重想一遍）：
+
+### 启停不生效
+
+- 改 `cordis.patch.yml` 后**必须重启 DSH**，插件状态完全靠启动期 YAML 加载，没有运行时 disable 通道
+- 若 YAML 已 `disabled: true` 但 plugin 还在响应：YAML 改了但 DSH 没重启，旧的 fiber 还在内存里
+- 检查 web profile 的 `cordis.patch.yml`（`F:\.dsh\profiles\web\cordis.patch.yml`）与 bundle 内 `cordis.patch.yml`（`packages/<name>/cordis.patch.yml`）别写错 YAML 语法（YAML 重复 key 会让 patch 解析抛错）
+
+### peak-hour-lock 队列堆积
+
+- 队列文件在 `F:\.dsh\profiles\web\.peak-hour-lock-queue.json`，删之前**先备份**（工作区约定 D006）
+- 自动补发时机会：
+  - 高峰结束（12:00 或 18:00 北京时间）+ `OFFSET_MINUTES`（默认 2 分钟）
+  - DSH 启动后 + `STARTUP_GRACE_MS`（默认 2 分钟）
+- 队列条目带 `ts` 字段（拦截时刻），从 v0.3.3 起 plugin 启动时自动清理超过 `staleAfterMs`（默认 7 天）的条目——按状态 API `staleCount` 字段看清理数量
+- 补发失败时（会话被删等）条目会留在队列里重试，**无最大重试次数**，需手动从管理面板删除
+
+### session.jsonl.zstd 解压只得到 header
+
+- 实际是**多 frame zstd 拼接容器**（追加写、每批一帧），单 `decompress()` 只得到 header 那一帧
+- 用流式解压 ` `zstdDecompressor`\`.stream_reader(BytesIO(raw))` 或结构性 `scanZstdFrames`（usage-stats 的实现）逐帧解
+- Node 22 内置 `node:zlib` 即可，零第三方依赖
+
+### usage zip 找不到具体会话
+
+- DeepSeek / 平台侧用量 csv 只到**小时桶 × provider/model × API key** 维度，**无 sessionId**
+- 反查要靠本地 DSH 会话存档的 `request/header` 事件里的 `data.header.config.provider` + `config.model`
+- 本机查不到时：用量可能来自其他客户端 / 命令行 / 另一台机器，建议**先 rotate key 排除泄露**
+
+### 完整 API key 出现在会话存档里
+
+- DSH 在持久化层不会写 `Authorization` 头，但**用户消息里明文粘贴 key 会作为对话内容落盘**
+- `has_full_key` 子串扫描所有 `session.jsonl.zstd` 文件；命中后建议 rotate + 清理相关会话内容
 
 ## 许可证
 

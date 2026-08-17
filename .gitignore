@@ -13,3 +13,10 @@ Thumbs.db
 
 # 运行时状态（各插件写入 profile 目录，不会出现在本仓库，防御性忽略）
 .peak-hour-lock-queue.json
+.peak-hour-lock-queue.backup-*.json
+.peak-hour-lock-queue.extracted-*.json
+.skill-manager.json
+.usage-stats-cache.json
+
+# 全局凭证（DSH_HOME 在 F:\.dsh 不在本仓库，但若有人手贱复制进来就忽略掉）
+.credentials.yaml

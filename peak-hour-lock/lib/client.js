@@ -91,6 +91,23 @@ window.__ModuleLoader__.load({
       return String(id || "").replace(/^session-/, "").slice(0, 8);
     }
 
+    /** 把持久化的 {provider, model} 归一成可读字符串；缺失时显示 "—" */
+    function formatModel(model) {
+      if (!model || typeof model !== "object") return "—";
+      var provider = typeof model.provider === "string" && model.provider.length > 0 ? model.provider : "";
+      var m = typeof model.model === "string" && model.model.length > 0 ? model.model : null;
+      if (provider.length === 0) return "—";
+      return provider + "/" + (m === null ? "?" : m);
+    }
+
+    /** 把白名单规则渲染成短串："deepseek-official/*" 或 "openrouter/<model>" */
+    function formatRule(rule) {
+      if (!rule || typeof rule !== "object") return "?";
+      var p = typeof rule.provider === "string" ? rule.provider : "?";
+      var m = typeof rule.model === "string" ? rule.model : "?";
+      return p + "/" + m;
+    }
+
     // ---------- API ----------
     function postQueue(body) {
       return fetch("/api/peak-hour-lock/queue", {
@@ -141,6 +158,8 @@ window.__ModuleLoader__.load({
       ".dsh-phl-tag{padding:1px 7px;border-radius:999px;font-size:10px;border:1px solid}",
       ".dsh-phl-tag-ok{color:#15803d;border-color:#bbf7d0;background:#f0fdf4}",
       ".dsh-phl-tag-bad{color:#b91c1c;border-color:#fecaca;background:#fef2f2}",
+      ".dsh-phl-model{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:#6b4f1d;background:#fef9eb;border:1px solid #f0d790;border-radius:4px;padding:1px 6px}",
+      ".dsh-phl-rule{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:#92400e;background:#fff7e6;border:1px solid #f0d790;border-radius:4px;padding:1px 6px;margin-right:4px}",
       ".dsh-phl-textarea{width:100%;box-sizing:border-box;font-size:13px;font-family:inherit;padding:6px 8px;border-radius:6px;border:1px solid #e7c98a;background:#fffdf5;resize:vertical;outline:none;transition:border-color .15s,box-shadow .15s}",
       ".dsh-phl-textarea:focus{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.18)}",
       ".dsh-phl-actions{margin-top:6px;display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}",
@@ -236,6 +255,11 @@ window.__ModuleLoader__.load({
           { className: "dsh-phl-meta" },
           React.createElement("span", null, formatBeijing(entry.ts)),
           React.createElement("span", null, "会话 " + shortSession(entry.sessionId)),
+          React.createElement(
+            "span",
+            { className: "dsh-phl-model", title: "拦截时此会话的目标模型" },
+            formatModel(entry.model)
+          ),
           React.createElement(
             "span",
             { className: entry.blocked ? "dsh-phl-tag dsh-phl-tag-bad" : "dsh-phl-tag dsh-phl-tag-ok" },
@@ -419,6 +443,25 @@ window.__ModuleLoader__.load({
                 formatMinutes(config.peak2[0]) + "–" + formatMinutes(config.peak2[1]) +
                 "，结束后约 " + config.offsetMinutes + " 分钟自动补发"
             )
+          : null,
+        config && Array.isArray(config.lockModels) && config.lockModels.length > 0
+          ? React.createElement(
+              "div",
+              { className: "dsh-phl-foot" },
+              "锁住规则 ",
+              config.lockModels.map(function (rule, index) {
+                return React.createElement(
+                  "span",
+                  { key: index, className: "dsh-phl-rule", title: "白名单：仅拦截这些 provider/model 的会话" },
+                  formatRule(rule)
+                );
+              }),
+              React.createElement(
+                "span",
+                { style: { color: "#926b3c" } },
+                "（不在白名单的会话照常执行，不被锁）"
+              )
+            )
           : null
       );
     }
@@ -458,10 +501,17 @@ window.__ModuleLoader__.load({
           fetchStatus().then(function (d) {
             if (!d || !d.ok) {
               // API 不可用（如宿主半端未加载）→ 本地兜底
-              setStatus({ inPeak: inPeakWindow(), queued: 0, flushAt: null, blocked: 0, config: null });
+              setStatus({ inPeak: inPeakWindow(), queued: 0, flushAt: null, blocked: 0, config: null, lastIntercepted: null });
               return;
             }
-            setStatus({ inPeak: d.inPeak, queued: d.queued, flushAt: d.flushAt, blocked: d.blocked || 0, config: d.config });
+            setStatus({
+              inPeak: d.inPeak,
+              queued: d.queued,
+              flushAt: d.flushAt,
+              blocked: d.blocked || 0,
+              config: d.config,
+              lastIntercepted: d.lastIntercepted || null,
+            });
             // 入队条数增加 → 横幅闪烁提醒
             if (initedRef.current && d.queued > prevQueuedRef.current && d.inPeak) {
               setFlash(true);
@@ -496,9 +546,18 @@ window.__ModuleLoader__.load({
       if (!flushTarget && s.inPeak) flushTarget = nextFlushAt();
       var remaining = flushTarget ? formatRemaining(flushTarget - tickState[0]) : null;
 
+      // 锁住规则摘要：多条规则取首条后省略；横幅里只放短提示，详情进管理面板看
+      var rules = s.config && Array.isArray(s.config.lockModels) ? s.config.lockModels : [];
+      var rulesSummary = rules.length === 0
+        ? ""
+        : rules.length === 1
+          ? formatRule(rules[0])
+          : formatRule(rules[0]) + " 等 " + rules.length + " 条";
+
       var text;
       if (s.inPeak) {
-        text = "高峰时段 · 消息将暂存" + (s.queued > 0 ? "，已暂存 " + s.queued + " 条" : "");
+        text = "高峰时段 · 消息将暂存" + (rulesSummary ? "（仅锁 " + rulesSummary + "）" : "");
+        if (s.queued > 0) text += "，已暂存 " + s.queued + " 条";
         if (remaining) text += " · 约 " + remaining + " 后自动发出";
       } else if (remaining) {
         text = s.queued + " 条暂存消息 · 约 " + remaining + " 后自动发回原会话";
