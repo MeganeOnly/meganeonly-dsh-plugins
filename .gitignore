@@ -23,3 +23,9 @@ Thumbs.db
 
 # 调试产物（本地调试 session 产生，不入库；如需回看，去 F:\AllWorkSpace\diag-archive\）
 diag/
+
+# 临时验证/参考副本（不入库）
+.zcode/
+meganeonly-dsh-skills/
+plugins-check/
+workbench-check/
