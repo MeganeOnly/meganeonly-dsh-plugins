@@ -993,31 +993,9 @@ window.__ModuleLoader__.load({
         });
         actions.appendChild(pushBtn);
 
-        var sendBtn = document.createElement("button");
-        sendBtn.className = "DGH_actionBtn";
-        sendBtn.textContent = "💬 推到对话";
-        sendBtn.title = "把仓库摘要发到当前会话，让 agent 调 mcp__github__ 处理";
-        sendBtn.addEventListener("click", function () {
-          controller.sendRepoToSession(repo);
-        });
-        actions.appendChild(sendBtn);
-
-        var pinBtn = document.createElement("button");
-        var pinned = snap.pinnedPaths.indexOf(repo.path) >= 0;
-        pinBtn.className = "DGH_actionBtn DGH_pinBtn";
-        pinBtn.textContent = pinned ? "📌 已钉" : "📌 钉";
-        if (pinned) pinBtn.dataset.active = "true";
-        pinBtn.addEventListener("click", function () { controller.togglePin(repo.path); });
-        actions.appendChild(pinBtn);
-
-        var hideBtn = document.createElement("button");
-        var hidden = snap.hiddenPaths.indexOf(repo.path) >= 0;
-        hideBtn.className = "DGH_actionBtn DGH_hideBtn";
-        hideBtn.textContent = hidden ? "🚫 已隐" : "🚫 隐";
-        if (hidden) hideBtn.dataset.active = "true";
-        hideBtn.title = hidden ? "已隐藏（不在列表显示）；再点恢复" : "隐藏这个仓库（不显示）；常用于归档/隐私/损坏备份";
-        hideBtn.addEventListener("click", function () { controller.toggleHide(repo.path); });
-        actions.appendChild(hideBtn);
+        // v0.1.8 简化：卡片操作行只留 ⬆ 推送；💬 推到对话 / 📌 钉 / 🚫 隐 都去掉
+        //   - 隐藏：通过 🎯 选择模式整张卡片可点切换
+        //   - 推到对话 / 钉住：如果用户后续要恢复，会再加回到别的位置（header / 长按等）
 
         li.appendChild(actions);
         return li;
