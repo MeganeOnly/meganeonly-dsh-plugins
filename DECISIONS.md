@@ -1,26 +1,118 @@
 # 项目决策日志（dsh-plugins 项目级）
 
-> 本文件记录与 `E:\dsh-plugins` 仓库直接相关的决策（约定、取舍、踩过的坑、理由）。
->
-> 与 `F:\AllWorkSpace\DECISIONS.md`（工作区级决策日志）的区别：
->
-> - 本文件（项目级）：约束对象是**本仓库源码**——部署链路、推送策略、API 选择、selector 适配等。GitHub clone 后可独立阅读。
-> - F 盘工作区级：约束对象是 F:\AllWorkSpace 多项目工作区——多项目协作、跨项目约定等。本机访问；GitHub clone 看不到。
->
-> 二者**不互通**：新决策只追加到当前所在仓库（开发 dsh-plugins 时追加到这里；F 盘工作区级决策才追加到 F 盘）。历史决策保留在原位置，不复制不搬迁。
->
-> 决策规则（不重复工作区级）：AGENTS.md（规则）> 本文件（事实）；冲突时以工作区级 AGENTS.md 为准并在本文件追加「更正」条目。
+本文件记录与本仓库源码直接相关的决策（约束本仓库代码的取舍、踩过的坑、理由）。
 
-条目格式：`- [E###] 决策 | 理由 | 日期 | 状态`（状态：active / superseded）
+> **本仓库 + 本机工作区** 的双日志分工：
+>
+> - 本文件（项目级，GitHub 可访问）：约束本仓库源码——API 选择 / selector 适配 / 共享协议等，GitHub clone 后可独立阅读。
+> - 本机工作区级决策日志（**仅本机访问**，GitHub clone 看不到）：约束多项目协作、跨项目约定等。完整路径与作者本地约定见仓库维护者的内部笔记。
+>
+> 二者**不互通**：新决策只追加到当前所在仓库（开发 dsh-plugins 时追加到这里；本机工作区级决策才追加到本机日志）。历史决策保留在原位置，不复制不搬迁。
+
+条目格式：
+
+```
+- [E###] 标题
+  理由：
+  日期：
+  状态：active / superseded
+```
+
+---
 
 ## 活跃决策
 
-- [E001] dsh-plugins 仓库从 `F:\AllWorkSpace\dsh-plugins` 迁移到 `E:\dsh-plugins` | F:\AllWorkSpace 已演变为多项目工作区（workbench / dsh-plugins / tools / reports），把 dsh-plugins 单独迁到 E 盘让"仓库 = 项目"一一对应；用 `git clone --no-hardlinks` 平移保留全部 git 历史与 GitHub remote；未提交改动在 F 盘先 git commit 成 snapshot（commit `c94156d`，本地未 push）后随历史迁入；`git clone` 后 origin 默认指向本地源不是 GitHub，必须 `git remote set-url origin https://github.com/MeganeOnly/meganeonly-dsh-plugins.git` 修正；clone 不携带源仓库的 `[user]` 段，必须给本仓库 `git config user.name/user.email`（保持与原仓库一致：`MeganeOnly` / `MeganeOnly@users.noreply.github.com`），否则 commit 会因无 identity 失败；E 盘同时新建 `CONTRIBUTING.md`（项目级开发者文档）、`DECISIONS.md`（本文件）、改写 `LEGACY-LOCATION.md`（去掉 AGENTS.md / DECISIONS.md 引用，因为这两个已在 E 盘自洽）形成自洽项目仓库；F 盘 AGENTS.md 精简为工作区级，DSH 插件开发约定搬到 `CONTRIBUTING.md`；F 盘 `F:\AllWorkSpace\dsh-plugins` 重命名为 `.dsh-plugins.archive`（30 天观察期，30 天后手动删除释放空间）；DSH 部署路径 `F:\.dsh\plugins\` 与 profile `F:\.dsh\profiles\web\` 不动（与源码仓库位置解耦） | 用户主动要求；DSH 部署链路与仓库路径解耦 → 迁移不破坏插件运行；双决策日志分工避免"约定与代码物理分离"对 GitHub clone 失效的问题 | 2026-08-17 | active
-- [E002] dsh-update-checker 从 `F:\.dsh\plugins\dsh-update-checker\`（独立维护部署副本）迁入 `E:\dsh-plugins\dsh-update-checker\`（仓库源码） | E001 后所有 DSH 插件都已在 E 仓库，唯独 dsh-update-checker 是 2026-08-15 写完后直接放 `F:\.dsh\plugins\` 没进仓库——用户报告 "更新插件版本对比 bug" 时发现它不在仓库里无 git 历史；按 E001 的精神"仓库 = 权威源 / F 盘 = 部署副本 / git push 与 DSH 实际运行解耦" 把它纳入仓库；E 仓库源码与 F 盘部署副本仍 D005 约定走手动 `Copy-Item` 同步（pnpm v11 file: 拷贝非硬链接且 install 不感知内容变化），git 操作完全不影响 DSH 运行时；迁移起点是已修过 bug 的 v0.1.1 状态（不是 v0.1.0），E 仓库首个 commit 就是 v0.1.1——这是从运行中的代码 snapshot 入库，不是从历史起点回溯；F 盘 `F:\.dsh\plugins\dsh-update-checker\` 与 E 仓库新子目录初始 SHA256 一致；日常开发从 E 仓库改 → `Copy-Item` 到 F 盘部署副本 → `Copy-Item` 到 profile node_modules → 重启 DSH（host half 改动按 D033 强制） | 用户主动要求；DSH 部署链路与仓库位置解耦 → 迁移不破坏插件运行；插件纳入仓库后才有 git 历史与跨设备同步能力 | 2026-08-17 | active
-- [E003] dsh-ui-tweaks v0.6.0 合并原 `simple-mode/` 并删除独立目录 | 原 `simple-mode` 作为独立插件维护在 `simple-mode/{cordis.patch.yml, lib/client.js, lib/index.js, package.json}`；v0.4.0 起 simple-mode 的全部能力（开关 + 状态行 DOM controller）已并入 `dsh-ui-tweaks` 的 `TWEAKS` 数组（参见 dsh-ui-tweaks README 与 lib/client.js），独立目录已不再被任何地方引用；v0.6.0 决定物理删除独立 `simple-mode/` 目录，单一 UI 调整来源比双目录维护成本更低；README 表格与说明已只剩 dsh-ui-tweaks 一项；删除与 v0.6.0 同 commit 完成，避免仓库内出现"已删除但 git 还能 checkout 出来"的半状态 | 用户主动要求；UI 调整天然聚合在 dsh-ui-tweaks；单一来源降低维护成本 | 2026-08-18 | active
-- [E004] 不在本地 clone `MeganeOnly/meganeonly-dsh-skills`；`F:\.dsh\skills\` 是本地真源 | GitHub 公开版（`MeganeOnly/meganeonly-dsh-skills`）是公开子集；本机 `F:\.dsh\skills\`（DSH 用户级 skill 目录）是含个人信息的本地真源（21 个 skill，含 `personal-preferences` 等含隐私的本地扩展）；用户 2026-08-18 决定**日常不更新 GitHub**，需要时单开任务；**agent 守则**：用户说"改 skill" → 默认读 / 写 `F:\.dsh\skills\<name>\SKILL.md`；**禁止** `git clone https://github.com/MeganeOnly/meganeonly-dsh-skills` 到任何本地路径（含 `F:\AllWorkSpace\` / `E:\` / `F:\.dsh\skills\`），clone 会让 agent 误把公开子集覆盖或污染 F 盘个人版本，导致隐私泄露或本地扩展丢失；用户主动说"更新 GitHub skill / 发 skill 到 GitHub"时另开任务处理 | 用户主动要求；隐私保护 + 避免 agent 误读误改 | 2026-08-18 | active
-- [E005] 新建 dsh-git-hub 插件(v0.1.0)| 右侧 FAB + 抽屉模式（对齐 task-pool），host half 走 `ctx.webServer.register` 暴露 7 个 `/api/git-hub/*` 路由（config / repos / refresh / push-all / repos/push / push-status），client half 复用 task-pool 的互斥协议 + CSS 注入 + 持久化降级 + FAB 让位动画；**复用 `F:\AllWorkSpace\tools\daily-push.cjs`** 作为推送工具（spawn detached 子进程，立即返回 PID + startedAt，4s 轮询 status），**GitHub 侧视角由"推到当前对话"按钮**让 agent 调 `mcp__github__` 完成（host half 不直接调 GitHub API，零造轮子）；默认扫描根 `F:\AllWorkSpace` + `E:\`，配置存 `F:\.dsh\profiles\web\.git-hub-config.json`（临时文件 + rename 原子写）；扫描时跳过 `node_modules / .git / worktrees / target / build / dist / .venv / venv / __pycache__ / .next / .cache / .parcel-cache / .turbo / coverage / .idea / .vscode` 与所有 `.git*` 开头目录；git 命令 `timeout: 5000ms` + 失败 fallback，单仓库状态串行执行（避免 git 锁冲突），5s 缓存；commit 时机由用户手动（白天终端），push 时机由用户手动触发（晚上统一走 daily-push.cjs）——**MVP 范围最小**，后续可扩展 GitHub 侧视角（卡片显示 open issues / PRs 数）/ SSE 流式推送进度 / 多根路径切换 / 自定义 commit message / 一键 rebase --onto；**FAB 位置 v0.1.0 → v0.1.1**：原 `top: 56px; right: 24px` 与 task-pool FAB 完全重叠（task-pool 也在 `top: 56px; right: 24px`），用户实测发现"和另一个图标重叠了"——改成 `top: 108px; right: 24px`（task-pool 占 56~100px,本插件下移 8px 间距避让）；drawer 互斥协议保证两个 FAB 不会同时进入让位动画；**v0.1.1 → v0.1.2 协议升级**：见 E006 | 用户主动要求"做一个 git/GitHub 管理插件，右边栏小球，跟 task-pool 类似"；MVP 适配用户实际工作流（白天 commit + 晚上统一 push），零造轮子原则；FAB 偏移来自用户实测反馈 | 2026-08-18 | active
-- [E006] 跨面板 FAB 让位协议升级（dsh-task-pool v0.5.3 → v0.5.4 → v0.5.5 → v0.5.6 + dsh-git-hub v0.1.1 → v0.1.2 → v0.1.3 → v0.1.4）| 引入统一 attr `data-dsh-any-side-drawer-open`，任意右侧抽屉打开时设、全部抽屉关闭时移除；**所有 FAB CSS 监听这个 attr → 让位到 `calc(var(--active-drawer-width) + 24px)`（抽屉左边外）**；`--active-drawer-width` 由打开抽屉的 panel 在 `applyOpen(open)` 时 setProperty 自己的 `DRAWER_WIDTH`（task-pool = 380px, git-hub = 420px），让位数值随实际抽屉宽度变化——不同宽度抽屉不会位置错乱；**取代旧方案**：原来每个 panel 自己抽屉打开 → 自己 FAB `right: 444px` 横移，但**别的面板抽屉打开时自己的 FAB 不动 → 被遮挡**——dsh-git-hub 抽屉打开时 task-pool FAB 被遮挡，task-pool 抽屉打开时 dsh-git-hub FAB 被遮挡；用户实测反馈"当一个打开的时候,其他小球都到左侧"；**协议升级 + 互斥 race condition 修复**：`applyOpen(open)` 设自己 attr + setProperty `--active-drawer-width` + 检查 `isOtherDrawerOpen(selfAttr)`（用 `KNOWN_DRAWER_ATTRS` 枚举所有 panel drawer attr）才设统一 attr；`applyOpen(close)` 检查 `isOtherDrawerOpen(selfAttr)` 才移除统一 attr + CSS 变量——**关键修复**：开抽屉 A 去点 B 时，B applyOpen(open) 先设自己 attr + dispatch event，A applyOpen(close) 不能无条件移除统一 attr / CSS 变量（否则 FAB 让位状态会瞬间错乱）；两个 panel 共享 `KNOWN_DRAWER_ATTRS` 列表（task-pool / github / ssh / task-board），新增面板时双方都要更新；完全解耦，未来新增面板自动支持 |**v0.5.5 / v0.1.3 hotfix**：原 v0.5.4 / v0.1.2 我误把让位数值写成 `left: 24px`（跑屏幕最左侧），用户实测反馈"应该是到那个抽屉的左边,怎么直接到最左侧了"——回滚让位数值到 `right: 444px`（抽屉左边外），符合用户原意"到那个抽屉的左边"；**v0.5.6 / v0.1.4 hotfix**：用户实测反馈两个 bug——(1) 两个抽屉宽度不同（task-pool 380px / git-hub 420px），用固定值 `right: 444px` 导致 task-pool 抽屉打开时 FAB 离抽屉左边 40px 空隙（git-hub 抽屉打开时刚好贴边），不同宽度位置错乱——改为 CSS 变量 `--active-drawer-width`，让位公式 `calc(var(--active-drawer-width) + 24px)` 由打开抽屉的 panel setProperty；(2) 开抽屉 A 去点 B 时有 bug——B applyOpen(open) 先移除 A attr + 设自己 attr + dispatch event，A applyOpen(close) 无条件移除统一 attr + CSS 变量，但 B 抽屉已开 → 统一 attr 被错移除 → FAB 让位瞬间错乱——close 分支加 `isOtherDrawerOpen(selfAttr)` 检查，只有真的没有任何 panel 抽屉打开时才清理 | 用户主动要求"既然都是自己的插件" + "当一个打开的时候,其他小球都到左侧"；改 task-pool 是因为都是用户自己的代码（用户已确认）——协议升级比单边覆盖（git-hub CSS 反向覆盖 task-pool FAB）更干净，避免封装边界违反；统一 attr 比互相监听（CSS 监听对方 attr）更解耦；三次 hotfix 都是我自己推理不严密的代价——v0.5.4 误读"到左侧"含义 + v0.5.6 让位数值硬编码没考虑不同宽度 + v0.5.6 race condition 没考虑互斥协议下"我关但别人开"的场景 | 2026-08-18 | active
-- [E007] dsh-git-hub v0.1.5 ESM `require` bug 修复| **bug**：host half 在 ESM 模块里用 `require('node:fs').readdirSync / statSync` 调同步 API（isDirectory / scanRoot 内部），**ESM 没有 `require`** → 抛 ReferenceError → 被 try/catch 静默吞错（`scanRoot` 内层 `try { entries = require('node:fs').readdirSync(...) } catch { return }`）→ `scanRoot` 永远返回空数组 → `/api/git-hub/repos` 永远返回 0 仓库；**用户触发路径**：v0.1.4 用户实测"git 插件里面的根路径你帮我填一下吧" → 我 POST `/api/git-hub/config` 设 `scanRoots=["F:\\AllWorkSpace","E:\\dsh-plugins"]`（DSH 内存接受）→ POST `/api/git-hub/repos/refresh` → 返回 `repos: []` → 暴露 host half bug；**修复**：改用 `import { readdirSync, statSync } from 'node:fs'` 顶层导入，删掉 3 处 `require('node:fs')` 调用；**踩坑教训**：(1) Node 22 检测 ESM `exports` 字段时抛的 `Invalid package config` 跟 syntax 错混在一起，掩盖了真正问题；(2) 单元测试 + 客户端 mock apply() 都触发不到 host half 的 ESM `require` bug（mock 里手动提供 require / 不走 ESM 解析路径）；(3) **DSH host half 必须由用户实测才会暴露**——所有 client-side smoke test 都验证不到；(4) **`try { ... } catch { return }` 是静默吞错的反模式**：当 try 块是"核心功能唯一调用"时，外层 caller 拿不到任何信号去发现"功能没生效"——应该在 catch 里 `console.warn` 或 throw 让 caller 知道；(5) **bundle patch 启动时加载，运行时不会 HMR**——host half 类 bug 修复后必须重启 DSH 才生效，用户验证路径长（重启 DSH 才能用）| 用户实测反馈"git 插件里面的根路径你帮我填一下"暴露的 bug；DSH host half 是新增的插件形态（task-pool 的 host half 是空 apply，没踩到），没有现成的 host half 写法的踩坑经验沉淀 | 2026-08-18 | active
-- [E008] dsh-git-hub v0.1.6 per-repo 隐藏功能| 用户反馈三个问题——(1) 抽屉里有些路径根本不是仓库（`.dsh-plugins.archive` 归档 / `E:\hermes-agent.broken-20260705-012609` 损坏备份 / `E:\dsh-skills` 隐私），不该显示；(2) 不懂"推送"和"推到对话"的区别；(3) 不认识 `hermes-agent.broken-...` 这个目录。**针对 (1) 做 per-repo 隐藏**：localStorage schema v2 `{ pinnedPaths, hiddenPaths }`（v0.1.0 v1 隐式迁移 v2，缺字段默认 []）；UI：每张卡片加 🚫 隐 按钮（与 📌 钉 对称设计），body 顶部「已隐藏 N 个」小条可一键展开/收起被隐藏项，⚙ 配置面板加 hiddenPaths textarea 支持批量编辑；过滤逻辑：`renderBody` 过滤掉 `hiddenPaths` 中的 repo（除非 `showHidden=true`）；**针对 (2)(3) 解释**：推送 = 调 `daily-push.cjs` 把本地代码推到 GitHub；推到对话 = 把仓库摘要发到当前 DSH 会话里的 AI 助手，让 agent 调 `mcp__github__` 查 GitHub 侧（不动代码）；`hermes-agent.broken-20260705-012609` 是用户机器上 2026-07-05 的备份目录，后缀 `.broken` 表示备份有问题，但碰巧有 `.git` 子目录被扫到；**踩坑教训**：JSON 字符串里嵌入了未转义 `"..."` 半角双引号（"已隐藏 N 个"），导致 package.json description JSON 解析失败——**写 description 时内部引用必须用全角引号 `「」` 或中文方括号**，不能用 ASCII `"`；**测试覆盖**：客户端 mock apply() 不走 controller 的 hiddenPaths / toggleHide 实际路径（mock 没真实 localStorage 写入路径），但源码层面 `hiddenPaths.indexOf(repo.path)` 在 `renderBody` 和 `buildRepoCard` 两处出现，可被 grep 验证 | 用户反馈的 UI 痛点驱动；schema 演进沿用 task-pool 的"不升 key + 隐式补默认字段"模式；filtering 在 client half 做（per-browser 状态，不需要 host half 介入） | 2026-08-18 | active
-- [E009] dsh-git-hub v0.1.7 隐藏选择模式 + hidden 阻止 push| 用户反馈——(1) "commit" 是 DSH 里的 commit 功能（给 agent 待办），不是 git commit；明确 commit 语义后，让先 git commit 现有 v0.1.5+v0.1.6 改动；(2) **"位置太常用,但功能不常用"**：v0.1.6 把 🚫 隐 按钮塞在每张卡片的操作行（每次都看到），希望改成模式 toggle——按一次 header 按钮进入"隐藏选择模式"，模式下整张卡片可点 toggleHide；(3) **hidden = 几乎等于不要碰**：hidden 仓库绝对不能 push，单仓库 ⬆ 推送按钮置灰 + 入口拒绝；全部推送也要排除 hidden；(4) 扫描缓存（5s）暂时不动；(5) **"我其实不是很能懂你说什么,做的好点"**：用户对 A/B/C/D 选项理解模糊，要求"做的好点"。**实现**——(a) header ↻ 右侧加 🎯/✓ toggle 按钮（默认态 = 圆圈+圆点 SVG，激活态 = × SVG），`selectionMode: boolean` Controller 状态，`setSelectionMode(v)` 切换时重置 `showHidden=false`；(b) `buildRepoCard` 在 selectionMode 时给 li 加 `data-selecting="true"` 属性，整张卡片 click = `controller.toggleHide(repo.path)`，操作按钮行 actions `style.display = "none"`（避免点击冲突），`e.stopPropagation()` 防止点操作按钮时冒泡触发；(c) 已隐藏卡片 `data-hidden="true"` CSS：`opacity:.6` + 仓库名/路径加删除线 + 「已隐藏 ✓」标记；(d) **body 底部**"已隐藏 N 个仓库"小条（v0.1.7 从 v0.1.6 的"默认顶部显示"改为"仅 selectionMode 模式底部显示"——避免默认界面噪音），含「展开/收起列表」+「✓ 完成」两个按钮；(e) Esc 优先级：关配置面板 → 退 selectionMode → 关抽屉；(f) **hidden 阻止 push**：`Controller.pushRepo` 入口检查 `hiddenPaths.has(path)`，有则 toast 拒绝；卡片 ⬆ 按钮 hidden 时 `disabled + title="已隐藏,不允许推送"`；(g) **全部推送**：`Controller.pushAll` 重写为 client 端循环调 `pushRepo`（**不调** host half 的 `/api/git-hub/push-all`，避免 `daily-push.cjs --all` 扫到 hidden 仓库），串行 800ms 间隔避免 N 个 detached 子进程瞬时压力；**踩坑教训**：(1) JSON description 半角引号问题已在 E008 标注，这次写 v0.1.6+1.7 描述时已用全角引号「」——但仍要警觉，每个版本发布前检查；(2) **"做的好点"原则**：当用户对实现细节理解模糊时，宁可自己设计完整的语义闭环（按钮置灰 + tooltip + controller 入口拒绝 + 全部推送自动排除），不要因为"用户说不懂"就只做最浅的实现——**完整闭环 > 简化让用户挑** | 用户反馈驱动；selectionMode 模式 toggle 是更"低频"功能的标准设计（与 task-pool 的 `expandedId` 模式一脉相承——单张展开而非全局展开）；hidden 阻止 push 让"几乎等于不要碰"的语义彻底闭环 | 2026-08-18 | active
+### E002 · dsh-update-checker 迁入仓库
+
+**理由**：原 v0.1.0 写完后直接放 DSH 部署目录（用户的 `~/.dsh/plugins/dsh-update-checker/`），没进仓库——用户报告"更新插件版本对比 bug"时发现它不在仓库里，无 git 历史。按 DSH 插件部署约定"仓库 = 权威源 / 部署目录 = 副本 / git push 与 DSH 实际运行解耦" 把它纳入仓库。
+
+**实施**：迁移起点是已修过 bug 的 v0.1.1 状态（不是 v0.1.0），E 仓库首个 commit 就是 v0.1.1——这是从运行中的代码 snapshot 入库，不是从历史起点回溯。E 仓库源码与 F 盘部署副本 SHA256 一致。日常开发从 E 仓库改 → `Copy-Item` 到 F 盘部署副本 → `Copy-Item` 到 profile node_modules → 重启 DSH。
+
+**日期**：2026-08-17 · **状态**：active
+
+---
+
+### E003 · dsh-ui-tweaks v0.6.0 合并原 `simple-mode/` 并删除独立目录
+
+**理由**：原 `simple-mode` 作为独立插件维护在 `simple-mode/{cordis.patch.yml, lib/client.js, lib/index.js, package.json}`；v0.4.0 起 simple-mode 的全部能力（开关 + 状态行 DOM controller）已并入 `dsh-ui-tweaks` 的 `TWEAKS` 数组，独立目录已不再被任何地方引用。v0.6.0 决定物理删除独立 `simple-mode/` 目录，单一 UI 调整来源比双目录维护成本更低。
+
+**实施**：README 表格与说明已只剩 dsh-ui-tweaks 一项；删除与 v0.6.0 同 commit 完成，避免仓库内出现"已删除但 git 还能 checkout 出来"的半状态。
+
+**日期**：2026-08-18 · **状态**：active
+
+---
+
+### E005 · 新建 dsh-git-hub 插件（v0.1.0）
+
+**核心设计**：右侧 FAB + 抽屉模式（对齐 task-pool），host half 走 `ctx.webServer.register` 暴露 7 个 `/api/git-hub/*` 路由，client half 复用 task-pool 的互斥协议 + CSS 注入 + 持久化降级 + FAB 让位动画。**复用 daily-push.cjs** 作为推送工具，**GitHub 侧视角由"推到当前对话"按钮**让 agent 调 `mcp__github__` 完成（host half 不直接调 GitHub API，零造轮子）。
+
+**默认配置**：扫描根为作者本机的工作区根 + DSH 部署目录（用户可在 ⚙ 配置；本仓库克隆后默认走用户自己的扫描根）。配置存 web profile 根的 `.git-hub-config.json`（原子写）。扫描时跳过 `node_modules / .git / worktrees / target / build / dist / .venv / venv / __pycache__ / .next / .cache / .parcel-cache / .turbo / coverage / .idea / .vscode` 与所有 `.git*` 开头目录。git 命令 `timeout: 5000ms` + 失败 fallback，单仓库状态串行执行，5s 缓存。
+
+**MVP 范围最小**：commit 时机由用户手动（白天终端），push 时机由用户手动触发（晚上统一走 daily-push.cjs）。后续可扩展 GitHub 侧视角 / SSE 流式推送进度 / 多根路径切换 / 自定义 commit message / 一键 rebase --onto。
+
+**踩坑教训**：FAB 位置 v0.1.0 → v0.1.1：原 `top: 56px; right: 24px` 与 task-pool FAB 完全重叠（实测发现"和另一个图标重叠了"）——改成 `top: 108px; right: 24px` 避让。
+
+**日期**：2026-08-18 · **状态**：active
+
+---
+
+### E006 · 跨面板 FAB 让位协议升级
+
+**核心设计**：引入统一 attr `data-dsh-any-side-drawer-open`，任意右侧抽屉打开时设、全部抽屉关闭时移除；**所有 FAB CSS 监听这个 attr → 让位到 `calc(var(--active-drawer-width) + 24px)`（抽屉左边外）**。`--active-drawer-width` 由打开抽屉的 panel 在 `applyOpen(open)` 时 setProperty 自己的 `DRAWER_WIDTH`（task-pool = 380px, git-hub = 420px），让位数值随实际抽屉宽度变化——不同宽度抽屉不会位置错乱。
+
+**取代旧方案**：原来每个 panel 自己抽屉打开 → 自己 FAB `right: 444px` 横移，但**别的面板抽屉打开时自己的 FAB 不动 → 被遮挡**。
+
+**协议升级 + 互斥 race condition 修复**：`applyOpen(open)` 设自己 attr + setProperty `--active-drawer-width` + 检查 `isOtherDrawerOpen(selfAttr)`（用 `KNOWN_DRAWER_ATTRS` 枚举所有 panel drawer attr）才设统一 attr；`applyOpen(close)` 检查 `isOtherDrawerOpen(selfAttr)` 才移除统一 attr + CSS 变量——**关键修复**：开抽屉 A 去点 B 时，B applyOpen(open) 先设自己 attr + dispatch event，A applyOpen(close) 不能无条条件移除统一 attr / CSS 变量（否则 FAB 让位状态会瞬间错乱）。两个 panel 共享 `KNOWN_DRAWER_ATTRS` 列表（task-pool / github / ssh / task-board），新增面板时双方都要更新。完全解耦，未来新增面板自动支持。
+
+**三次 hotfix 经验**：
+- v0.5.4 误读"到左侧"含义 → 写成 `left: 24px`（跑屏幕最左侧），回滚为 `right: 444px`
+- v0.5.5 hotfix：不同抽屉宽度（task-pool 380px / git-hub 420px）固定值错位 → 改 CSS 变量 `--active-drawer-width`
+- v0.5.6 hotfix：开抽屉 A 去点 B 时 race condition → close 分支加 `isOtherDrawerOpen(selfAttr)` 检查
+
+**日期**：2026-08-18 · **状态**：active
+
+---
+
+### E007 · dsh-git-hub v0.1.5 ESM `require` bug 修复
+
+**bug**：host half 在 ESM 模块里用 `require('node:fs').readdirSync / statSync` 调同步 API（isDirectory / scanRoot 内部），**ESM 没有 `require`** → 抛 ReferenceError → 被 try/catch 静默吞错（`scanRoot` 内层 `try { entries = require('node:fs').readdirSync(...) } catch { return }`）→ `scanRoot` 永远返回空数组 → `/api/git-hub/repos` 永远返回 0 仓库。
+
+**修复**：改用 `import { readdirSync, statSync } from 'node:fs'` 顶层导入，删掉 3 处 `require('node:fs')` 调用。
+
+**踩坑教训**：
+- (1) Node 22 检测 ESM `exports` 字段时抛的 `Invalid package config` 跟 syntax 错混在一起，掩盖了真正问题
+- (2) 单元测试 + 客户端 mock apply() 都触发不到 host half 的 ESM `require` bug（mock 里手动提供 require / 不走 ESM 解析路径）
+- (3) **DSH host half 必须由用户实测才会暴露**——所有 client-side smoke test 都验证不到
+- (4) **`try { ... } catch { return }` 是静默吞错的反模式**：当 try 块是"核心功能唯一调用"时，外层 caller 拿不到任何信号去发现"功能没生效"——应该在 catch 里 `console.warn` 或 throw 让 caller 知道
+- (5) **bundle patch 启动时加载，运行时不会 HMR**——host half 类 bug 修复后必须重启 DSH 才生效，用户验证路径长
+
+**日期**：2026-08-18 · **状态**：active
+
+---
+
+### E008 · dsh-git-hub v0.1.6 per-repo 隐藏功能
+
+**用户反馈三个问题**：
+- (1) 抽屉里有些路径根本不是仓库（归档 / 隐私 / 损坏备份），不该显示
+- (2) 不懂"推送"和"推到对话"的区别
+- (3) 不认识某些意外目录
+
+**针对 (1) 做 per-repo 隐藏**：localStorage schema v2 `{ pinnedPaths, hiddenPaths }`（v0.1.0 v1 隐式迁移 v2，缺字段默认 []）；UI：每张卡片加 🚫 隐 按钮（与 📌 钉 对称设计），body 顶部「已隐藏 N 个」小条可一键展开/收起被隐藏项，⚙ 配置面板加 hiddenPaths textarea 支持批量编辑。
+
+**踩坑教训**：JSON 字符串里嵌入了未转义 `"..."` 半角双引号（"已隐藏 N 个"），导致 package.json description JSON 解析失败——**写 description 时内部引用必须用全角引号 `「」` 或中文方括号**，不能用 ASCII `"`。
+
+**日期**：2026-08-18 · **状态**：active
+
+---
+
+### E009 · dsh-git-hub v0.1.7 隐藏选择模式 + hidden 阻止 push
+
+**核心设计**：header ↻ 右侧加 🎯/✓ toggle 按钮（默认态 = 圆圈+圆点 SVG，激活态 = × SVG），`selectionMode: boolean` Controller 状态，`setSelectionMode(v)` 切换时重置 `showHidden=false`。`buildRepoCard` 在 selectionMode 时给 li 加 `data-selecting="true"` 属性，整张卡片 click = `controller.toggleHide(repo.path)`，操作按钮行 actions `style.display = "none"`（避免点击冲突），`e.stopPropagation()` 防止点操作按钮时冒泡触发。
+
+**hidden 阻止 push**：`Controller.pushRepo` 入口检查 `hiddenPaths.has(path)`，有则 toast 拒绝；卡片 ⬆ 按钮 hidden 时 `disabled + title="已隐藏,不允许推送"`。
+
+**全部推送**：`Controller.pushAll` 重写为 client 端循环调 `pushRepo`（**不调** host half 的 `/api/git-hub/push-all`，避免 `daily-push.cjs --all` 扫到 hidden 仓库），串行 800ms 间隔避免 N 个 detached 子进程瞬时压力。
+
+**踩坑教训**：JSON description 半角引号问题已在 E008 标注，这次写 v0.1.6+1.7 描述时已用全角引号「」——但仍要警觉，每个版本发布前检查。
+
+**日期**：2026-08-18 · **状态**：active
