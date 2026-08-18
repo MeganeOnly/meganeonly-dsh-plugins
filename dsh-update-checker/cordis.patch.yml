@@ -1,0 +1,6 @@
+# dsh-update-checker bundle patch：向 web profile 的插件名册插入自身一行。
+# Host 侧：读本地版本 / 查 npm 最新版 / 执行一键升级（webServer 路由）。
+# 浏览器侧：设置页"更新"section（dsh.client 包）。
+- insert:
+    - id: update-checker
+      name: dsh-update-checker

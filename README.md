@@ -16,6 +16,7 @@
 | `peak-hour-lock` | `dsh-peak-hour-lock` | 北京时间高峰时段拦截发送，消息暂存，结束后自动补发，避免高峰产生双倍模型费用 |
 | `simple-mode` | `dsh-simple-mode` | 简洁模式：隐藏思考过程与工具调用卡片，只在输入框上方显示一条极简状态行 |
 | `usage-stats` | `dsh-usage-stats` | 使用统计：跨会话汇总 token 用量（模型侧精确值）、按日趋势、按模型分解、会话与工具排行 |
+| `dsh-update-checker` | `dsh-update-checker` | 更新检查：设置页"更新"section 显示当前版本与 npm latest，含完整 semver（含 prerelease）对比；一键 `npm install -g @deepseek-ai/dsh@latest` 升级，提示重启生效 |
 | `dsh-task-pool` | `dsh-task-pool` | 任务池：右上角 FAB + 右侧 380px 抽屉，本地收集想法的池子（localStorage 持久化，零 token 消耗）；卡片就地展开可"发送到当前对话"（二次确认 + 4 秒倒计时，发完默认删除可关） |
 | `dsh-ui-tweaks` | `dsh-ui-tweaks` | 外观微调合集：当前含对话列永久右缩让位（`conversationShift` / `conversationShiftPx`）+ 任务池"发送后删除"开关（`taskPoolDeleteAfterSend`，跨插件）；走 DSH 设置页渲染控件，client 动态生成 CSS |
 
@@ -96,6 +97,17 @@
 - 主目录定位：`DSH_HOME`（官方 `dsh-home-paths` 解析顺序），兜底 profile 根上溯两级；按日分桶用北京时间；
 - 增量缓存：每个会话文件按 `(size, mtimeMs)` 记在 profile 目录 `.usage-stats-cache.json`（原子写），没变不重解——全量冷解约数秒（47 会话实测 7.8s），之后近零开销；"强制重算"按钮可 `?force=1` 绕过；
 - 宿主半端启动即预热一次，首次打开设置页即有数据；API：`GET /api/usage-stats/summary`。
+
+### dsh-update-checker — 更新检查
+
+- 设置页新增"更新"section（`order: 10` 优先级靠前）：显示当前版本 / npm 最新版本 / 是否有更新三段；
+- **完整 semver 对比**（v0.1.1+）：不仅比主.次.补丁，还比 prerelease 段（`-rc.N` / `-alpha.N` / `-beta.N` 等）——遵循 semver 规范：release > prerelease、数字段按大小（非字典序）、字符串段按字典序、数字段 < 字符串段。修过 v0.1.0 的 bug：之前正则只吃 `^v?(\d+)\.(\d+)\.(\d+)` 把 `-rc.N` 直接丢掉，导致 `0.1.0-rc.6` vs `0.1.0-rc.7` 被判成"已是最新"；
+- 当前版本来源：`dsh --version`（走 hermes 全局 dsh 命令，Windows 上 .cmd shim 需经 cmd.exe 解析）；npm 最新版本：`fetch https://registry.npmjs.org/@deepseek-ai/dsh/latest`；
+- "检查更新"按钮手动重查；"一键更新"按钮先二次确认显示目标版本，确认后执行 `npm install -g @deepseek-ai/dsh@latest`；
+- 升级完成后不自动重启——磁盘包已更新但运行中进程仍是旧代码，UI 提示"请重启 DSH 生效"；
+- 升级期间 polling `/api/dsh-update/status` 直到 updating 结束；整个过程状态机单飞（同时只允许一个 check 或一个 update 进行）；
+- API：`GET /api/dsh-update/status` / `POST /api/dsh-update/check` / `POST /api/dsh-update/update`；
+- host half 启动时静默查一次版本（失败可忽略，UI 可手动重试）。
 
 ### dsh-task-pool — 任务池
 

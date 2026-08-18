@@ -1,0 +1,23 @@
+{
+  "name": "dsh-update-checker",
+  "version": "0.1.1",
+  "author": "MeganeOnly",
+  "description": "检查 DeepSeek Harness 本体（@deepseek-ai/dsh）在 npm 上是否有新版本，并提供一键升级（npm install -g @deepseek-ai/dsh@latest），升级后提示重启生效。作者：MeganeOnly。",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
