@@ -13,7 +13,11 @@
  *   - CSS 注入：<style data-plugin-css="dsh-git-hub/drawer.css"> 去重
  *   - 自愈 DOM 挂载：MutationObserver 监听 body
  *
- * 数据形态：localStorage key dsh.gitHub.v1，schema v1 = { pinnedPaths: string[] }
+ * 数据形态：localStorage key dsh.gitHub.v1
+ *   schema v1 = { pinnedPaths: string[] }                      （v0.1.0）
+ *   schema v2 = { pinnedPaths: string[], hiddenPaths: string[] }（v0.1.6 新增 hiddenPaths；
+ *                                                             缺字段默认 []，隐式迁移 v1 → v2，
+ *                                                             schema 演进不升 key）
  */
 window.__ModuleLoader__.load({
   id: "dsh-git-hub",
@@ -200,6 +204,22 @@ window.__ModuleLoader__.load({
       ".DGH_actionBtn[data-variant=\"primary\"]{border-color:var(--dsw-alias-button-info-fill);background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);}" +
       ".DGH_actionBtn[data-variant=\"primary\"]:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_pinBtn[data-active=\"true\"]{color:#b45309;}" +
+      ".DGH_hideBtn[data-active=\"true\"]{color:#9a3412;background:rgba(154,52,18,.1);}" +
+      // v0.1.7：隐藏选择模式 — 卡片可点 + 已隐藏卡视觉
+      ".DGH_repo[data-selecting=\"true\"]{cursor:pointer;border-color:rgba(234,88,12,.4);}" +
+      ".DGH_repo[data-selecting=\"true\"]:hover{border-color:#ea580c;background:var(--dsw-alias-bg-layer-3);}" +
+      ".DGH_repo[data-hidden=\"true\"]{opacity:.6;}" +
+      ".DGH_repo[data-hidden=\"true\"] .DGH_repoPath,.DGH_repo[data-hidden=\"true\"] .DGH_repoName{text-decoration:line-through;text-decoration-color:var(--dsw-alias-label-tertiary);}" +
+      ".DGH_repoMark{margin-left:6px;font-size:11px;color:#9a3412;background:rgba(154,52,18,.1);padding:2px 6px;border-radius:4px;}" +
+      // 隐藏仓库小条（v0.1.7：仅 selectionMode 模式底部显示）
+      ".DGH_hiddenBar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--dsw-alias-bg-layer-2);border-top:1px solid var(--dsw-alias-border-l2);font-size:12px;color:var(--dsw-alias-label-secondary);flex:none;}" +
+      ".DGH_hiddenBarCount{flex:1;min-width:0;}" +
+      ".DGH_hiddenBarToggle{cursor:pointer;background:transparent;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:3px 10px;font:inherit;font-size:11px;color:var(--dsw-alias-label-primary);}" +
+      ".DGH_hiddenBarToggle:hover{background:var(--dsw-specific-sidebar-nav-item-hover);}" +
+      ".DGH_hiddenBarExit{cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:6px;padding:3px 12px;font:inherit;font-size:12px;font-weight:500;}" +
+      ".DGH_hiddenBarExit:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
+      // 选择模式 toggle 按钮激活态
+      "[data-action=\"select-toggle\"][data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
       // FAB：top:108px = task-pool FAB(56~100)+ 8px 间距。两个 FAB 同时可见不重叠；
       // drawer 打开互斥协议保证两个 FAB 不会同时进入让位动画
       ".DGH_fab{position:fixed;top:108px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
@@ -247,23 +267,28 @@ window.__ModuleLoader__.load({
       this.storage = storage;
     }
     LocalStorageStore.prototype.load = function () {
-      if (!this.storage) return { pinnedPaths: [] };
+      if (!this.storage) return { pinnedPaths: [], hiddenPaths: [] };
       try {
         var raw = this.storage.getItem(STORAGE_KEY);
-        if (!raw) return { pinnedPaths: [] };
+        if (!raw) return { pinnedPaths: [], hiddenPaths: [] };
         var parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object") return { pinnedPaths: [] };
-        var paths = Array.isArray(parsed.pinnedPaths) ? parsed.pinnedPaths.filter(function (p) { return typeof p === "string"; }) : [];
-        return { pinnedPaths: paths };
+        if (!parsed || typeof parsed !== "object") return { pinnedPaths: [], hiddenPaths: [] };
+        var pinned = Array.isArray(parsed.pinnedPaths) ? parsed.pinnedPaths.filter(function (p) { return typeof p === "string"; }) : [];
+        // v1 → v2 隐式迁移：旧文档无 hiddenPaths，默认空数组
+        var hidden = Array.isArray(parsed.hiddenPaths) ? parsed.hiddenPaths.filter(function (p) { return typeof p === "string"; }) : [];
+        return { pinnedPaths: pinned, hiddenPaths: hidden };
       } catch (e) {
         console.error("[dsh-git-hub] load failed; starting empty", e);
-        return { pinnedPaths: [] };
+        return { pinnedPaths: [], hiddenPaths: [] };
       }
     };
     LocalStorageStore.prototype.save = function (doc) {
       if (!this.storage) return;
       try {
-        this.storage.setItem(STORAGE_KEY, JSON.stringify({ pinnedPaths: Array.isArray(doc.pinnedPaths) ? doc.pinnedPaths : [] }));
+        this.storage.setItem(STORAGE_KEY, JSON.stringify({
+          pinnedPaths: Array.isArray(doc.pinnedPaths) ? doc.pinnedPaths : [],
+          hiddenPaths: Array.isArray(doc.hiddenPaths) ? doc.hiddenPaths : [],
+        }));
       } catch (e) {
         console.error("[dsh-git-hub] save failed", e);
       }
@@ -279,12 +304,21 @@ window.__ModuleLoader__.load({
       this.loading = false;
       this.error = null;
       this.configPanelOpen = false;
+      this.selectionMode = false;  // v0.1.7：隐藏选择模式（点卡片 = toggleHide）
+      this.showHidden = false;     // v0.1.7：仅 selectionMode 内有效（模式内展开被隐藏项查看）
       this.lastPush = null;        // 最近推送状态
       this.listeners = new Set();
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
+      this.hiddenPaths = new Set(doc.hiddenPaths);
       this.drawerOpen = false;
     }
+    Controller.prototype._persist = function () {
+      this.store.save({
+        pinnedPaths: Array.from(this.pinnedPaths),
+        hiddenPaths: Array.from(this.hiddenPaths),
+      });
+    };
     Controller.prototype.subscribe = function (fn) {
       this.listeners.add(fn);
       var self = this;
@@ -302,8 +336,11 @@ window.__ModuleLoader__.load({
         loading: this.loading,
         error: this.error,
         configPanelOpen: this.configPanelOpen,
+        selectionMode: this.selectionMode,
+        showHidden: this.showHidden,
         lastPush: this.lastPush,
         pinnedPaths: Array.from(this.pinnedPaths),
+        hiddenPaths: Array.from(this.hiddenPaths),
         drawerOpen: this.drawerOpen,
       };
     };
@@ -332,7 +369,26 @@ window.__ModuleLoader__.load({
     Controller.prototype.togglePin = function (repoPath) {
       if (this.pinnedPaths.has(repoPath)) this.pinnedPaths.delete(repoPath);
       else this.pinnedPaths.add(repoPath);
-      this.store.save({ pinnedPaths: Array.from(this.pinnedPaths) });
+      this._persist();
+      this.notify();
+    };
+    Controller.prototype.toggleHide = function (repoPath) {
+      if (this.hiddenPaths.has(repoPath)) this.hiddenPaths.delete(repoPath);
+      else this.hiddenPaths.add(repoPath);
+      this._persist();
+      this.notify();
+    };
+    Controller.prototype.setShowHidden = function (v) {
+      this.showHidden = !!v;
+      this.notify();
+    };
+    Controller.prototype.setSelectionMode = function (v) {
+      var next = !!v;
+      if (this.selectionMode === next) return;
+      this.selectionMode = next;
+      // 进入模式时默认收起（用户进入模式是为了隐藏，不是为了展开）
+      // 退出模式时也收起，避免下次进入时显示残留
+      this.showHidden = false;
       this.notify();
     };
     Controller.prototype.setError = function (msg) {
@@ -393,6 +449,11 @@ window.__ModuleLoader__.load({
     /** 推单个仓库 */
     Controller.prototype.pushRepo = function (repoPath) {
       var self = this;
+      // v0.1.7：hidden 仓库不让 push（用户语义："几乎等于不要碰"）
+      if (this.hiddenPaths.has(repoPath)) {
+        showToast("已隐藏,不允许推送。先取消隐藏再试。", "error");
+        return Promise.resolve();
+      }
       return apiFetch("/api/git-hub/repos/push", {
         method: "POST",
         body: { path: repoPath },
@@ -407,18 +468,38 @@ window.__ModuleLoader__.load({
         showToast("推送失败：" + (e && e.message ? e.message : e), "error");
       });
     };
-    /** 全部推送 */
+    /**
+     * 全部推送：v0.1.7 重写为"循环调 pushRepo 跳过 hidden"
+     *  - 原因：host half 的 /api/git-hub/push-all 是调 daily-push.cjs --all，
+     *    会扫描 F:\AllWorkSpace + E:\ 所有本地 .git 仓库（包括 hidden）；
+     *    但 hidden 用户语义是"几乎等于不要碰"，不能被 daily-push 扫到推送
+     *  - 实现：client 端过滤 hidden，只对 visible repos 逐个 spawn daily-push.cjs --repo
+     *  - 状态条：依次启动，pollPushStatus 显示"全部推送运行中 X 个"
+     */
     Controller.prototype.pushAll = function () {
       var self = this;
-      return apiFetch("/api/git-hub/push-all", { method: "POST" }).then(function (data) {
-        if (!data || !data.ok) throw new Error((data && data.error) || "push-all failed");
-        showToast("已启动全部推送 PID=" + (data.pid || "?") + "（去终端看完整输出）", "info");
-        self.lastPush = { startedAt: data.startedAt, pid: data.pid, exitCode: null, scope: "all", repo: null, running: true };
-        self.notify();
-        setTimeout(function () { self.pollPushStatus(); }, 1500);
-      }).catch(function (e) {
-        showToast("推送失败：" + (e && e.message ? e.message : e), "error");
+      var visibleRepos = this.repos.filter(function (r) {
+        return !self.hiddenPaths.has(r.path);
       });
+      var skippedCount = this.repos.length - visibleRepos.length;
+      if (visibleRepos.length === 0) {
+        showToast("所有仓库都已隐藏，无可推送项", "error");
+        return Promise.resolve();
+      }
+      if (skippedCount > 0) {
+        showToast("已跳过 " + skippedCount + " 个隐藏仓库，依次推送 " + visibleRepos.length + " 个", "info");
+      }
+      // 串行启动推送（避免 N 个 daily-push.cjs 同时跑对 git 锁造成压力）
+      var i = 0;
+      function next() {
+        if (i >= visibleRepos.length) return;
+        var repo = visibleRepos[i++];
+        // pushRepo 内部会 spawn + 更新 lastPush；不阻塞
+        self.pushRepo(repo.path);
+        // 每个推送间隔 800ms 启动（避免瞬时 N 个 detached 子进程）
+        setTimeout(next, 800);
+      }
+      next();
     };
     /** 轮询 push-status（抽屉打开时跑） */
     Controller.prototype.pollPushStatus = function () {
@@ -595,11 +676,17 @@ window.__ModuleLoader__.load({
           '<button class="DGH_iconBtn" data-action="config" title="配置扫描根路径">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.2v2M8 12.8v2M14.8 8h-2M3.2 8h-2M12.95 3.05l-1.4 1.4M4.45 11.55l-1.4 1.4M12.95 12.95l-1.4-1.4M4.45 4.45l-1.4-1.4"/></svg>' +
           '</button>' +
+          // v0.1.7：隐藏选择模式 toggle 按钮（↻ 右侧）
+          '<button class="DGH_iconBtn" data-action="select-toggle" title="' + (snap.selectionMode ? '退出隐藏选择模式（Esc）' : '进入隐藏选择模式：点击卡片可加入/移出隐藏') + '" data-active="' + (snap.selectionMode ? 'true' : 'false') + '">' +
+            (snap.selectionMode
+              ? '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>'
+              : '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>') +
+          '</button>' +
           '<button class="DGH_iconBtn" data-action="refresh" title="刷新仓库状态">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>' +
           '</button>' +
           '<span class="DGH_spacer"></span>' +
-          '<button class="DGH_pushBtn" data-action="push-all" ' + (toolAvail ? "" : "disabled title=\"daily-push.cjs 不可用\"") + ' title="推送所有有未推送 commit 的仓库">⬆ 全部推送</button>' +
+          '<button class="DGH_pushBtn" data-action="push-all" ' + (toolAvail ? "" : "disabled title=\"daily-push.cjs 不可用\"") + ' title="推送所有可见仓库（自动跳过 hidden）">⬆ 全部推送</button>' +
           '<button class="DGH_iconBtn" data-action="close" title="关闭（Esc）">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>' +
           '</button>';
@@ -609,6 +696,10 @@ window.__ModuleLoader__.load({
         configBtn.addEventListener("click", function () {
           if (controller.configPanelOpen) controller.closeConfigPanel();
           else controller.openConfigPanel();
+        });
+        // v0.1.7：隐藏选择模式 toggle
+        headerEl.querySelector('[data-action="select-toggle"]').addEventListener("click", function () {
+          controller.setSelectionMode(!controller.getSnapshot().selectionMode);
         });
         headerEl.querySelector('[data-action="refresh"]').addEventListener("click", function () {
           controller.refresh(true);
@@ -669,22 +760,45 @@ window.__ModuleLoader__.load({
           oldBanner.remove();
         }
 
+        // v0.1.7："已隐藏 N 个" 小条只在 selectionMode 激活时显示在 body 底部
+        var hiddenCount = snap.repos.filter(function (r) { return snap.hiddenPaths.indexOf(r.path) >= 0; }).length;
+        // 移除旧的"hiddenBar"（v0.1.6 默认在顶部，v0.1.7 改为仅 selectionMode 模式底部显示）
+        var oldHiddenBar = bodyEl.querySelector(".DGH_hiddenBar");
+        if (oldHiddenBar) oldHiddenBar.remove();
+
         // 仓库列表
         var oldList = bodyEl.querySelector(".DGH_list, .DGH_empty, .DGH_loading");
         var newList;
+        // v0.1.7 过滤逻辑：默认隐藏所有 hidden；selectionMode 激活时如 showHidden=true 则展开
+        var visibleRepos = snap.repos.filter(function (r) {
+          var isHidden = snap.hiddenPaths.indexOf(r.path) >= 0;
+          // selectionMode=true + showHidden=true：展开；其他情况隐藏
+          return !isHidden || (snap.selectionMode && snap.showHidden);
+        });
         if (snap.loading && snap.repos.length === 0) {
           newList = document.createElement("div");
           newList.className = "DGH_loading";
           newList.textContent = "扫描中…";
-        } else if (snap.repos.length === 0) {
+        } else if (visibleRepos.length === 0 && !snap.selectionMode) {
+          // 非选择模式下，0 个可见仓库 = 空状态
           newList = document.createElement("div");
           newList.className = "DGH_empty";
-          newList.innerHTML = '<strong>还没有仓库</strong>确认 ⚙ 配置里填的扫描根目录下有 .git 仓库<br/>（当前扫描根：' + escapeHtml(((snap.config && snap.config.scanRoots) || []).join(" / ")) + '）';
+          newList.innerHTML = '<strong>没有可见仓库</strong>所有 ' + snap.repos.length + ' 个仓库都已隐藏 — 点 🎯 进入选择模式展开';
+        } else if (visibleRepos.length === 0 && snap.selectionMode) {
+          // 选择模式下，showHidden=true 但 visibleRepos 为空 = 没有仓库
+          newList = document.createElement("div");
+          newList.className = "DGH_empty";
+          newList.innerHTML = '<strong>没有仓库</strong>配置扫描根目录下没有 .git 仓库';
         } else {
           newList = document.createElement("ul");
           newList.className = "DGH_list";
-          // 钉住的排前
-          var sorted = snap.repos.slice().sort(function (a, b) {
+          // selectionMode 模式下，已隐藏项排前面（用户当前在管理 hidden 列表）
+          var sorted = visibleRepos.slice().sort(function (a, b) {
+            if (snap.selectionMode) {
+              var ah = snap.hiddenPaths.indexOf(a.path) >= 0 ? 0 : 1;
+              var bh = snap.hiddenPaths.indexOf(b.path) >= 0 ? 0 : 1;
+              if (ah !== bh) return ah - bh;
+            }
             var ap = snap.pinnedPaths.indexOf(a.path) >= 0 ? 0 : 1;
             var bp = snap.pinnedPaths.indexOf(b.path) >= 0 ? 0 : 1;
             if (ap !== bp) return ap - bp;
@@ -699,28 +813,61 @@ window.__ModuleLoader__.load({
         } else {
           bodyEl.appendChild(newList);
         }
+
+        // v0.1.7：selectionMode 激活时，在 body 底部插入 hiddenBar
+        var bottomBar = bodyEl.querySelector(".DGH_hiddenBar");
+        if (snap.selectionMode) {
+          if (!bottomBar) {
+            bottomBar = document.createElement("div");
+            bottomBar.className = "DGH_hiddenBar";
+            bodyEl.appendChild(bottomBar);
+          }
+          bottomBar.innerHTML =
+            '<span class="DGH_hiddenBarCount">🚫 已隐藏 ' + hiddenCount + ' 个仓库</span>' +
+            '<button class="DGH_hiddenBarToggle" data-action="toggle-show">' +
+              (snap.showHidden ? '收起列表' : '展开列表（' + hiddenCount + '）') +
+            '</button>' +
+            '<button class="DGH_hiddenBarExit" data-action="exit-select">✓ 完成</button>';
+          bottomBar.querySelector('[data-action="toggle-show"]').addEventListener("click", function () {
+            controller.setShowHidden(!controller.getSnapshot().showHidden);
+          });
+          bottomBar.querySelector('[data-action="exit-select"]').addEventListener("click", function () {
+            controller.setSelectionMode(false);
+          });
+        } else if (bottomBar) {
+          bottomBar.remove();
+        }
       }
 
       function renderConfigPanel(panelEl, controller) {
         var snap = controller.getSnapshot();
         var current = (snap.config && snap.config.scanRoots) || [];
+        var currentHidden = Array.from(controller.hiddenPaths || []);
         panelEl.innerHTML =
           '<div class="DGH_configLabel">扫描根路径（每行一个）</div>' +
           '<textarea class="DGH_configTextarea" data-role="roots" spellcheck="false" placeholder="例如：&#10;F:\\AllWorkSpace&#10;E:\\">' + escapeHtml(current.join("\n")) + '</textarea>' +
+          '<div class="DGH_configLabel" style="margin-top:10px">已隐藏仓库（每行一个绝对路径，不在列表显示）</div>' +
+          '<textarea class="DGH_configTextarea" data-role="hidden" spellcheck="false" placeholder="例如：&#10;F:\\AllWorkSpace\\.dsh-plugins.archive&#10;E:\\dsh-skills">' + escapeHtml(currentHidden.join("\n")) + '</textarea>' +
           '<div class="DGH_configFooter">' +
             '<span class="DGH_configHint">保存后自动重新扫描</span>' +
             '<button class="DGH_saveBtn" data-action="save">保存</button>' +
           '</div>';
         var saveBtn = panelEl.querySelector('[data-action="save"]');
-        var ta = panelEl.querySelector('[data-role="roots"]');
+        var rootsTa = panelEl.querySelector('[data-role="roots"]');
+        var hiddenTa = panelEl.querySelector('[data-role="hidden"]');
         saveBtn.addEventListener("click", function () {
-          var lines = ta.value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+          var lines = rootsTa.value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
           if (lines.length === 0) {
             showToast("至少填一个根路径", "error");
             return;
           }
+          var hiddenLines = hiddenTa.value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
           saveBtn.disabled = true;
+          // 同步保存 scanRoots + hiddenPaths
           controller.saveConfig(lines).then(function () {
+            // 更新 hiddenPaths (controller 内部 _persist 一次写)
+            controller.hiddenPaths = new Set(hiddenLines);
+            controller._persist();
             saveBtn.disabled = false;
             showToast("配置已保存", "info");
           }).catch(function (e) {
@@ -735,6 +882,10 @@ window.__ModuleLoader__.load({
         li.className = "DGH_repo";
         li.dataset.repoPath = repo.path;
         if (snap.pinnedPaths.indexOf(repo.path) >= 0) li.dataset.pinned = "true";
+        var isHidden = snap.hiddenPaths.indexOf(repo.path) >= 0;
+        if (isHidden) li.dataset.hidden = "true";
+        // v0.1.7：selectionMode 模式下整张卡片可点切换 hide
+        if (snap.selectionMode) li.dataset.selecting = "true";
 
         var head = document.createElement("div");
         head.className = "DGH_repoHead";
@@ -743,7 +894,9 @@ window.__ModuleLoader__.load({
         titleRow.className = "DGH_repoTitle";
         titleRow.innerHTML =
           '<span class="DGH_repoName">' + escapeHtml(repo.name) + '</span>' +
-          (repo.branch ? '<span class="DGH_repoBranch">' + escapeHtml(repo.branch) + '</span>' : '');
+          (repo.branch ? '<span class="DGH_repoBranch">' + escapeHtml(repo.branch) + '</span>' : '') +
+          // v0.1.7：选择模式 + 已隐藏：显示 "已隐藏" 标记
+          (snap.selectionMode && isHidden ? '<span class="DGH_repoMark">已隐藏 ✓</span>' : '');
         head.appendChild(titleRow);
 
         var pathEl = document.createElement("div");
@@ -803,17 +956,39 @@ window.__ModuleLoader__.load({
 
         li.appendChild(head);
 
+        // v0.1.7：selectionMode 模式下，整张卡片可点 = toggleHide
+        // 注意：操作按钮行内的点击会 stopPropagation 不会冒泡到这里
+        if (snap.selectionMode) {
+          li.addEventListener("click", function (e) {
+            // 阻止操作按钮行点击冒泡触发
+            if (e.target.closest && e.target.closest(".DGH_repoActions")) return;
+            controller.toggleHide(repo.path);
+          });
+        }
+
         // 操作行
         var actions = document.createElement("div");
         actions.className = "DGH_repoActions";
+        // v0.1.7：selectionMode 模式下隐藏操作按钮（避免点击冲突；点卡片本体就够）
+        if (!snap.selectionMode) {
+          actions.style.display = "";
+        } else {
+          actions.style.display = "none";
+        }
         var toolAvail = snap.config && snap.config.toolAvailable;
         var pushBtn = document.createElement("button");
         pushBtn.className = "DGH_actionBtn";
         pushBtn.dataset.variant = "primary";
         pushBtn.textContent = "⬆ 推送";
-        pushBtn.disabled = !toolAvail;
-        pushBtn.title = toolAvail ? "调 daily-push.cjs 推送" : "daily-push.cjs 不可用";
-        pushBtn.addEventListener("click", function () {
+        // v0.1.7：hidden 仓库 push 按钮置灰（用户语义"几乎等于不要碰"）
+        var pushBlocked = !toolAvail || isHidden;
+        pushBtn.disabled = pushBlocked;
+        pushBtn.title = isHidden
+          ? "已隐藏,不允许推送（用户语义:几乎等于不要碰）。先取消隐藏再试。"
+          : (toolAvail ? "调 daily-push.cjs 推送" : "daily-push.cjs 不可用");
+        pushBtn.addEventListener("click", function (e) {
+          // selectionMode 下 actions 是隐藏的，但仍 stopPropagation 防止误触发
+          e.stopPropagation();
           controller.pushRepo(repo.path);
         });
         actions.appendChild(pushBtn);
@@ -835,6 +1010,15 @@ window.__ModuleLoader__.load({
         pinBtn.addEventListener("click", function () { controller.togglePin(repo.path); });
         actions.appendChild(pinBtn);
 
+        var hideBtn = document.createElement("button");
+        var hidden = snap.hiddenPaths.indexOf(repo.path) >= 0;
+        hideBtn.className = "DGH_actionBtn DGH_hideBtn";
+        hideBtn.textContent = hidden ? "🚫 已隐" : "🚫 隐";
+        if (hidden) hideBtn.dataset.active = "true";
+        hideBtn.title = hidden ? "已隐藏（不在列表显示）；再点恢复" : "隐藏这个仓库（不显示）；常用于归档/隐私/损坏备份";
+        hideBtn.addEventListener("click", function () { controller.toggleHide(repo.path); });
+        actions.appendChild(hideBtn);
+
         li.appendChild(actions);
         return li;
       }
@@ -854,7 +1038,12 @@ window.__ModuleLoader__.load({
       var keyHandler = function (e) {
         if (!controller.getSnapshot().drawerOpen) return;
         if (e.key !== "Escape") return;
+        // Esc 优先级（v0.1.7）：
+        //   1) 关闭配置面板
+        //   2) 退出 selectionMode（隐藏选择模式）
+        //   3) 关闭抽屉
         if (controller.configPanelOpen) { controller.closeConfigPanel(); return; }
+        if (controller.selectionMode) { controller.setSelectionMode(false); return; }
         controller.closeDrawer();
       };
       document.addEventListener("keydown", keyHandler);

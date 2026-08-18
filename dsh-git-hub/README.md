@@ -33,9 +33,11 @@ DSH 右侧 FAB + 抽屉模式的本地 git 仓库管理面板 v0.1.0。
 ### 操作
 
 - **⬆ 推送**（单仓库）：调 `daily-push.cjs --repo <path> --yes`，detached spawn，立即返回 PID + "去终端看完整输出"提示
-- **⬆ 全部推送**（header）：调 `daily-push.cjs --all --yes`
+- **⬆ 全部推送**（header）：调 `daily-push.cjs --repo <path> --yes` 串行循环 visible 仓库（**v0.1.7** 客户端循环替代 host half `daily-push.cjs --all`——避免 daily-push 扫到 hidden 仓库），800ms 间隔启动，自动跳过 hidden
 - **💬 推到对话**（单仓库）：把仓库摘要（path / branch / upstream / status / unpushedCount / todayCommitCount / lastCommit + "请用 mcp__github__ 处理"提示）作为 user message 注入当前会话，让 agent 调 `mcp__github__` 查 GitHub 侧
-- **📌 钉住**：钉住的仓库在列表顶部；持久化在浏览器 localStorage（key `dsh.gitHub.v1`）
+- **📌 钉住**：钉住的仓库在列表顶部；持久化在浏览器 localStorage（key `dsh.gitHub.v1`，schema v2 `pinnedPaths`）
+- **🎯 隐藏选择模式 toggle**（v0.1.7，header ↻ 右侧）：按一次进入模式，header 按钮变 ✓；模式下整张卡片可点 = `toggleHide`；body 底部出现「已隐藏 N 个仓库」小条（含展开列表 + ✓ 完成按钮）；Esc 退出；非模式下卡片 click 无操作
+- **🚫 隐藏**（v0.1.6）：隐藏的仓库不在列表显示；持久化在 localStorage（`hiddenPaths`）；适用场景：归档目录（.archive）/ 隐私项目（不打算 push 到 GitHub）/ 损坏备份（.broken）等；schema v1 隐式迁移 v2（缺字段默认空数组）；**v0.1.7 强化**：hidden 仓库的 ⬆ 推送按钮置灰 + tooltip「已隐藏,不允许推送」+ controller.pushRepo 入口拒绝
 - **⚙ 配置**：展开/折叠配置面板，编辑扫描根路径列表（每行一个），保存后自动重扫
 - **↻ 刷新**：调 `POST /api/git-hub/repos/refresh` 强制清缓存重扫
 - **× 关闭**：抽屉滑出（FAB 让位动画自动恢复）
@@ -63,6 +65,12 @@ DSH 右侧 FAB + 抽屉模式的本地 git 仓库管理面板 v0.1.0。
 ```ts
 {
   pinnedPaths: string[]    // 钉住仓库的绝对路径数组
+}
+
+// v2 文档（v0.1.6 起）：
+{
+  pinnedPaths: string[],   // 钉住仓库的绝对路径数组
+  hiddenPaths: string[],   // 隐藏仓库的绝对路径数组（v0.1.6 新增，缺字段默认空数组）
 }
 ```
 
@@ -118,10 +126,16 @@ DSH 右侧 FAB + 抽屉模式的本地 git 仓库管理面板 v0.1.0。
 | header ⚙ | toggle configPanel | — | — | 否 |
 | header ↻ 刷新 | `true` | `true` | `null` | 否 |
 | 配置面板"保存" | `true` | 期间 `true` | — | **scanRoots 是** + 触发重扫 |
-| 卡片 ⬆ 推送 | `true` | — | — | 否（spawn detached） |
-| header ⬆ 全部推送 | `true` | — | — | 否 |
+| 卡片 ⬆ 推送 | `true` | — | — | 否（spawn detached）；**v0.1.7**：hidden 仓库按钮置灰，pushRepo 入口拒绝 |
+| header ⬆ 全部推送 | `true` | — | — | 否（v0.1.7 client 端循环 pushRepo 单仓库，串行 800ms 间隔，自动跳过 hidden） |
 | 卡片 💬 推到对话 | `true` | — | — | 否（user message 进当前会话） |
 | 卡片 📌 钉 | `true` | — | — | **pinnedPaths 是** |
+| 卡片 🚫 隐 | `true` | — | — | **hiddenPaths 是**（v0.1.6；v0.1.7 选择模式下整张卡片可点替代） |
+| header 🎯 隐藏选择 toggle | toggle selectionMode | — | — | 否（会话级 `selectionMode`）；v0.1.7 |
+| 模式激活 + 卡片 click | `true`（selectionMode） | — | — | **hiddenPaths 是**（toggle）；v0.1.7 |
+| body 底部"已隐藏 N 个"小条 | 模式激活时显示 | — | — | 否 |
+| 配置面板"已隐藏仓库" textarea 保存 | `true` | — | — | **hiddenPaths 是**（v0.1.6） |
+| Esc 键（v0.1.7 优先级） | — | — | — | 1) 关配置面板 → 2) 退出 selectionMode → 3) 关抽屉 |
 
 抽屉打开时 `<html>` 加 `data-dsh-github-drawer-open` 属性 → CSS 让抽屉滑入；其它面板（task-pool / ssh / task-board）激活时通过 `dsh-panel-activate` 事件触发互斥协议自动关闭本抽屉。
 
