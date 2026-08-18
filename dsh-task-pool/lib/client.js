@@ -25,6 +25,9 @@ window.__ModuleLoader__.load({
     // ===== 常量 =====
     var STORAGE_KEY = "dsh.taskPool.v1";
     var DRAWER_ATTR = "data-dsh-taskpool-drawer-open";
+    // 任何右侧抽屉打开时设的统一 attr；所有 FAB CSS 监听它→让位到屏幕左侧
+    // （侧边栏区域），而不是被自己的抽屉遮挡。互斥协议保证任何时刻只有一个抽屉打开。
+    var ANY_DRAWER_ATTR = "data-dsh-any-side-drawer-open";
     var DRAWER_WIDTH = 380;
     var PANEL_NAME = "taskpool";
     var ACTIVATE_EVENT = "dsh-panel-activate";
@@ -131,8 +134,13 @@ window.__ModuleLoader__.load({
       ".DTPD_fab:hover{transform:scale(1.06);}" +
       ".DTPD_fab[data-state=\"open\"]{background:var(--dsw-alias-bg-layer-3);}" +
       ".DTPD_fab[data-pinned=\"true\"]::after{content:\"\";position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#16a34a;border:1.5px solid var(--dsw-alias-bg-base);}" +
-      // drawer 打开时 FAB 让位
-      "html[" + DRAWER_ATTR + "] .DTPD_fab{right:" + (DRAWER_WIDTH + 24) + "px;}";
+      // drawer 打开时 FAB 让位到抽屉的左边外。
+      // 让位公式 calc(var(--active-drawer-width) + 24px)：--active-drawer-width 由打开抽屉的
+      // panel 在 applyOpen(open) 时 setProperty 设定（task-pool = 380px, git-hub = 420px, ...），
+      // 所以 FAB 让位数值随实际打开抽屉宽度变化——避免不同宽度抽屉用固定值导致的位置错乱。
+      // 监听 ANY_DRAWER_ATTR（任意右侧抽屉打开）→ 不只是自己抽屉打开。
+      // 与 dsh-git-hub / 其他面板共享此协议，互斥协议保证任意时刻只有一个抽屉打开。
+      "html[" + ANY_DRAWER_ATTR + "] .DTPD_fab{right:calc(var(--active-drawer-width, 380px) + 24px);}";
 
     function injectCSS() {
       var tagId = "dsh-task-pool/drawer.css";
@@ -491,14 +499,46 @@ window.__ModuleLoader__.load({
         viewHandle = renderDrawerView(container, controller);
       }
 
+      // 枚举所有已知的 panel drawer attr；isOtherDrawerOpen 检查"还有没有别的 panel 抽屉打开"。
+      // 新增面板时在这里加一行（保持原 panel attr 列表是协议的真实源）。
+      var KNOWN_DRAWER_ATTRS = [
+        "data-dsh-taskpool-drawer-open",
+        "data-dsh-github-drawer-open",
+        "data-dsh-ssh-active",
+        "data-dsh-taskboard-active",
+      ];
+      function isOtherDrawerOpen(selfAttr) {
+        for (var i = 0; i < KNOWN_DRAWER_ATTRS.length; i++) {
+          if (KNOWN_DRAWER_ATTRS[i] === selfAttr) continue;
+          if (document.documentElement.hasAttribute(KNOWN_DRAWER_ATTRS[i])) return true;
+        }
+        return false;
+      }
+
       function applyOpen() {
         if (controller.getSnapshot().drawerOpen) {
           document.documentElement.removeAttribute("data-dsh-ssh-active");
           document.documentElement.removeAttribute("data-dsh-taskboard-active");
           document.documentElement.setAttribute(DRAWER_ATTR, "");
+          // 设 CSS 变量 --active-drawer-width = 自己抽屉宽度（用于 FAB 让位公式）
+          document.documentElement.style.setProperty("--active-drawer-width", DRAWER_WIDTH + "px");
+          // 检查是否还有别的 panel 抽屉打开 → 没有才设统一 attr
+          // （互斥协议下理论上此时不该有别的抽屉，但防御性检查避免重复设）
+          if (!isOtherDrawerOpen(DRAWER_ATTR)) {
+            document.documentElement.setAttribute(ANY_DRAWER_ATTR, "");
+          }
           document.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { detail: PANEL_NAME }));
         } else {
           document.documentElement.removeAttribute(DRAWER_ATTR);
+          // 关键修复 v0.5.6：检查是否还有别的 panel 抽屉打开（互斥协议 race condition）。
+          // 场景：抽屉 A 打开 → 用户点 B → B applyOpen(open) 先设自己 attr + 移除 A attr，
+          // dispatch event 触发 A applyOpen(close)。此时 B 抽屉仍开着，A 关闭分支必须
+          // 不能移除统一 attr + CSS 变量——否则 FAB 让位状态会瞬间错乱。
+          // 只有 isOtherDrawerOpen 为 false 时（即真的没有任何抽屉打开）才清理。
+          if (!isOtherDrawerOpen(DRAWER_ATTR)) {
+            document.documentElement.removeAttribute(ANY_DRAWER_ATTR);
+            document.documentElement.style.removeProperty("--active-drawer-width");
+          }
         }
       }
       function onOtherActivate(e) {

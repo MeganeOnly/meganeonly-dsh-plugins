@@ -21,7 +21,7 @@ v0.2.0 → v0.4.0 的迭代理由：
 ## 功能
 
 - **右上角 FAB**（固定 `top: 56px; right: 24px`，44×44 圆形，DSH 风格浅色卡片按钮）：始终显示，点击切换抽屉；drawer 关闭时图标 = 方块+加号（任务池入口），drawer 打开时图标 = ×（关闭）；📌 钉住时 FAB 右上有小绿点
-- **drawer 打开时 FAB 自动让位**：CSS `right: calc(380px + 24px)` 让 FAB 平滑移到抽屉左边界外，不被遮挡（0.22s transition 与 drawer 同步）
+- **drawer 打开时 FAB 让位到抽屉左边外**（v0.5.4 → v0.5.5 → v0.5.6 迭代）：任意右侧抽屉打开时（task-pool / dsh-git-hub / 其他），所有 FAB 通过 `data-dsh-any-side-drawer-open` 统一 attr 让位到 `calc(var(--active-drawer-width) + 24px)`（抽屉左边界外）；CSS transition `right` 0.22s 与抽屉同步；`--active-drawer-width` 由打开抽屉的 panel 在 `applyOpen(open)` 时 setProperty（task-pool = 380px, git-hub = 420px），让位数值随实际抽屉宽度变化；**v0.5.5 hotfix**：原 v0.5.4 误写成 `left: 24px`（跑到屏幕最左侧），回滚到 `right: 444px`；**v0.5.6 hotfix**：让位公式改为 CSS 变量（解决不同宽度抽屉位置错乱）+ `applyOpen` 引入 `isOtherDrawerOpen(selfAttr)` 检查修互斥协议 race condition（开抽屉 A 去点 B 时不再误移除统一 attr / CSS 变量）；与 dsh-git-hub 共享 `KNOWN_DRAWER_ATTRS` 列表，新增面板时双方都要更新
 - **发送后默认删除任务**（v0.5.3）：`📨 发送到当前对话` 成功 → 任务自动从池子删除。
 - **全局"发送后删除"开关**（v0.5.3）：抽屉 header 内（`+ [inline input] [☐ 发送后删除] [📌] [×]`）——**全局**控制所有任务，**不**是 per-task。勾选=发送后删除（默认），取消勾选=发送后保留。设置持久化在 `dsh.taskPool.v1` 的 `deleteAfterSend` 字段（v3 schema）。
 - 抽屉出现时**不影响对话内容**（对话仍可见、可输入、工具调用等不受干扰）
@@ -124,6 +124,7 @@ localStorage key：`dsh.taskPool.v1`（保持不变，schema 演进不升 key）
 - **header inline input 始终可见**：v0.2.0 的 `editingNew` 状态 + 列表内联新建行链路有 3 处脆弱点（input focus/blur 时序抢、renderBody 时序抢、状态不一致），实测 + 按钮经常无反应。v0.3.0 彻底删除 `editingNew` 状态，header 里始终显示一个 input，回车即创建——**用户任何时候都能直接打字新建**，无需任何状态切换。
 - **v1 数据兼容**：schema 演进不升 key，从 v1 文档隐式迁移到 v2，避免破坏用户已有数据。
 - **互斥协议**：保留 ui-task-board 已建立的 `dsh-panel-activate` CustomEvent + `<html data-dsh-*>` 属性机制；本插件的 active attr 改为 `data-dsh-taskpool-drawer-open`，激活时主动 remove 其它面板的 active attr。
+- **跨面板 FAB 让位协议**（v0.5.4 → v0.5.5 → v0.5.6 迭代）：新增统一 attr `data-dsh-any-side-drawer-open`，任意右侧抽屉打开时设，全部抽屉关闭时移除；CSS 让位公式 `calc(var(--active-drawer-width) + 24px)` 由打开抽屉的 panel setProperty 自己的抽屉宽度；`applyOpen(open)` 设 `setProperty('--active-drawer-width', DRAWER_WIDTH + 'px')` + 检查 `isOtherDrawerOpen` 才设统一 attr；`applyOpen(close)` 检查 `isOtherDrawerOpen` 才移除统一 attr + CSS 变量（防止互斥协议 race condition 误移除）；与 dsh-git-hub 共享 `KNOWN_DRAWER_ATTRS` 列表（task-pool / github / ssh / task-board），新增面板时双方都要更新
 - **自愈 DOM 挂载**：MutationObserver 监听 body 变化，React 重渲染后丢失 FAB 或抽屉容器时自动重插。
 - **持久化降级**：localStorage 不可用（隐私模式）时退化为内存 store，控制台 warn；功能可用但刷新即丢。
 - **就地展开互斥**：`expandTask(id)` 时若 id 与当前 expandedId 相同 → 收起；否则覆盖。同时 `confirmDelete` 也互斥，确保抽屉里只有一个交互面板。

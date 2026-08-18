@@ -16,7 +16,8 @@
 | `peak-hour-lock` | `dsh-peak-hour-lock` | 北京时间高峰时段拦截发送，消息暂存，结束后自动补发，避免高峰产生双倍模型费用 |
 | `usage-stats` | `dsh-usage-stats` | 使用统计：跨会话汇总 token 用量（模型侧精确值）、按日趋势、按模型分解、会话与工具排行 |
 | `dsh-update-checker` | `dsh-update-checker` | 更新检查：设置页"更新"section 显示当前版本与 npm latest，含完整 semver（含 prerelease）对比；一键 `npm install -g @deepseek-ai/dsh@latest` 升级，提示重启生效 |
-| `dsh-task-pool` | `dsh-task-pool` | 任务池：右上角 FAB + 右侧 380px 抽屉，本地收集想法的池子（localStorage 持久化，零 token 消耗）；卡片就地展开可"发送到当前对话"（二次确认 + 4 秒倒计时，发完默认删除可关） |
+| `dsh-task-pool` | `dsh-task-pool` | 任务池：右上角 FAB（top: 56px）+ 右侧 380px 抽屉，本地收集想法的池子（localStorage 持久化，零 token 消耗）；卡片就地展开可"发送到当前对话"（二次确认 + 4 秒倒计时，发完默认删除可关）；**v0.5.6 跨面板 FAB 让位**：任意右侧抽屉打开时所有 FAB 让位到 `calc(var(--active-drawer-width) + 24px)`（让位数值随实际抽屉宽度变化，`isOtherDrawerOpen` 检查修互斥协议 race condition） |
+| `dsh-git-hub` | `dsh-git-hub` | Git/GitHub 管理面板：右侧 FAB（top: 108px 避让 task-pool）+ 420px 抽屉，扫描本地 git 仓库列表（branch / dirty / 未推送 / 今日 commit / 最新 commit），一键调 daily-push.cjs 推送（全部或单个），把仓库摘要发到当前对话让 agent 调 mcp__github__ 处理；host half 暴露 7 个 /api/git-hub/* 路由，零造轮子（推送走 daily-push.cjs，GitHub 视角走 mcp__github__）；**v0.1.4 跨面板 FAB 让位**：与 task-pool 共享 `data-dsh-any-side-drawer-open` 统一 attr + `KNOWN_DRAWER_ATTRS` 列表，让位公式用 CSS 变量；**v0.1.5 ESM fix**：host half 在 ESM 模块里错用 `require('node:fs')` 调同步 API（被 try/catch 静默吞错导致 scanRoot 永远返回空），修复为 `import { readdirSync, statSync } from 'node:fs'` |
 | `dsh-ui-tweaks` | `dsh-ui-tweaks` | 外观微调合集：当前含对话列永久右缩让位（`conversationShift` / `conversationShiftPx`，含调试高亮 `conversationShiftDebug`）+ 简洁模式（`simpleModeEnabled`：隐藏思考/工具调用 + 输入框上方极简状态行，从原 dsh-simple-mode 合并）；走 DSH 设置页渲染控件，client 动态生成 CSS + DOM 副作用 |
 
 ## 环境要求
@@ -107,8 +108,21 @@
 - 卡片就地展开编辑（标题 / 描述 / 删除 / 收起），拖动 handle 上下重排，状态全部 localStorage（key `dsh.taskPool.v1`，v3 schema 含 `tasks / pinned / deleteAfterSend`，v1/v2 自动兼容）；
 - "📨 发送到当前对话"走两次点击：第一次进入 armed 态（橙色脉冲 + 文字"再点一次确认发送（N）"含 4→3→2→1 倒计时），4 秒内再点才通过 `sessions.binding(...).session.driver.prompt([...])` 真发；超时/切换自动撤销——**唯一 token 路径，用户主动操作才触发**；
 - v0.5.3 起**发送成功后默认从池子删除任务**（全局开关，非 per-task），关掉可保留供"再发一次"场景；
+- **v0.5.6 跨面板 FAB 让位协议**：任意右侧抽屉打开时所有 FAB 让位到 `calc(var(--active-drawer-width) + 24px)`，通过 `data-dsh-any-side-drawer-open` 统一 attr；与 dsh-git-hub 共享——避免被别的面板抽屉遮挡；`--active-drawer-width` 由打开抽屉的 panel setProperty（task-pool = 380px, git-hub = 420px），让位数值随实际抽屉宽度变化；`applyOpen` 引入 `isOtherDrawerOpen` 检查修互斥协议 race condition（开抽屉 A 去点 B 时不再误移除统一 attr / CSS 变量）；与 dsh-git-hub 共享 `KNOWN_DRAWER_ATTRS` 列表；**迭代记录**：v0.5.4 协议升级 + v0.5.5 hotfix（让位数值从 `left: 24px` 误写改成 `right: 444px`，符合用户"到那个抽屉的左边"原意）+ v0.5.6 hotfix（让位公式改 CSS 变量 + 修 race condition）；
 - host half 零副作用（`apply` 为空函数），不注册 system prompt 段、不注册 HTTP、不注入服务——按用户意图"本地收集想法"严守隐式 token 成本；
 - 用纯 DOM 实现（不引 React）——React 受控组件在 drag-and-drop 中经常干扰 dragover 事件，纯 DOM + 局部 patch 更可控。
+
+### dsh-git-hub — Git/GitHub 管理面板
+
+- 右上角 FAB（`top: 108px` 避让 task-pool，44×44 圆形，DSH 风格浅色卡片按钮）唤起右侧 420px 抽屉，**不遮挡对话**；与 task-pool 抽屉**互斥**（`dsh-panel-activate` CustomEvent + `<html data-dsh-github-drawer-open>` 属性）；**v0.1.4 跨面板 FAB 让位**：任意抽屉打开时所有 FAB 让位到 `calc(var(--active-drawer-width) + 24px)`（与 task-pool 共享 `data-dsh-any-side-drawer-open` attr + `KNOWN_DRAWER_ATTRS` 列表），让位公式用 CSS 变量（避免不同宽度抽屉位置错乱），`isOtherDrawerOpen` 检查修互斥协议 race condition；**v0.1.5 ESM fix**：host half 关键 bug 修复——原 v0.1.4 在 ESM 模块里错用 `require('node:fs').readdirSync / statSync`（ESM 没有 require → ReferenceError → 被 try/catch 静默吞错 → scanRoot 永远返回空 → API 永远返回 0 仓库）；改为 `import { readdirSync, statSync } from 'node:fs'` 顶层导入；**修复后需重启 DSH 生效**（host half bundle 启动时加载，运行时不会自动 HMR）；**迭代记录**：v0.1.2 协议升级 + v0.1.3 hotfix（让位数值）+ v0.1.4 hotfix（CSS 变量 + race 修复）+ v0.1.5 hotfix（ESM require 修复）；
+- 抽屉打开自动扫配置的根目录下所有 git 仓库（默认 `F:\AllWorkSpace` + `E:\`，⚙ 可改），每个仓库卡片显示：branch / clean-dirty 徽章 / 未推送数 / 今日 commit 数 / 最新 commit 摘要；
+- 操作按钮：单仓库 `⬆ 推送` 调 `daily-push.cjs --repo <path> --yes`；header `⬆ 全部推送` 调 `daily-push.cjs --all --yes`（spawn detached 子进程，立即返回 PID + "去终端看完整输出"提示）；`💬 推到对话` 把仓库摘要作为 user message 发到当前会话，触发 agent 调 `mcp__github__` 处理 GitHub 侧（open issues / PRs / releases 等）；`📌 钉` 持久化在 localStorage（`dsh.gitHub.v1`）；
+- 配置（扫描根路径列表）持久化在 web profile 根 `.git-hub-config.json`（原子写），保存后自动重扫；
+- host half 暴露 7 个 `/api/git-hub/*` 路由（config / repos / refresh / push-all / repos/push / push-status），host half **必须有真实职责**（与 task-pool 的零副作用 placeholder 不同）——本插件依赖 host half 跑 git 命令集 + spawn daily-push.cjs；
+- 5 秒扫描缓存 + 单仓库状态串行读 + 每个命令 5s timeout + 失败 fallback 不阻塞；扫描跳过 `node_modules / .git / .git*` 等典型大目录；
+- 抽屉打开时 4 秒轮询 push-status 显示推送进度（PID + 退出码）；
+- 零造轮子：不写 GitHub API 客户端（用 `mcp__github__`）、不写 git push 编排（用 `daily-push.cjs`）、不写 fetch wrapper（浏览器原生 `fetch`）；只做"面板 + 触发"；
+- 用纯 DOM 实现（不引 React）——复用 task-pool 已建立的 FAB + 抽屉 + 互斥协议 + CSS 注入 + 持久化降级模板。
 
 ### dsh-ui-tweaks — 外观微调合集
 

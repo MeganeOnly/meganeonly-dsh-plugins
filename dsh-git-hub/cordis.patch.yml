@@ -1,0 +1,7 @@
+# dsh-git-hub bundle patch: inserts the dual-face plugin row into the web
+# profile roster. Host half (exports ".") registers HTTP routes under
+# /api/git-hub/* for repo scanning + push orchestration; browser half
+# (exports "./client") mounts the FAB + right drawer + repo list view.
+- insert:
+    - id: git-hub
+      name: dsh-git-hub

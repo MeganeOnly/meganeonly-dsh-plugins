@@ -1,8 +1,8 @@
 {
   "name": "dsh-task-pool",
-  "version": "0.5.3",
+  "version": "0.5.6",
   "author": "MeganeOnly",
-  "description": "DSH 任务池 v0.5.3：FAB top:56px 避开 DSH 顶部重叠；抽屉宽度 380px；卡片就地展开面板'📨 发送到当前对话'按钮含倒计时数字 4→3→2→1 + 4 秒超时；**v0.5.3 发送成功后默认从池子删除任务**——**全局开关**放在抽屉 header 内（`+ [inline input] [☐ 发送后删除] [📌] [×]`，影响所有任务，不 per-task），持久化在 dsh.taskPool.v1 的 deleteAfterSend 字段（v3 schema，缺字段 default true）；视觉 token 全用 DSH 原生变量；唯一 token 消耗路径：用户主动发送任务时。数据持久化在浏览器 localStorage（key dsh.taskPool.v1）。作者：MeganeOnly。",
+  "description": "DSH 任务池 v0.5.6：FAB top:56px；抽屉宽度 380px；卡片就地展开面板'📨 发送到当前对话'按钮含倒计时数字 4→3→2→1 + 4 秒超时；**v0.5.3 发送成功后默认从池子删除任务**——**全局开关**放在抽屉 header 内（`+ [inline input] [☐ 发送后删除] [📌] [×]`，影响所有任务，不 per-task），持久化在 dsh.taskPool.v1 的 deleteAfterSend 字段（v3 schema，缺字段 default true）；**v0.5.6 FAB 协议升级**——任意右侧抽屉打开时所有 FAB 让位到抽屉左边外，让位公式 `calc(var(--active-drawer-width) + 24px)` 由打开抽屉的 panel setProperty；`applyOpen` 引入 `isOtherDrawerOpen` 检查修互斥协议 race condition（开抽屉 A 去点 B 时不再误移除统一 attr）；与 dsh-git-hub / 其他面板共享 `data-dsh-any-side-drawer-open` attr 与 `KNOWN_DRAWER_ATTRS` 列表；视觉 token 全用 DSH 原生变量；唯一 token 消耗路径：用户主动发送任务时。数据持久化在浏览器 localStorage（key dsh.taskPool.v1）。作者：MeganeOnly。",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
