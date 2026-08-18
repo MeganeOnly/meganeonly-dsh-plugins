@@ -904,35 +904,45 @@ window.__ModuleLoader__.load({
         pathEl.textContent = repo.path;
         head.appendChild(pathEl);
 
-        // 状态徽章
+        // 状态徽章 + 人类语言 tooltip (v0.1.9：徽章悬停说明，零技术语言)
         var badges = document.createElement("div");
         badges.className = "DGH_repoBadges";
         if (repo.error) {
           var warnBadge = document.createElement("span");
           warnBadge.className = "DGH_badge";
           warnBadge.dataset.kind = "warn";
-          warnBadge.textContent = "⚠ " + repo.error;
-          warnBadge.title = repo.error;
+          warnBadge.textContent = "⚠ 读不出 git 状态";
+          warnBadge.title = "这个仓库读不出 git 状态（可能是 git 命令超时、权限问题、或仓库已损坏）。错误: " + repo.error;
           badges.appendChild(warnBadge);
         } else {
           var statusBadge = document.createElement("span");
           statusBadge.className = "DGH_badge";
           statusBadge.dataset.kind = repo.status || "unknown";
-          statusBadge.textContent = repo.status === "clean" ? "● clean" : repo.status === "dirty" ? "● dirty" : "● ?";
+          if (repo.status === "clean") {
+            statusBadge.textContent = "● 干净";
+            statusBadge.title = "工作区干净，没未提交的改动";
+          } else if (repo.status === "dirty") {
+            statusBadge.textContent = "● 有改动";
+            statusBadge.title = "有未提交的改动（新增/修改/删除的文件）";
+          } else {
+            statusBadge.textContent = "● 未知";
+            statusBadge.title = "状态未知";
+          }
           badges.appendChild(statusBadge);
         }
         if (repo.unpushedCount > 0) {
           var unpushedBadge = document.createElement("span");
           unpushedBadge.className = "DGH_badge";
           unpushedBadge.dataset.kind = "unpushed";
-          unpushedBadge.textContent = "↑ " + repo.unpushedCount + " 未推送";
+          unpushedBadge.textContent = "↑ " + repo.unpushedCount + " 没推送";
+          unpushedBadge.title = "本地有 " + repo.unpushedCount + " 个 commit 没推到 GitHub";
           badges.appendChild(unpushedBadge);
         } else if (repo.unpushedCount === -1 && !repo.error) {
           var noUpstreamBadge = document.createElement("span");
           noUpstreamBadge.className = "DGH_badge";
           noUpstreamBadge.dataset.kind = "warn";
-          noUpstreamBadge.textContent = "无 upstream";
-          noUpstreamBadge.title = "没有 origin/xxx 追踪分支";
+          noUpstreamBadge.textContent = "无上游";
+          noUpstreamBadge.title = "还没设置远程追踪分支。第一次推送要用 git push -u";
           badges.appendChild(noUpstreamBadge);
         }
         if (repo.todayCommitCount > 0) {
@@ -940,6 +950,7 @@ window.__ModuleLoader__.load({
           todayBadge.className = "DGH_badge";
           todayBadge.dataset.kind = "today";
           todayBadge.textContent = "今日 " + repo.todayCommitCount;
+          todayBadge.title = "今天（北京时间）这个仓库有 " + repo.todayCommitCount + " 个 commit";
           badges.appendChild(todayBadge);
         }
         head.appendChild(badges);
@@ -947,10 +958,13 @@ window.__ModuleLoader__.load({
         if (repo.lastCommit) {
           var lc = document.createElement("div");
           lc.className = "DGH_lastCommit";
+          // v0.1.9：完整 message 作为 tooltip（默认显示截断到 50 字）
+          var fullMessage = repo.lastCommit.message || "";
+          var displayMessage = truncate(fullMessage, 50);
           lc.innerHTML =
-            '<span class="DGH_lastCommitSha">' + escapeHtml(repo.lastCommit.sha) + '</span>' +
-            '<span>' + escapeHtml(truncate(repo.lastCommit.message, 50)) + '</span>' +
-            '<span>· ' + escapeHtml(relativeTime(parseGitDate(repo.lastCommit.date))) + '</span>';
+            '<span class="DGH_lastCommitSha" title="' + escapeHtml(repo.lastCommit.sha) + '">' + escapeHtml(repo.lastCommit.sha) + '</span>' +
+            '<span title="' + escapeHtml(fullMessage) + '">' + escapeHtml(displayMessage) + '</span>' +
+            '<span title="' + escapeHtml(repo.lastCommit.date || "") + '">· ' + escapeHtml(relativeTime(parseGitDate(repo.lastCommit.date))) + '</span>';
           head.appendChild(lc);
         }
 
