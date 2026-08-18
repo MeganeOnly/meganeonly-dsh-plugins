@@ -41,6 +41,24 @@
 
 ---
 
+## 日常开发 + 晚间推送
+
+**白天**：只 `git commit`（本机，不 push）；不动推送相关命令。
+
+**晚间统一推送**：跑 `F:\AllWorkSpace\tools\daily-push.cjs`：
+- 自动 fetch + 检测分歧 + 列将要推送的文件 + 扫描敏感内容 + 默认要求确认
+- 安全设计：文件名 deny 列表（`.env` / `cordis.patch.yml` / `.pem` / `credentials.yaml` 等）+ 内容扫描（API key / Bearer / 私钥）+ 文件大小警告
+- 完整规则参见 skill `git-push-detour` §六
+
+**仓库创建规则**：本仓库（`E:\dsh-plugins`）是 `git clone --no-hardlinks` 迁过来的（D037），已有完整历史。**未来如有新插件仓库**，先在 GitHub 上 `Create repository`（空 README 不勾），然后**本地 `git clone`**——**不要** `git init` + `git remote add origin`，否则本地历史与 GitHub 没有任何 merge-base，未来 push 必然要 force-push（参考 workbench 2026-08-17 首次开源时遇到的情况）。
+
+**本仓库特殊情况约定**：
+- `E:\dsh-plugins` 是权威源码；`F:\AllWorkSpace\dsh-plugins` 已不存在（`.dsh-plugins.archive` 是只读快照，不推）
+- 部署到 DSH 走 `F:\.dsh\plugins\<名>` + profile `node_modules` 副本的链路；与 `git push` 操作**完全解耦**——改完源码只需拎到 `F:\.dsh\plugins` + 增 `package.json` 版本号 + profile `pnpm install`，不需要 `git push`
+- `git push` 仅用于把源码公开到 GitHub Marketplace / 跨设备同步；不影响 DSH 实际运行
+
+---
+
 ## 决策历史
 
 项目级决策日志见 [`DECISIONS.md`](./DECISIONS.md)。新决策只追加到这里——F 盘 `F:\AllWorkSpace\DECISIONS.md` 是工作区级日志（含多项目决策），二者**不互通**。
