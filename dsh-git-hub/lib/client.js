@@ -182,21 +182,26 @@ window.__ModuleLoader__.load({
       ".DGH_repo{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;transition:border-color .12s,background .12s;overflow:hidden;}" +
       ".DGH_repo:hover{border-color:var(--dsw-alias-label-dimmed);}" +
       ".DGH_repo[data-pinned=\"true\"]{border-color:var(--dsw-alias-button-info-fill);}" +
-      ".DGH_repoHead{padding:10px 12px;display:flex;flex-direction:column;gap:6px;}" +
-      ".DGH_repoTitle{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}" +
-      ".DGH_repoName{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);}" +
-      ".DGH_repoBranch{font-size:11px;font-family:monospace;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base);padding:2px 6px;border-radius:4px;border:1px solid var(--dsw-alias-border-l2);}" +
-      ".DGH_repoPath{font-size:11px;color:var(--dsw-alias-label-tertiary);word-break:break-all;font-family:monospace;}" +
-      ".DGH_repoBadges{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--dsw-alias-label-secondary);}" +
-      ".DGH_badge{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:10px;font-size:11px;line-height:1.4;}" +
+      ".DGH_repoHead{padding:7px 10px;display:flex;flex-direction:column;gap:3px;}" +
+      ".DGH_repoTitle{display:flex;align-items:center;gap:5px;flex-wrap:wrap;}" +
+      ".DGH_repoName{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" +
+      ".DGH_repoBranch{font-size:10px;font-family:monospace;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base);padding:1px 5px;border-radius:3px;border:1px solid var(--dsw-alias-border-l2);flex:none;}" +
+      ".DGH_repoPath{font-size:10px;color:var(--dsw-alias-label-tertiary);word-break:break-all;font-family:monospace;opacity:.75;}" +
+      ".DGH_repoBadges{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:10px;color:var(--dsw-alias-label-secondary);}" +
+      ".DGH_badge{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:8px;font-size:10px;line-height:1.4;}" +
       ".DGH_badge[data-kind=\"clean\"]{background:rgba(22,163,74,.12);color:#15803d;}" +
       ".DGH_badge[data-kind=\"dirty\"]{background:rgba(234,179,8,.15);color:#a16207;}" +
       ".DGH_badge[data-kind=\"unknown\"]{background:rgba(148,163,184,.15);color:#475569;}" +
       ".DGH_badge[data-kind=\"unpushed\"]{background:rgba(220,38,38,.12);color:#b91c1c;}" +
       ".DGH_badge[data-kind=\"today\"]{background:rgba(99,102,241,.12);color:#4338ca;}" +
       ".DGH_badge[data-kind=\"warn\"]{background:rgba(234,88,12,.12);color:#9a3412;}" +
-      ".DGH_lastCommit{font-size:11px;color:var(--dsw-alias-label-tertiary);display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;}" +
+      ".DGH_lastCommit{font-size:10px;color:var(--dsw-alias-label-tertiary);display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;opacity:.85;}" +
       ".DGH_lastCommitSha{font-family:monospace;color:var(--dsw-alias-label-secondary);}" +
+      // v0.2.0：内嵌 push 按钮（titleRow 右侧；v0.1.8 独立 actions 行已去掉）
+      ".DGH_pushInline{flex:none;margin-left:auto;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2);border-radius:5px;width:22px;height:22px;font:inherit;font-size:13px;line-height:1;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,border-color .12s,color .12s;}" +
+      ".DGH_pushInline:hover:not(:disabled){background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
+      ".DGH_pushInline:disabled{opacity:.35;cursor:not-allowed;}" +
+      // .DGH_repoActions / .DGH_actionBtn 保留（dead code，未来恢复推到对话等按钮时复用）
       ".DGH_repoActions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);}" +
       ".DGH_actionBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:4px 10px;font-size:12px;transition:background .12s,border-color .12s;display:inline-flex;align-items:center;gap:4px;}" +
       ".DGH_actionBtn:hover{background:var(--dsw-specific-sidebar-nav-item-hover);border-color:var(--dsw-alias-label-dimmed);}" +
@@ -890,6 +895,22 @@ window.__ModuleLoader__.load({
         var head = document.createElement("div");
         head.className = "DGH_repoHead";
 
+        // v0.2.0 紧凑布局：titleRow 内嵌 push 按钮（右上角）
+        var toolAvail = snap.config && snap.config.toolAvailable;
+        var pushBtn = document.createElement("button");
+        pushBtn.className = "DGH_pushInline";
+        pushBtn.textContent = "⬆";
+        pushBtn.setAttribute("aria-label", "推送");
+        var pushBlocked = !toolAvail || isHidden;
+        pushBtn.disabled = pushBlocked;
+        pushBtn.title = isHidden
+          ? "已隐藏,不允许推送"
+          : (toolAvail ? "推送这个仓库（调 daily-push.cjs）" : "daily-push.cjs 不可用");
+        pushBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          controller.pushRepo(repo.path);
+        });
+
         var titleRow = document.createElement("div");
         titleRow.className = "DGH_repoTitle";
         titleRow.innerHTML =
@@ -898,6 +919,8 @@ window.__ModuleLoader__.load({
           // v0.1.7：选择模式 + 已隐藏：显示 "已隐藏" 标记
           (snap.selectionMode && isHidden ? '<span class="DGH_repoMark">已隐藏 ✓</span>' : '');
         head.appendChild(titleRow);
+        // push 按钮挂在 titleRow 末尾（与 name + branch 同行右）
+        titleRow.appendChild(pushBtn);
 
         var pathEl = document.createElement("div");
         pathEl.className = "DGH_repoPath";
@@ -905,6 +928,7 @@ window.__ModuleLoader__.load({
         head.appendChild(pathEl);
 
         // 状态徽章 + 人类语言 tooltip (v0.1.9：徽章悬停说明，零技术语言)
+        // v0.2.0：branch 徽章 + 状态徽章合并到一行（更紧凑）
         var badges = document.createElement("div");
         badges.className = "DGH_repoBadges";
         if (repo.error) {
@@ -971,47 +995,17 @@ window.__ModuleLoader__.load({
         li.appendChild(head);
 
         // v0.1.7：selectionMode 模式下，整张卡片可点 = toggleHide
-        // 注意：操作按钮行内的点击会 stopPropagation 不会冒泡到这里
+        // 注意：push 按钮的 click handler 已经 stopPropagation，不会冒泡到这里
         if (snap.selectionMode) {
           li.addEventListener("click", function (e) {
-            // 阻止操作按钮行点击冒泡触发
-            if (e.target.closest && e.target.closest(".DGH_repoActions")) return;
+            if (e.target.closest && e.target.closest(".DGH_pushInline")) return;
             controller.toggleHide(repo.path);
           });
         }
 
-        // 操作行
-        var actions = document.createElement("div");
-        actions.className = "DGH_repoActions";
+        // v0.2.0：去掉单独的操作行 div（push 按钮已内嵌到 titleRow）
+        // v0.1.8 简化：卡片操作行只留 ⬆ 推送（之前这里有 actions div）
         // v0.1.7：selectionMode 模式下隐藏操作按钮（避免点击冲突；点卡片本体就够）
-        if (!snap.selectionMode) {
-          actions.style.display = "";
-        } else {
-          actions.style.display = "none";
-        }
-        var toolAvail = snap.config && snap.config.toolAvailable;
-        var pushBtn = document.createElement("button");
-        pushBtn.className = "DGH_actionBtn";
-        pushBtn.dataset.variant = "primary";
-        pushBtn.textContent = "⬆ 推送";
-        // v0.1.7：hidden 仓库 push 按钮置灰（用户语义"几乎等于不要碰"）
-        var pushBlocked = !toolAvail || isHidden;
-        pushBtn.disabled = pushBlocked;
-        pushBtn.title = isHidden
-          ? "已隐藏,不允许推送（用户语义:几乎等于不要碰）。先取消隐藏再试。"
-          : (toolAvail ? "调 daily-push.cjs 推送" : "daily-push.cjs 不可用");
-        pushBtn.addEventListener("click", function (e) {
-          // selectionMode 下 actions 是隐藏的，但仍 stopPropagation 防止误触发
-          e.stopPropagation();
-          controller.pushRepo(repo.path);
-        });
-        actions.appendChild(pushBtn);
-
-        // v0.1.8 简化：卡片操作行只留 ⬆ 推送；💬 推到对话 / 📌 钉 / 🚫 隐 都去掉
-        //   - 隐藏：通过 🎯 选择模式整张卡片可点切换
-        //   - 推到对话 / 钉住：如果用户后续要恢复，会再加回到别的位置（header / 长按等）
-
-        li.appendChild(actions);
         return li;
       }
 
