@@ -1,0 +1,14 @@
+﻿# 部署副本与构建产物不进 git（node_modules / .pnpm 等）
+node_modules/
+.pnpm-store/
+
+# 编辑器与系统
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# 临时调试产物
+*.bak.*
+.tmp/
+.cache/

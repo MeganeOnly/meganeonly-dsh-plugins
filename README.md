@@ -14,18 +14,16 @@
 | `skill-manager` | `dsh-skill-manager` | 设置页"Skill 管理"：列出用户级 skill（含描述与作者署名），一键启用 / 停用（遮蔽覆盖，即时生效） |
 | `mcp-manager` | `dsh-mcp-manager` | 设置页"MCP 管理"：列出所有 MCP 服务器（连接状态 + 工具清单 + 端点摘要），一键启用 / 停用（重启生效） |
 | `peak-hour-lock` | `dsh-peak-hour-lock` | 北京时间高峰时段拦截发送，消息暂存，结束后自动补发，避免高峰产生双倍模型费用 |
-| `simple-mode` | `dsh-simple-mode` | 简洁模式：隐藏思考过程与工具调用卡片，只在输入框上方显示一条极简状态行 |
 | `usage-stats` | `dsh-usage-stats` | 使用统计：跨会话汇总 token 用量（模型侧精确值）、按日趋势、按模型分解、会话与工具排行 |
 | `dsh-update-checker` | `dsh-update-checker` | 更新检查：设置页"更新"section 显示当前版本与 npm latest，含完整 semver（含 prerelease）对比；一键 `npm install -g @deepseek-ai/dsh@latest` 升级，提示重启生效 |
 | `dsh-task-pool` | `dsh-task-pool` | 任务池：右上角 FAB + 右侧 380px 抽屉，本地收集想法的池子（localStorage 持久化，零 token 消耗）；卡片就地展开可"发送到当前对话"（二次确认 + 4 秒倒计时，发完默认删除可关） |
-| `dsh-ui-tweaks` | `dsh-ui-tweaks` | 外观微调合集：当前含对话列永久右缩让位（`conversationShift` / `conversationShiftPx`）+ 任务池"发送后删除"开关（`taskPoolDeleteAfterSend`，跨插件）；走 DSH 设置页渲染控件，client 动态生成 CSS |
+| `dsh-ui-tweaks` | `dsh-ui-tweaks` | 外观微调合集：当前含对话列永久右缩让位（`conversationShift` / `conversationShiftPx`，含调试高亮 `conversationShiftDebug`）+ 简洁模式（`simpleModeEnabled`：隐藏思考/工具调用 + 输入框上方极简状态行，从原 dsh-simple-mode 合并）；走 DSH 设置页渲染控件，client 动态生成 CSS + DOM 副作用 |
 
 ## 环境要求
 
 - DeepSeek Harness **web profile**（本机目录形如 `F:\.dsh\profiles\web`）
 - Node.js 22+、pnpm
 - 浏览器端依赖（react、dsh-client-* 等）由 DSH shell 模块表提供，无需单独安装
-- `simple-mode` 的宿主半端额外依赖 profile 自带的 `@deepseek-ai/dsh-settings` 与 `@deepseek-ai/schemastery`（DSH web profile 默认自带）
 
 ## 安装（每个插件相同步骤）
 
@@ -83,13 +81,6 @@
 - 输入框上方显示状态行：高峰期提示、已暂存条数、预计补发时刻（轮询 `/api/peak-hour-lock/status`，失败时本地兜底）；预计时刻已过或恢复失败时不再显示过期时间，如实提示；
 - 状态行右侧"管理"按钮展开面板：查看 / 编辑 / 删除 / 立即发送单条暂存消息（`GET|POST /api/peak-hour-lock/queue`，编辑只动文本 part，图片等非文本 part 原样保留）。
 
-### simple-mode — 简洁模式
-
-- 设置 → 通用 里新增开关"隐藏思考与工具调用过程"（默认开）；
-- 开启时：think 推理行、工具调用卡片（`tool-call`）、上下文注入行（`context`）整体隐藏；除了覆盖渲染器返回 `null`，还注入全局 CSS 按 `data-chat-flow-kind` 隐藏整行，不留白色空白；
-- 输入框上方常驻一条极简状态行（正在思考… / 正在阅读… / 正在执行命令…），运行结束自动消失；
-- 隐藏只是展示层，对话数据与日志不受影响。
-
 ### usage-stats — 使用统计
 
 - 设置页新增"使用统计"页：总量卡片（输入 / 输出 / 推理 / 缓存读取 / 请求数 / 生成速度）、近 30 天用量柱状图（悬停看缓存读与请求数）、按模型分解表、会话用量 Top 12、工具调用 Top 10（次数 / 总耗时 / 均耗）；
@@ -121,14 +112,14 @@
 
 ### dsh-ui-tweaks — 外观微调合集
 
-- 集中维护一组对 DSH shell 视觉的微调：每条 tweak 是 `lib/client.js` `TWEAKS` 数组里的一项（`id / name / description / configKeys / defaults / buildCSS(state)`），与 host half `lib/index.js` 的 schemastery `Config` 字段严格对齐；
-- host half 注册 settings namespace `ui-tweaks` + schemastery schema → DSH 设置页"界面微调"section 自动渲染每个 tweak 的开关 / 数字输入（无需自定义 React card）；
-- client half 用 `settingsScope.bind({ namespace: "ui-tweaks" })` 订阅变化，**动态生成 CSS** 注入 `<head>`（`data-plugin-css="dsh-ui-tweaks/main.css"`）；
+- 集中维护一组对 DSH shell 视觉的微调：每条 tweak 是 `lib/client.js` `TWEAKS` 数组里的一项（`id / name / description / configKeys / defaults / buildCSS(state)`），v0.4.0 起**不依赖 host half schema**——v0.3.0 起 host half 退化为零副作用 placeholder（按 DECISIONS C003，第三方 namespace 在 `exposedNamespaces()` 白名单外 silent filter）；
+- client half 用浏览器 `localStorage` 自管（key `dsh-ui-tweaks/state`），注册独立顶层 `settings.section` slot（id=`ui-tweaks`, order=5），用 React 函数组件直接渲染开关/数字输入，立即写 localStorage + 重注入 CSS + 通过 `CustomEvent("dsh-ui-tweaks-state-change")` 触发副作用（调试高亮、简洁模式状态行 DOM controller）；
 - 当前包含：
-  - `conversation-shift`：让 `[class*="centerCol"]`（DSH 当前版本用 CSS module hash 类名，substring 匹配跨重启稳定）`padding-right` 加 N 像素，给右侧面板让位；与 task-pool 抽屉状态**解耦**，开关开即永久生效；
-  - `taskPoolDeleteAfterSend`：**跨插件**字段，task-pool 发送后是否删除任务的全局开关（默认 `true`）；
-- 加新调整只需 3 步：TWEAKS 数组 push 一条 + schema 加字段 + 不需要改其它代码；
-- DSH selector 历史踩坑：旧选择器 `[data-pane="conversation"]` 在 DSH 当前版本已失效（layout 改用 CSS module 类名），新选择器用 `[class*="centerCol"]` substring 匹配。
+  - `conversation-shift`：让 `[class*="centerCol"]` + `[data-pane="conversation"]` 双选择器命中（DSH 当前版本用 CSS module hash 类名；`@linxin666/dsh-web-ui-all` 桥接包启用时种上 data-pane 兼容属性），`padding-right` 加 N 像素给右侧面板让位；并加 `box-sizing: border-box !important` + `min-width: 0 !important` 让 padding 在 flex/grid item 上也起作用；与 task-pool 抽屉状态**解耦**，开关开即永久生效；
+  - `conversation-shift-debug`：开启后给命中的对话列加绿/橙 outline，并在 DevTools `console.info` 打出命中元素的 tagName/className/offsetWidth/paddingRight/boundingClientRect；
+  - `simple-mode`：**从原 `dsh-simple-mode` 合并入**（v0.4.0），设置 → 界面微调里的开关；开启时 think/tool-call/context 等整行 display:none，输入框上方常驻极简状态行（DOM 注入跟随 `[class*="turnStatus"]`，250ms 心跳 + MutationObserver，工具名从 `[data-chat-flow-kind="tool-call"]` 节点反推——不依赖 settingsScope）；
+- 加新调整只需 2 步：TWEAKS 数组 push 一条 + 不需要改其它代码（host half 是零副作用 placeholder，schema 演进走 localStorage 隐式迁移）；
+- DSH selector 历史踩坑：v0.4.0 之前只用 `[class*="centerCol"]` substring 匹配（DSH 当前版本 CSS module hash 跨重启变但 substring 保留）；v0.4.0 起加 `[data-pane="conversation"]` 兜底，桥接包启用时也能命中。
 
 ## 技术要点（写给自己备忘，也欢迎指正）
 

@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.3.1",
+  "version": "0.6.0",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.3.1：修复 React 18 jsx-runtime children 传递）。状态由 client half 用 localStorage 自管（详见 DECISIONS C003）。集中维护一组个人对 DSH shell 外观的微调，每条 tweak 是 lib/client.js TWEAKS 数组的一项（id/name/description/configKeys/defaults/buildCSS）。host half 退化为零副作用 placeholder。client half 注册独立顶层 '界面微调' settings.section slot（order=5），用 React 函数组件直接渲染开关/数字输入，立即写 localStorage + 重注入 CSS。当前包含 conversation-shift（把对话窗口从右边压缩 N 像素，给右侧面板腾出空间）。作者：MeganeOnly。",
+  "description": "DSH 外观设计微调合集（v0.6.0：在 v0.5.5 基础上新增 hide-sidebar-tooltip——CSS-only 关闭左侧栏会话项 hover 时的 Radix Tooltip 深色浮层）。状态由 client half 用 localStorage 自管（详见 DECISIONS C003）。v0.5.5 conversation-shift 关键链：JS 动态探测 DOM 找真正的 chatflow 容器 + inputArea → 打 data-dsh-ui-tweaks-shift-target 标记 → CSS 只命中被标记元素（v0.5.2 `> *` 命中 0 的回归根治）；applyChatflowShiftMarks 加幂等性 + self-shim observer 作为 chatflow marks 的 body-level 兜底（v0.5.4 修『来回弹』后 v0.5.5 修『根本不移动』回归）；buildCSS 无 transition（避免 padding 在 MutationObserver 频繁重打标记时产生视觉循环）。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip 四条 tweak。作者：MeganeOnly。",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

@@ -20,3 +20,6 @@ Thumbs.db
 
 # 全局凭证（DSH_HOME 在 F:\.dsh 不在本仓库，但若有人手贱复制进来就忽略掉）
 .credentials.yaml
+
+# 调试产物（本地调试 session 产生，不入库；如需回看，去 F:\AllWorkSpace\diag-archive\）
+diag/

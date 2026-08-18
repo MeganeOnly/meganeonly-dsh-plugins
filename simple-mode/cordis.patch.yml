@@ -1,4 +1,0 @@
-# dsh-simple-mode bundle patch：向 web profile 的插件名册插入自身一行。
-- insert:
-    - id: simple-mode
-      name: dsh-simple-mode
