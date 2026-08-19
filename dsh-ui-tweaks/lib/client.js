@@ -197,6 +197,11 @@ window.__ModuleLoader__.load({
         id: "simple-mode",
         name: "简洁模式",
         description: "隐藏思考与工具调用过程，只在输入框上方显示一条极简状态行（正在思考…/正在阅读…/正在执行命令…）。",
+        // 仅开关型 tweak：enabled 和 value 复用同一 key。TweakRow 通过
+        // `hasValueInput = k2 !== k1` 检测 k1===k2 时不渲染数字输入框——这样
+        // localStorage 里只存一个布尔字段，不浪费空间，也不暴露无意义的数字配置。
+        // 其它"有数字输入框"的 tweak (如 conversation-shift) 用 enabled + value
+        // 两个不同的 key。
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
