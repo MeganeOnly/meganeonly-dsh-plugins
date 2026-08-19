@@ -197,6 +197,11 @@ window.__ModuleLoader__.load({
         id: "simple-mode",
         name: "简洁模式",
         description: "隐藏思考与工具调用过程，只在输入框上方显示一条极简状态行（正在思考…/正在阅读…/正在执行命令…）。",
+        // 仅开关型 tweak：enabled 和 value 复用同一 key。TweakRow 通过
+        // `hasValueInput = k2 !== k1` 检测 k1===k2 时不渲染数字输入框——这样
+        // localStorage 里只存一个布尔字段，不浪费空间，也不暴露无意义的数字配置。
+        // 其它"有数字输入框"的 tweak (如 conversation-shift) 用 enabled + value
+        // 两个不同的 key。
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
@@ -211,7 +216,10 @@ window.__ModuleLoader__.load({
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
             "/* === simple-mode : status row === */\n" +
-            ".dsh-ui-tweaks-status{display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:18px;margin-left:10px;vertical-align:middle;flex:none}";
+            // visibility:visible 防御:万一 DSH 渲染时把 [class*=\"turnStatus\"] 包在某个
+            // 被 simple-mode CSS 隐藏的元素(如 [data-chat-flow-kind=\"tool-call\"])里,
+            // 父元素 display:none 会让状态行跟着看不见。visibility 兜底保证可见。
+            ".dsh-ui-tweaks-status{display:inline-flex !important;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:18px;margin-left:10px;vertical-align:middle;flex:none;visibility:visible !important}";
         }
       },
       {
@@ -901,6 +909,17 @@ window.__ModuleLoader__.load({
       if (name === "edit" || name === "write") return "正在修改文件…";
       if (name === "grep" || name === "glob") return "正在查找…";
       if (name === "bash" || name === "pwsh" || name === "run_code") return "正在执行命令…";
+      // 子 agent / 任务调度——不细分工具名（task / subagent / agent），统一文案即可
+      if (name === "task" || name === "subagent" || name === "agent") return "正在调度子任务…";
+      // 待办 / 计划类（todo / plan / update_plan）——内部细节差异不影响用户视角
+      if (name === "todo" || name === "plan" || name === "update_plan") return "正在整理计划…";
+      // 代码智能查询——LSP 类工具用户能识别即可
+      if (name === "lsp" || name === "intellisense") return "正在查询代码…";
+      // goal / objective 类工具（DSH 目标/任务跟踪）
+      if (name === "goal" || name === "objective") return "正在处理目标…";
+      // git / commit / push ——代码版本控制
+      if (name === "commit" || name === "git") return "正在提交代码…";
+      if (name === "push") return "正在推送…";
       return "正在处理…";
     }
 
@@ -937,6 +956,13 @@ window.__ModuleLoader__.load({
       var turnObserver = null;
       var intervalId = null;
       var lastTurnStatus = null;
+      // 暴露给 apply() 读取的运行状态——避免外部另起 `_running` 标志导致状态
+      // 不一致（apply() 的 onStateChange 用 simpleController.running 读判断，
+      // 与 createTrajectoryTabHider 的 `get running()` 风格对齐）。
+      var isRunning = false;
+      // 缓存上次写入 span 的文本——tick 每 250ms 跑一次，但 99% 时间工具名没变，
+      // 不写 DOM 就不会触发 React reconciler 监听 attribute / textContent 变化。
+      var lastText = null;
 
       function ensureStatusSpan() {
         if (typeof document === "undefined") return null;
@@ -952,7 +978,11 @@ window.__ModuleLoader__.load({
       function findTurnStatus() {
         if (typeof document === "undefined") return null;
         var nodes = document.querySelectorAll(SIMPLE_TURN_STATUS_SEL);
-        for (var i = 0; i < nodes.length; i++) {
+        // 倒序遍历——文档顺序里最新 turn 在最后。当前正在运行的 turn 的 status
+        // 元素会一直被 DSH 重渲保持在 DOM 末尾；历史已结束 turn 的 status 元素
+        // 同样含 turnStatus 类但排在前。取最后一个可以确保状态行只注入当前 turn,
+        // 滚动到上方看历史对话时不会被错误地注入到旧 turn 上。
+        for (var i = nodes.length - 1; i >= 0; i--) {
           var el = nodes[i];
           if (el.querySelector("#" + SIMPLE_STATUS_ID) !== null) continue;
           return el;
@@ -962,6 +992,14 @@ window.__ModuleLoader__.load({
 
       function attach() {
         if (typeof document === "undefined") return;
+        // 已经在 attach 到当前 turnStatus——watchTurnStatus 的 MutationObserver
+        // 会负责把 span 重新挂回去（DSH 偶尔会把它 detach），不需要每 250ms 重新
+        // 跑 findTurnStatus + ensureStatusSpan + appendChild。tick 高频轮询下
+        // 跳过这些 DOM 操作显著降低开销。
+        if (current !== null) {
+          var existing = document.getElementById(SIMPLE_STATUS_ID);
+          if (existing !== null && existing.parentNode !== null) return;
+        }
         var turnStatus = findTurnStatus();
         if (turnStatus === null) { current = null; return; }
         if (turnStatus !== lastTurnStatus) {
@@ -995,16 +1033,24 @@ window.__ModuleLoader__.load({
         if (typeof document === "undefined") return;
         if (!simpleIsRunningFromDom()) {
           if (current !== null) { detach(); current = null; }
+          lastText = null;
           return;
         }
         attach();
         var span = document.getElementById(SIMPLE_STATUS_ID);
-        if (span !== null) span.textContent = simpleActivityText(simplePickToolNameFromDom());
+        if (span === null) return;
+        var text = simpleActivityText(simplePickToolNameFromDom());
+        // 文字未变就跳过 setTextContent——tick 每 250ms 跑，绝大多数 tick
+        // 工具名不变，写 DOM 触发 mutation listeners 是浪费。
+        if (text === lastText) return;
+        lastText = text;
+        span.textContent = text;
       }
 
       function start() {
         if (typeof window === "undefined") return;
         if (intervalId !== null) return;
+        isRunning = true;
         intervalId = window.setInterval(tick, SIMPLE_POLL_MS);
         tick();
       }
@@ -1014,8 +1060,14 @@ window.__ModuleLoader__.load({
         detach();
         current = null;
         lastTurnStatus = null;
+        lastText = null;
+        isRunning = false;
       }
-      return { start: start, stop: stop };
+      return {
+        start: start,
+        stop: stop,
+        get running() { return isRunning; }
+      };
     }
 
     // ====================================================================
@@ -1560,14 +1612,12 @@ window.__ModuleLoader__.load({
         if (!isFinite(newPx) || newPx < 0) newPx = 380;
         applyDebugMode(!!detail.conversationShiftDebug, !!detail.conversationShift, newPx);
         if (detail.simpleModeEnabled) {
-          if (!simpleController._running) {
+          if (!simpleController.running) {
             simpleController.start();
-            simpleController._running = true;
           }
         } else {
-          if (simpleController._running) {
+          if (simpleController.running) {
             simpleController.stop();
-            simpleController._running = false;
           }
         }
         if (detail.hideTrajectoryTab) {
