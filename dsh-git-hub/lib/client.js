@@ -225,9 +225,9 @@ window.__ModuleLoader__.load({
       ".DGH_hiddenBarExit:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       // 选择模式 toggle 按钮激活态
       "[data-action=\"select-toggle\"][data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
-      // FAB：top:108px = task-pool FAB(56~100)+ 8px 间距。两个 FAB 同时可见不重叠；
+      // FAB：top:130px = task-pool FAB(78~122)+ 8px 间距。两个 FAB 同时可见不重叠；
       // drawer 打开互斥协议保证两个 FAB 不会同时进入让位动画
-      ".DGH_fab{position:fixed;top:108px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
+      ".DGH_fab{position:fixed;top:130px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
       ".DGH_fab:hover{transform:scale(1.06);}" +
       ".DGH_fab[data-state=\"open\"]{background:var(--dsw-alias-bg-layer-3);}" +
       // drawer 打开时 FAB 让位到抽屉的左边外。

@@ -129,8 +129,8 @@ window.__ModuleLoader__.load({
       ".DTPD_btnDangerConfirm{animation:DTPD_pulse 1s ease-in-out infinite;}" +
       ".DTPD_btnSendConfirm{background:#ea580c !important;border-color:#ea580c !important;color:#fff !important;animation:DTPD_pulse 1s ease-in-out infinite;}" +
       "@keyframes DTPD_pulse{0%,100%{opacity:1;}50%{opacity:.55;}}" +
-      // FAB（右上角，top:56px 避开 DSH 顶部元素重叠；drawer 打开自动让位）
-      ".DTPD_fab{position:fixed;top:56px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
+      // FAB（右上角，top:78px 避开 DSH 顶部元素重叠；drawer 打开自动让位；下移 22px = 球半径）
+      ".DTPD_fab{position:fixed;top:78px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
       ".DTPD_fab:hover{transform:scale(1.06);}" +
       ".DTPD_fab[data-state=\"open\"]{background:var(--dsw-alias-bg-layer-3);}" +
       ".DTPD_fab[data-pinned=\"true\"]::after{content:\"\";position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#16a34a;border:1.5px solid var(--dsw-alias-bg-base);}" +
