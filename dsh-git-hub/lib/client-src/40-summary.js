@@ -1,3 +1,4 @@
+    // ===== summary =====
     /** 把当前会话里发"仓库摘要"消息（走 task-pool 同款 sessions.driver.prompt）。 */
     function sendRepoSummaryToSession(sessions, repo, depsRef) {
       try {

@@ -91,6 +91,7 @@ window.__ModuleLoader__.load({
       });
     }
 
+    // ===== summary =====
     /** 把当前会话里发"仓库摘要"消息（走 task-pool 同款 sessions.driver.prompt）。 */
     function sendRepoSummaryToSession(sessions, repo, depsRef) {
       try {
@@ -131,6 +132,7 @@ window.__ModuleLoader__.load({
       return lines.join("\n");
     }
 
+    // ===== toast =====
     /** 临时 toast：右下角小提示，2.5s 自动消失。 */
     function showToast(message, kind) {
       var tagId = "dsh-git-hub/toast";

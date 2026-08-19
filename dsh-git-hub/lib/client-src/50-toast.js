@@ -1,3 +1,4 @@
+    // ===== toast =====
     /** 临时 toast：右下角小提示，2.5s 自动消失。 */
     function showToast(message, kind) {
       var tagId = "dsh-git-hub/toast";
