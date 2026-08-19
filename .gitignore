@@ -5,6 +5,7 @@ node_modules/
 *.log
 *.tmp
 *.bak
+*.bak-*
 *.swp
 
 # 系统文件
