@@ -944,6 +944,9 @@ window.__ModuleLoader__.load({
       // 不一致（apply() 的 onStateChange 用 simpleController.running 读判断，
       // 与 createTrajectoryTabHider 的 `get running()` 风格对齐）。
       var isRunning = false;
+      // 缓存上次写入 span 的文本——tick 每 250ms 跑一次，但 99% 时间工具名没变，
+      // 不写 DOM 就不会触发 React reconciler 监听 attribute / textContent 变化。
+      var lastText = null;
 
       function ensureStatusSpan() {
         if (typeof document === "undefined") return null;
@@ -973,6 +976,14 @@ window.__ModuleLoader__.load({
 
       function attach() {
         if (typeof document === "undefined") return;
+        // 已经在 attach 到当前 turnStatus——watchTurnStatus 的 MutationObserver
+        // 会负责把 span 重新挂回去（DSH 偶尔会把它 detach），不需要每 250ms 重新
+        // 跑 findTurnStatus + ensureStatusSpan + appendChild。tick 高频轮询下
+        // 跳过这些 DOM 操作显著降低开销。
+        if (current !== null) {
+          var existing = document.getElementById(SIMPLE_STATUS_ID);
+          if (existing !== null && existing.parentNode !== null) return;
+        }
         var turnStatus = findTurnStatus();
         if (turnStatus === null) { current = null; return; }
         if (turnStatus !== lastTurnStatus) {
@@ -1006,11 +1017,18 @@ window.__ModuleLoader__.load({
         if (typeof document === "undefined") return;
         if (!simpleIsRunningFromDom()) {
           if (current !== null) { detach(); current = null; }
+          lastText = null;
           return;
         }
         attach();
         var span = document.getElementById(SIMPLE_STATUS_ID);
-        if (span !== null) span.textContent = simpleActivityText(simplePickToolNameFromDom());
+        if (span === null) return;
+        var text = simpleActivityText(simplePickToolNameFromDom());
+        // 文字未变就跳过 setTextContent——tick 每 250ms 跑，绝大多数 tick
+        // 工具名不变，写 DOM 触发 mutation listeners 是浪费。
+        if (text === lastText) return;
+        lastText = text;
+        span.textContent = text;
       }
 
       function start() {
@@ -1026,6 +1044,7 @@ window.__ModuleLoader__.load({
         detach();
         current = null;
         lastTurnStatus = null;
+        lastText = null;
         isRunning = false;
       }
       return {
