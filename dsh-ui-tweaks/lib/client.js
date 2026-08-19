@@ -1,6 +1,19 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.7.3：hide-sidebar-tooltip 的 HoverCard 部分三次修复——v0.7.1 的 JS
+ *   observer 还是能看到"闪一下然后消失"。原因：HoverCard portal div mount
+ *   到浏览器 paint 之间有至少一帧延迟；JS observer 即使去掉 80ms throttle
+ *   用 microtask 调度，最早也要下一个 microtask 才标记 + 浏览器下一帧
+ *   才应用 CSS——用户能看到一帧的"全称 X小时前 空闲"。
+ *
+ *   修法：CSS 直接命中 HoverCard 内部内容的 workspace CSS module hash 类
+ *   （`_hoverContent / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath`）
+ *   → display:none!important。CSS 在 mount 时立即生效，根本不画——
+ *   视觉上看不到"闪一下"。JS observer（v0.7.1 加的 data-dsh-ui-tweaks-hidden-hover-card
+ *   标记）保留作 DSH 升级 hash 变了后的兜底（DSH 升级后 CSS selector 失效，
+ *   JS observer 接管——可能闪 80ms，但不至于完全漏网）。
+ *
  * v0.7.2：新增 hide-chat-tab——对话顶部"对话"标签隐藏。和 v0.7.0 的
  *   hide-trajectory-tab 配套，两个 tab 按钮都关掉后 tablist 整体视觉消失
  *   （DSH `tabs.length > 1` 才渲染 tablist——但 DSH 实际仍注册 2 个 view entry，
@@ -15,22 +28,6 @@
  *   `[role="tooltip"]`，DSH 自己的 Tooltip 组件（`<span role="tooltip">`）确实
  *   被干掉了。但用户反馈"提示还是在"，"全称 X小时前 空闲 这样子"——
  *   实测那个**不是 Tooltip，是 HoverCard**！
- *
- *   HoverCard（`@deepseek-ai/dsh-client-ui-primitives/lib/types/HoverCard.js`）
- *   才是侧栏 hover 的真凶：每条 session 行 / workspace 行都用 HoverCard 包裹
- *   （`@deepseek-ai/dsh-client-ui-workspace/lib/client.js:537, 716`），hover 500ms
- *   后 portal 一个 div 到 document.body，内容是 SessionHoverContent：
- *     .YDXeBa_hoverTitle   = 全称（displayTitle）
- *     .YDXeBa_hoverTime    = X小时前（hoverTimeLabel）
- *     .YDXeBa_hoverStatus  = 空闲（status.label）
- *   HoverCard 的 card div 本身没有 className（HoverCard.module.css 是空 stub），
- *   也不一定有 role（只有 copyable=true 时才有 role="button"），所以 CSS 选择器
- *   难以命中。
- *
- *   修法：JS 端 MutationObserver 巡检 `document.body` 直接子元素 div，找到含
- *   `[class*="_hoverContent" / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath]`
- *   的 div，打 `data-dsh-ui-tweaks-hidden-hover-card` 标记；CSS 命中隐藏。
- *   加上 v0.6.1 的 `[role="tooltip"]`，Tooltip + HoverCard 一并干掉。
  *
  * v0.7.0：新增 hide-trajectory-tab——对话顶部"轨迹"标签页（DSH 开发者视角的
  *   模型/工具事件账本）隐藏。非开发者根本用不上，看了也看不懂。
@@ -127,7 +124,7 @@ window.__ModuleLoader__.load({
 
     var inject = ["slots"];
 
-    var VERSION = "0.7.2";
+    var VERSION = "0.7.3";
     var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
     var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
     var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -226,11 +223,16 @@ window.__ModuleLoader__.load({
         //   （HoverCard.module.css 是空 stub），role 只在 copyable 时才有。
         //   内部内容是 SessionHoverContent / WorkspaceHoverContent，CSS Module hash
         //   类名 `YDXeBa_hoverContent / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath`。
-        //
-        // 修法：JS 端 MutationObserver 巡检 body 直接子 div，找到含上面任一 hash
-        // 类的，打 `data-dsh-ui-tweaks-hidden-hover-card` 标记；CSS 命中隐藏。
-        // 加上 `[role="tooltip"]`，Tooltip + HoverCard 一并干掉——本意是"隐藏侧栏
-        // 浮层"，两种都覆盖。
+        //   修法：JS MutationObserver 巡检 body 直接子 div，找到含上面任一 hash
+        //   类的，打 `data-dsh-ui-tweaks-hidden-hover-card` 标记；CSS 命中隐藏。
+        // v0.7.3 v0.6.2 修了 HoverCard 但用户反馈"闪一下然后消失"——因为
+        //   JS observer 至少要一个 microtask + 80ms throttle 才标记 + 浏览器
+        //   下一帧才应用 CSS。这段窗口期用户能看到一帧的"全称 X小时前 空闲"。
+        //   修法：CSS 直接命中 HoverCard 内部内容的 hash 类（_hoverContent /
+        //   _hoverTitle / _hoverTime / _hoverStatus / _hoverPath 任一）→
+        //   display:none!important。CSS 在 mount 时立即生效，根本不画——
+        //   视觉上看不到"闪一下"。JS observer 保留作 DSH 升级 hash 变了后
+        //   的兜底。
         id: "hide-sidebar-tooltip",
         name: "隐藏侧栏悬浮提示",
         description: "鼠标悬停在左侧栏会话项 / 工作窗口时弹出的深色卡片——展示会话全名 + 相对时间 + 状态（开发者用的 HoverCard），以及按钮上的简短 Tooltip 浮层。开启后全部关掉，根本用不上。",
@@ -238,17 +240,22 @@ window.__ModuleLoader__.load({
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.hideSidebarTooltip) return null;
-          return "/* === hide-sidebar-tooltip v0.6.2 : DSH Tooltip(<span role=tooltip>) + HoverCard(JS-side 标记的 body > div) — 一并干掉 === */\n" +
-            // DSH Tooltip 组件（`@deepseek-ai/dsh-client-ui-primitives` 的 Tooltip.js）
-            // 渲染 <span role=\"tooltip\"> 作为锚点的兄弟节点 inline 渲染——
-            // 不 portal 到 body；className 是 undefined（CSS module stub 是空对象）。
-            // 全 app 里 role=\"tooltip\" 只在 Tooltip 组件里出现——全局干掉无副作用。
+          return "/* === hide-sidebar-tooltip v0.7.3 : DSH Tooltip + HoverCard — 三层 selector === */\n" +
+            // L1: DSH Tooltip 组件（@deepseek-ai/dsh-client-ui-primitives 的 Tooltip.js）
+            //     渲染 <span role=\"tooltip\"> 作为锚点的兄弟节点 inline 渲染——
+            //     不 portal 到 body；className 是 undefined（CSS module stub 是空对象）。
+            //     全 app 里 role=\"tooltip\" 只在 Tooltip 组件里出现——全局干掉无副作用。
             "[role=\"tooltip\"]{display:none!important}\n" +
-            // HoverCard 卡片：JS-side 给 portal 出来的 body > div 打
-            // data-dsh-ui-tweaks-hidden-hover-card 标记（v0.6.2 新增 controller，
-            // 见下面 createSidebarHoverCardHider()）；CSS 命中隐藏。
-            // 用 attribute selector 而不是 class selector——避免依赖 DSH CSS module
-            // hash（YDXeBa_* 可能随 DSH 升级变化）。
+            // L2: HoverCard 内容 CSS module hash 类（DSH workspace 包，当前 hash 是 YDXeBa_）。
+            //     这是**主防线**——CSS 在 mount 时立即生效，根本不画。
+            //     5 个 hash 类（_hoverContent / _hoverTitle / _hoverTime / _hoverStatus /
+            //     _hoverPath）任意命中即隐藏。DSH 升级后 hash 变了改这里一处即可
+            //     （同时 HOVER_CARD_CLASS_HINTS 数组也要同步——JS observer 兜底用）。
+            "[class*=\"_hoverContent\"],[class*=\"_hoverTitle\"],[class*=\"_hoverTime\"],[class*=\"_hoverStatus\"],[class*=\"_hoverPath\"]{display:none!important}\n" +
+            // L3: HoverCard 兜底——JS observer（v0.7.1 加的 createSidebarHoverCardHider）
+            //     给 portal 出来的 body > div 打 data-dsh-ui-tweaks-hidden-hover-card
+            //     标记。L2 失效时（DSH 升级 hash 变了）L3 接管——可能闪 80ms+
+            //     （observer throttle），但不会完全漏。
             "[data-dsh-ui-tweaks-hidden-hover-card]{display:none!important}";
         }
       },

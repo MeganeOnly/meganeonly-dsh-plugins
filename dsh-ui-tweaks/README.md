@@ -2,7 +2,7 @@
 
 作者：MeganeOnly
 
-**DSH 外观设计微调合集（v0.7.2：新增 `hide-chat-tab`——对话顶部"对话"标签隐藏；两个 tab 按钮都关掉后 tablist 整体视觉消失）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller、轨迹 / 对话标签 hider、侧栏 HoverCard hider）。
+**DSH 外观设计微调合集（v0.7.3：`hide-sidebar-tooltip` 三次修复——CSS 直接命中 HoverCard 内容 hash 类消除『闪一下』问题）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller、轨迹 / 对话标签 hider、侧栏 HoverCard hider）。
 
 - **host half**：v0.3.0 起退化为零副作用 placeholder（cordis bundle 注册用占位）。**不**注册 DSH settings namespace、不读 settings 文档。
 - **client half**：状态用浏览器 `localStorage` 自管（key `dsh-ui-tweaks/state`），注册独立顶层 `settings.section` slot（id=`ui-tweaks`, order=5），用 React 函数组件直接渲染控件，立即写 localStorage + 重注入 CSS。无 settingsScope 依赖。
@@ -68,7 +68,7 @@ v0.4.0 起的工作模式——隐藏思考 / 工具调用 / 上下文行 / 过�
 
 ### "隐藏侧栏悬浮提示" 行为
 
-v0.6.0 新增 → **v0.6.1 修 Tooltip selector → v0.7.1 补 HoverCard selector**。
+v0.6.0 新增 → **v0.6.1 修 Tooltip selector → v0.7.1 补 HoverCard selector → v0.7.3 改 CSS 主防线消除闪一下**。
 
 **真正的问题**：DSH 侧栏会话项 / 工作窗口在 hover 时弹出的不是 Radix Tooltip，而是 **DSH 自己的 `HoverCard` 组件**（`@deepseek-ai/dsh-client-ui-primitives/lib/types/HoverCard.js`）。HoverCard 在每条 session / workspace 行（`@deepseek-ai/dsh-client-ui-workspace/lib/client.js:537, 716`）hover 500ms 后，通过 `createPortal(card, document.body)` 渲染一个 div 到 body 直接子级——**这就是用户看到的"全称 X小时前 空闲"卡片**。
 
@@ -86,12 +86,29 @@ v0.6.0 新增 → **v0.6.1 修 Tooltip selector → v0.7.1 补 HoverCard selecto
 
 **v0.6.1 修 Tooltip**：发现 DSH 自己的 Tooltip 组件确实用 `<span role="tooltip">`（inline 渲染，className=undefined），改成 `[role="tooltip"]` 全局干掉——DSH 全 app 只有 Tooltip 组件用 `role="tooltip"`。
 
-**v0.7.1 补 HoverCard**：
-- JS 端 MutationObserver 巡检 `body` 直接子 div，找到含 hover 相关 hash 类（`[class*="_hoverContent" / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath]`）的 div，打 `data-dsh-ui-tweaks-hidden-hover-card` 标记
+**v0.7.1 补 HoverCard（JS observer）**：
+- JS 端 MutationObserver 巡检 `body` 直接子 div，找到含 hover 相关 hash 类的 div，打 `data-dsh-ui-tweaks-hidden-hover-card` 标记
 - CSS 端 `[data-dsh-ui-tweaks-hidden-hover-card]{display:none!important}` 命中隐藏
 - 探测目标用 CSS Module hash 类（DSH workspace 包）；DSH 升级后 hash 变了，改一处 `HOVER_CARD_CLASS_HINTS` 数组即可——attribute 名 `data-dsh-ui-tweaks-hidden-hover-card` 永远稳定
 
-**两个 selector 合用**：Tooltip + HoverCard 一并干掉——本意就是"隐藏侧栏浮层"，两种都覆盖。
+**v0.7.3 改 CSS 主防线（消除"闪一下"）**：v0.7.1 修了 HoverCard 但用户反馈"闪一下然后消失"——JS observer 有 microtask + 80ms throttle + 浏览器下一帧的窗口期，用户能看到一帧的 HoverCard 内容。**直接用 CSS 命中 hash 类**：
+
+```css
+[class*="_hoverContent"],
+[class*="_hoverTitle"],
+[class*="_hoverTime"],
+[class*="_hoverStatus"],
+[class*="_hoverPath"] {
+  display: none !important;
+}
+```
+
+CSS 在 mount 时立即生效，根本不画——视觉上看不到"闪一下"。JS observer（v0.7.1 的 `data-dsh-ui-tweaks-hidden-hover-card` 标记）保留作 DSH 升级 hash 变了后的兜底（**L3 兜底**：DSH 升级后 L2 CSS selector 失效，L3 JS observer 接管——可能闪 80ms+，但不会完全漏）。
+
+**三层 selector 协同**（从最稳到最脆）：
+- L1 `[role="tooltip"]` ← DSH Tooltip（v0.6.1 修对，最稳——`role=tooltip` 是 W3C 标准不会变）
+- L2 `[class*="_hoverContent" / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath]` ← DSH HoverCard 内容（v0.7.3 主防线，CSS 立即生效消除闪）
+- L3 `[data-dsh-ui-tweaks-hidden-hover-card]` ← JS observer 标记（v0.7.1 兜底，DSH 升级 hash 变了后接管）
 
 ### "隐藏对话中的'轨迹'标签" 行为
 
@@ -146,7 +163,7 @@ window.__dshUiTweaks.reshim()                // 立即重跑 self-shim（调试�
 | `conversation-shift` | 对话区右缩 | JS 探测 DOM 找真正 chatflow 容器 + inputArea → 打 `data-dsh-ui-tweaks-shift-target` 标记 → CSS 只命中被标记元素 + conv 列容器不变（grid 列宽 + 滚动条 + 滚动指示器保持在原位）。探测失败时回退标记 conv 列容器（v0.5.1 兜底行为）。**自给自足**——不依赖任何外部桥接包；self-shim 4 层 selector 找 conv 列。 | 开关（`conversationShift`）+ 像素值（`conversationShiftPx`，默认 380，0–800） |
 | `conversation-shift-debug` | 对话右缩调试高亮 | 开启后给 conversation 列加 4px 黄色 outline + 黑底白字浮动 label 显示当前像素值，并在 DevTools console.info 打出命中元素诊断。调试用——对话右缩关闭时也能开。 | 开关（`conversationShiftDebug`，默认关） |
 | `simple-mode` | 简洁模式 | 隐藏思考（think 推理）、工具调用（read/edit/pwsh/bash/grep/glob 等）、上下文注入行、其它纯过程节点（compaction / model-retry / turn-error / turn-max-tokens），整体 display:none 不留白。输入框上方常驻一条极简状态行（"正在思考…" / "正在阅读…" / "正在执行命令…"），运行结束自动消失。状态行用 DOM 注入 `[class*="turnStatus"]` 跟随 TurnStatus 重渲（MutationObserver + 250ms 心跳），工具名从 `[data-chat-flow-kind="tool-call"]` 节点反推（不依赖 settingsScope）。 | 开关（`simpleModeEnabled`，默认开） |
-| `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 鼠标悬停在左侧栏会话项 / 工作窗口时 DSH 默认弹出一个深色卡片——**不是 Radix Tooltip，是 DSH 的 HoverCard**（`dsh-client-ui-primitives`）——展示全称 + 相对时间 + 状态（开发者用的调试信息）。v0.6.1 修了 Tooltip selector；v0.7.1 才补上 HoverCard——用 JS MutationObserver 给 portal 到 body 的 HoverCard div 打 `data-dsh-ui-tweaks-hidden-hover-card` 标记（探测目标 = workspace 包的 CSS Module hash 类 `_hoverContent / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath`），CSS 命中隐藏。`[role="tooltip"]` + `[data-dsh-ui-tweaks-hidden-hover-card]` 两条 selector 合用覆盖 Tooltip + HoverCard。 | 开关（`hideSidebarTooltip`，默认开） |
+| `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 鼠标悬停在左侧栏会话项 / 工作窗口时 DSH 默认弹出一个深色卡片——**不是 Radix Tooltip，是 DSH 的 HoverCard**（`dsh-client-ui-primitives`）——展示全称 + 相对时间 + 状态（开发者用的调试信息）。v0.7.3 三层 selector 协同：L1 `[role=tooltip]`（DSH Tooltip，v0.6.1 修对，最稳）；L2 `[class*="_hoverContent" / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath"]`（HoverCard 内容 CSS Module hash 类，v0.7.3 主防线——CSS 立即生效消除闪一下）；L3 `[data-dsh-ui-tweaks-hidden-hover-card]`（JS observer 标记，v0.7.1 兜底——DSH 升级 hash 变了后接管）。 | 开关（`hideSidebarTooltip`，默认开） |
 | `hide-trajectory-tab` | 隐藏对话中的"轨迹"标签 | 对话顶部多了一个"轨迹"标签——展示模型/工具调用的事件账本（开发者视角，含 turn/step/tool-call 时间线、详情、搜索等调试功能）。非开发者用不上，看着也容易困惑。v0.7.0 实现，v0.7.2 重构为通用 `createTabHider(opts)` 工厂（两个 tab tweak 共用）：JS MutationObserver 巡检 `[role="tablist"]` 找文本为"轨迹"/"Trajectory"的按钮，打 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记，CSS 命中隐藏。safe tab = "对话"——safe 不在选中态时自动点击切回。 | 开关（`hideTrajectoryTab`，默认开） |
 | `hide-chat-tab` | 隐藏对话中的"对话"标签 | "对话"是默认 view（永远选中），标签按钮显示它毫无信息量，纯视觉噪音。和 hide-trajectory-tab 一起开 → 两个 tab 按钮都 display:none，tablist 整体视觉消失。v0.7.2 新增：复用 `createTabHider(opts)` 工厂，`targetLabels: CHAT_TAB_LABELS`, `safeLabels: CHAT_TAB_LABELS`（safe 和 target 同——chat 是 DSH 默认 view）。如果当前不在对话视图（比如用户手动切到轨迹后才开启），程序 click 对话按钮切回。 | 开关（`hideChatTab`，默认开） |
 

@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.7.2：新增 hide-chat-tab——对话顶部「对话」标签隐藏。和 v0.7.0 hide-trajectory-tab 配套，两个 tab 按钮都关掉后 tablist 整体视觉消失。实现：把 v0.7.0 createTrajectoryTabHider 重构为通用 createTabHider(opts) 工厂——{ targetLabels, hiddenValue, safeLabels }，两个 tweak 都用，safe 都是「对话」（DSH 默认 view）——避免两个 tab 都关掉后用户卡在轨迹视图出不来。v0.7.1：hide-sidebar-tooltip 二次修复——之前一直把『侧栏悬浮提示』当成 Radix Tooltip，但实测是 DSH HoverCard 组件，JS MutationObserver 给 portal 出来的 body>div 打 data-dsh-ui-tweaks-hidden-hover-card 标记 CSS 命中隐藏。v0.7.0：新增 hide-trajectory-tab。状态由 client half 用 localStorage 自管（详见 DECISIONS C003）。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab 六条 tweak。作者：MeganeOnly。",
+  "description": "DSH 外观设计微调合集（v0.7.3：hide-sidebar-tooltip 三次修复——v0.7.1 JS observer 还有『闪一下然后消失』问题（microtask + 80ms throttle + 浏览器下一帧的窗口期能看到一帧 HoverCard 内容）。修法：CSS 直接命中 HoverCard 内部内容 workspace CSS module hash 类（_hoverContent / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath 任一）→ display:none!important。CSS 在 mount 时立即生效，根本不画——视觉上看不到闪一下。JS observer（v0.7.1 加的 data-dsh-ui-tweaks-hidden-hover-card 标记）保留作 DSH 升级 hash 变了后的兜底。v0.7.2：新增 hide-chat-tab + 重构 createTrajectoryTabHider 为通用 createTabHider(opts) 工厂。v0.7.1：hide-sidebar-tooltip 二次修复——之前一直把『侧栏悬浮提示』当成 Radix Tooltip，但实测是 DSH HoverCard 组件。v0.7.0：新增 hide-trajectory-tab。状态由 client half 用 localStorage 自管（详见 DECISIONS C003）。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab 六条 tweak。作者：MeganeOnly。",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
