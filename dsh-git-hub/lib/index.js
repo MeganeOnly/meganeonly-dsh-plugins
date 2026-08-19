@@ -10,7 +10,10 @@
  *      timeout，失败 fallback 不阻塞；
  *   3) 后台 spawn daily-push.cjs（不阻塞 HTTP 响应，立即返回 PID + startedAt）；
  *   4) 配置（扫描根路径列表 + toolPath 探测结果）持久化到 profile 根
- *      .git-hub-config.json（原子写）。
+ *      .git-hub-config.json（原子写）；
+ *   5) v0.3.0 新增 merge / pull / abort-merge：读 .git/MERGE_HEAD 与
+ *      rebase-merge/rebase-apply 检测冲突态；git merge [--no-ff] / git pull
+ *      [--rebase]；冲突时回传冲突文件列表 + 让客户端渲染 abort 按钮。
  *
  * 对外 API（全部 /api/git-hub/* 前缀）：
  *   GET  /api/git-hub/config           — 读配置
@@ -22,6 +25,11 @@
  *   GET  /api/git-hub/push-status      — 最近推送状态（PID + 退出码）
  *   POST /api/git-hub/commit           — 提交 dsh-plugins 源仓库 { message }
  *   GET  /api/git-hub/commit-status    — 读 dsh-plugins 源仓库工作区状态（branch + 改动数）
+ *   --- v0.3.0 merge 工具 ---
+ *   GET  /api/git-hub/repos/branches?path=... — 列本地分支 + 冲突态
+ *   POST /api/git-hub/repos/merge             — git merge [--no-ff] <source>
+ *   POST /api/git-hub/repos/pull              — git pull [--rebase]
+ *   POST /api/git-hub/repos/merge-abort       — git merge --abort / rebase --abort
  *
  * 作者：MeganeOnly
  */
@@ -643,6 +651,317 @@ export function apply(ctx) {
     return results
   }
 
+  /* ----- v0.3.0 merge / pull 工具 ----- */
+
+  /**
+   * 列单仓库本地分支 + 冲突态。返回 null = 仓库不可读。
+   * - branches: [{ name, isCurrent, upstream }]
+   * - current: 当前分支名（与 branches 中 isCurrent=true 一致）
+   * - upstream: 当前分支的上游（来自 @{u}，可能 null）
+   * - mergeInProgress: .git/MERGE_HEAD 存在 → 合并冲突未解决
+   * - rebaseInProgress: .git/rebase-merge 或 rebase-apply 存在 → 变基冲突未解决
+   * - detached HEAD: current 为 null + HEAD 直接给 SHA（这里用 refname:short 拿不到时
+   *   回落到 rev-parse --abbrev-ref HEAD 的 "HEAD" 字面量作为哨兵）
+   */
+  function readBranches(repoPath) {
+    // for-each-ref 比 branch --list 更稳：可控格式 + 不依赖颜色输出
+    const raw = gitSync(
+      ['for-each-ref', '--format=%(refname:short)|%(HEAD)|%(upstream:short)', 'refs/heads'],
+      repoPath
+    )
+    if (raw === null) return null
+    const branches = []
+    for (const line of raw.split('\n')) {
+      const t = line.trim()
+      if (!t) continue
+      const [name, head, upstream] = t.split('|')
+      if (!name) continue
+      branches.push({
+        name,
+        isCurrent: head === '*',
+        upstream: upstream || null,
+      })
+    }
+    const current = branches.find((b) => b.isCurrent)?.name || null
+    // 当前分支的上游（独立拿，因为可能 detached / no upstream）
+    const upstreamOfCurrent = gitSync(['rev-parse', '--abbrev-ref', '@{u}'], repoPath)
+    const upstreamTrimmed = upstreamOfCurrent ? upstreamOfCurrent.trim() : null
+    const hasUpstream = !!upstreamTrimmed && upstreamTrimmed !== '@{u}' && !upstreamTrimmed.includes('@{u}')
+    // 冲突态检测（看 .git/ 下文件/目录是否存在）
+    const dotGit = join(repoPath, '.git')
+    const mergeHead = join(dotGit, 'MERGE_HEAD')
+    const rebaseMerge = join(dotGit, 'rebase-merge')
+    const rebaseApply = join(dotGit, 'rebase-apply')
+    let mergeInProgress = false
+    let rebaseInProgress = false
+    try {
+      if (existsSync(dotGit)) {
+        // .git 可能是文件（worktree 引用），statSync 检查
+        mergeInProgress = existsSync(mergeHead)
+        rebaseInProgress = existsSync(rebaseMerge) || existsSync(rebaseApply)
+      }
+    } catch (_) { /* ignore */ }
+    // 排序：current 第一，其余按字母
+    branches.sort((a, b) => {
+      if (a.isCurrent && !b.isCurrent) return -1
+      if (!a.isCurrent && b.isCurrent) return 1
+      return a.name.localeCompare(b.name)
+    })
+    return {
+      path: repoPath,
+      name: basename(repoPath),
+      branches,
+      current,
+      upstream: hasUpstream ? upstreamTrimmed : null,
+      mergeInProgress,
+      rebaseInProgress,
+    }
+  }
+
+  /**
+   * 跑 git merge [--no-ff] <source>，捕获冲突结果。
+   * 返回值：
+   *   { ok: true,  status: 'merged'|'fast-forward'|'already-up-to-date', headBefore, headAfter, source, noFF }
+   *   { ok: false, error: 'merge-in-progress'|'dirty-worktree'|'conflict'|'merge-failed'|'invalid-source', conflicts?, stderr?, stdout? }
+   * 关键点：
+   *   - merge 前若有未提交改动 → 大概率失败且难回退 → 直接拒绝（要求用户先 commit / stash）
+   *   - merge 冲突：保留 MERGE_HEAD 不动，让客户端给 abort 按钮；返回 conflicts 文件列表
+   *   - fast-forward 检测：看 HEAD 父数（merge commit 有 2 父，FF 没有父变化）
+   */
+  function runMerge(cwd, source, noFF) {
+    // 1. 已在 merge 状态 → 拒绝（必须先 abort 或解决）
+    const dotGit = join(cwd, '.git')
+    if (!existsSync(join(dotGit, 'MERGE_HEAD'))) {
+      // not in merge
+    } else {
+      return { ok: false, error: 'merge-in-progress', hint: '已有未完成的合并，请先解决冲突或 abort' }
+    }
+    // 2. 工作区必须干净（dirty 工作区 + merge 容易失败且难以回滚）
+    const statusOut = gitSync(['status', '--porcelain'], cwd)
+    if (statusOut !== null && statusOut.split('\n').filter((l) => l.trim().length > 0).length > 0) {
+      return { ok: false, error: 'dirty-worktree', hint: '工作区有未提交改动，请先 commit 或 stash' }
+    }
+    // 3. 校验 source 是否存在（本地分支或远程分支）
+    const sourceExists = gitSync(['rev-parse', '--verify', '--quiet', source], cwd)
+    if (sourceExists === null) {
+      return { ok: false, error: 'invalid-source', hint: '找不到分支 ' + source }
+    }
+    // 4. HEAD 前快照
+    const headBefore = gitSync(['rev-parse', '--short', 'HEAD'], cwd)
+    const headBeforeTrim = headBefore ? headBefore.trim() : null
+    // 5. 执行 merge（merge 命令 30s timeout，pre-commit 钩子 + 大量文件合并可能慢）
+    const args = ['merge']
+    if (noFF) args.push('--no-ff')
+    args.push(source)
+    try {
+      execFileSync('git', args, {
+        cwd, encoding: 'utf8', timeout: 30_000, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString() : ''
+      const stdout = e.stdout ? e.stdout.toString() : ''
+      // 检查 MERGE_HEAD 是否存在 → 冲突中
+      if (existsSync(join(dotGit, 'MERGE_HEAD'))) {
+        // git 把 CONFLICT 行写到 stdout（尤其 Windows），需合并读
+        const conflicts = parseConflictFiles(stderr + '\n' + stdout)
+        return { ok: false, error: 'conflict', conflicts, stderr, stdout, source }
+      }
+      return { ok: false, error: 'merge-failed', stderr, stdout, source }
+    }
+    // 6. 判断结果：HEAD 是否变化 + 父数
+    const headAfter = gitSync(['rev-parse', '--short', 'HEAD'], cwd)
+    const headAfterTrim = headAfter ? headAfter.trim() : null
+    if (headBeforeTrim === headAfterTrim) {
+      return { ok: true, status: 'already-up-to-date', headBefore: headBeforeTrim, headAfter: headAfterTrim, source, noFF: !!noFF }
+    }
+    // 父数：git rev-list --parents -n 1 HEAD → SHA + 父 SHAs（FF 没有合并父）
+    const parentsRaw = gitSync(['rev-list', '--parents', '-n', '1', 'HEAD'], cwd)
+    const parentsTrim = parentsRaw ? parentsRaw.trim() : ''
+    const parentCount = parentsTrim ? parentsTrim.split(' ').length - 1 : 0
+    const status = parentCount >= 2 ? 'merged' : 'fast-forward'
+    return { ok: true, status, headBefore: headBeforeTrim, headAfter: headAfterTrim, source, noFF: !!noFF }
+  }
+
+  /**
+   * 跑 git pull [origin] [--rebase]。pull = fetch + merge（默认）/ rebase（--rebase）。
+   * 冲突时返回 conflicts + 让客户端展示 abort 按钮。
+   */
+  function runPull(cwd, rebase) {
+    const dotGit = join(cwd, '.git')
+    if (existsSync(join(dotGit, 'MERGE_HEAD'))) {
+      return { ok: false, error: 'merge-in-progress', hint: '已有未完成的合并，请先解决冲突或 abort' }
+    }
+    if (existsSync(join(dotGit, 'rebase-merge')) || existsSync(join(dotGit, 'rebase-apply'))) {
+      return { ok: false, error: 'rebase-in-progress', hint: '已有未完成的变基，请先解决冲突或 abort' }
+    }
+    // 工作区检查
+    const statusOut = gitSync(['status', '--porcelain'], cwd)
+    if (statusOut !== null && statusOut.split('\n').filter((l) => l.trim().length > 0).length > 0) {
+      return { ok: false, error: 'dirty-worktree', hint: '工作区有未提交改动，请先 commit 或 stash' }
+    }
+    // upstream 检查
+    const upstream = gitSync(['rev-parse', '--abbrev-ref', '@{u}'], cwd)
+    const upstreamTrim = upstream ? upstream.trim() : null
+    if (!upstreamTrim || upstreamTrim.includes('@{u}')) {
+      return { ok: false, error: 'no-upstream', hint: '当前分支没有配置 upstream' }
+    }
+    const headBefore = gitSync(['rev-parse', '--short', 'HEAD'], cwd)
+    const headBeforeTrim = headBefore ? headBefore.trim() : null
+    // git pull (rebase 用 --rebase)
+    const args = rebase ? ['pull', '--rebase'] : ['pull']
+    try {
+      execFileSync('git', args, {
+        cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString() : ''
+      const stdout = e.stdout ? e.stdout.toString() : ''
+      const inMerge = existsSync(join(dotGit, 'MERGE_HEAD'))
+      const inRebase = existsSync(join(dotGit, 'rebase-merge')) || existsSync(join(dotGit, 'rebase-apply'))
+      if (inMerge || inRebase) {
+        const conflicts = parseConflictFiles(stderr + '\n' + stdout)
+        return {
+          ok: false,
+          error: 'conflict',
+          conflicts,
+          stderr,
+          stdout,
+          rebase: !!rebase,
+          // 让前端知道是 merge 还是 rebase 冲突
+          conflictType: inRebase ? 'rebase' : 'merge',
+        }
+      }
+      return { ok: false, error: 'pull-failed', stderr, stdout, rebase: !!rebase }
+    }
+    const headAfter = gitSync(['rev-parse', '--short', 'HEAD'], cwd)
+    const headAfterTrim = headAfter ? headAfter.trim() : null
+    if (headBeforeTrim === headAfterTrim) {
+      return { ok: true, status: 'already-up-to-date', headBefore: headBeforeTrim, headAfter: headAfterTrim, rebase: !!rebase }
+    }
+    return { ok: true, status: rebase ? 'rebased' : 'merged', headBefore: headBeforeTrim, headAfter: headAfterTrim, rebase: !!rebase }
+  }
+
+  /**
+   * 解析 git merge / rebase 输出的冲突文件列表。
+   * 输出格式（常见，Windows / Linux 都同）：
+   *   - "CONFLICT (content): Merge conflict in lib/index.js"
+   *   - "CONFLICT (add/add): Merge conflict in foo.txt"
+   *   - "CONFLICT (modify/delete): bar.txt deleted in HEAD"
+   *   - "CONFLICT (rename/rename): Rename foo->bar in HEAD"
+   * 启发式处理：
+   *   1. "Merge conflict in <path>" → 路径 = <path>
+   *   2. "<old>-><new>" rename → 路径 = <new>
+   *   3. 其他 → 路径 = 捕获组本身（让用户看见原行）
+   * 注意：git 把这些行输出到 stdout（在 Windows 上尤其明显），
+   *       调用方必须把 stderr + stdout 合并后再传入。
+   */
+  function parseConflictFiles(stderrOrCombined) {
+    const files = []
+    const seen = new Set()
+    for (const line of (stderrOrCombined || '').split('\n')) {
+      const m = line.match(/^CONFLICT\s+\([^)]+\):\s+(.+)$/)
+      if (!m) continue
+      let captured = m[1].trim()
+      let path = captured
+      // 模式 1: "Merge conflict in <path>"
+      if (/^Merge conflict in /.test(captured)) {
+        path = captured.replace(/^Merge conflict in /, '')
+      }
+      // 模式 2: rename（含/不含空格两种：'<old> -> <new>' 或 '<old>-><new>'）
+      //   git 不同版本输出格式不一致，保守处理：取最后 "->" 后的段
+      if (/->/.test(path)) {
+        const segs = path.split(/ *-> */)
+        path = segs[segs.length - 1].trim()
+        // 去掉可能的引号对（rename 输出有时带 "old" -> "new"）
+        // 用配对 quote 处理（find matching 位置），避免只去首字符的边界 case
+        if (path.startsWith('"') || path.startsWith("'")) {
+          const q = path[0]
+          const close = path.indexOf(q, 1)
+          if (close > 0) path = path.slice(1, close) + path.slice(close + 1)
+          else path = path.slice(1)
+        }
+      }
+      // 去尾随句号 / 逗号
+      path = path.replace(/[.,;]+$/, '')
+      if (path && !seen.has(path)) {
+        seen.add(path)
+        files.push(path)
+      }
+    }
+    return files
+  }
+
+  /**
+   * Abort merge 或 rebase（看哪个在进行中）。返回 abort 模式。
+   *   { ok: true, aborted: 'merge'|'rebase' }
+   *   { ok: false, error: 'nothing-to-abort'|'abort-failed', stderr?, stdout? }
+   */
+  function runMergeAbort(cwd) {
+    const dotGit = join(cwd, '.git')
+    const mergeHead = join(dotGit, 'MERGE_HEAD')
+    const rebaseMerge = join(dotGit, 'rebase-merge')
+    const rebaseApply = join(dotGit, 'rebase-apply')
+    let mode = null
+    let cmd = null
+    if (existsSync(mergeHead)) {
+      mode = 'merge'
+      cmd = ['merge', '--abort']
+    } else if (existsSync(rebaseMerge) || existsSync(rebaseApply)) {
+      mode = 'rebase'
+      cmd = ['rebase', '--abort']
+    }
+    if (!mode) {
+      return { ok: false, error: 'nothing-to-abort', hint: '当前没有进行中的合并或变基' }
+    }
+    try {
+      execFileSync('git', cmd, {
+        cwd, encoding: 'utf8', timeout: 15_000, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      return { ok: true, aborted: mode }
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.toString() : ''
+      const stdout = e.stdout ? e.stdout.toString() : ''
+      return { ok: false, error: 'abort-failed', stderr, stdout, mode }
+    }
+  }
+
+  /**
+   * 扫所有 scanRoots 下的 git 仓库，返回「有合并/拉取价值」的子集：
+   *   - ≥2 本地分支（可以 merge）
+   *   - 有 upstream（可以 pull）
+   *   - mergeInProgress / rebaseInProgress（需要 abort）
+   * 其它仓库不展示，避免噪声。
+   */
+  async function listMergeableRepos() {
+    const cfg = await loadConfig()
+    const repoPaths = []
+    for (const root of cfg.scanRoots) {
+      if (!isDirectory(root)) continue
+      try {
+        const found = scanRoot(root)
+        for (const p of found) repoPaths.push(p)
+      } catch (_) { /* ignore single root failure */ }
+    }
+    const results = []
+    for (const p of repoPaths) {
+      try {
+        const info = readBranches(p)
+        if (!info) continue
+        // 过滤条件：多分支 / 有上游 / 冲突中
+        const actionable =
+          info.mergeInProgress ||
+          info.rebaseInProgress ||
+          info.branches.length >= 2 ||
+          !!info.upstream
+        if (actionable) results.push(info)
+      } catch (_) { /* skip unreadable repo */ }
+    }
+    return results
+  }
+
   ctx.webServer.register({
     kind: 'exact',
     path: '/api/git-hub/commit',
@@ -700,6 +1019,168 @@ export function apply(ctx) {
         json(res, 200, { ok: true, repos })
       } catch (e) {
         console.error('[dsh-git-hub] /commit-status error:', e)
+        json(res, 500, { ok: false, error: 'internal' })
+      }
+    },
+  })
+
+  /* ----- v0.3.0 merge 工具路由 ----- */
+
+  // 校验路径：必须存在、是 git 仓库（.git 目录或文件）
+  function resolveRepoOr400(path) {
+    if (!path) return { ok: false, code: 400, error: 'invalid-path', hint: '缺 path' }
+    if (!existsSync(path)) return { ok: false, code: 400, error: 'invalid-path', hint: '路径不存在' }
+    const dotGit = join(path, '.git')
+    if (!existsSync(dotGit)) return { ok: false, code: 400, error: 'not-a-git-repo', hint: '不是 git 仓库' }
+    return { ok: true, path }
+  }
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/git-hub/repos/branches',
+    handler: async (req, res) => {
+      try {
+        if (req.method !== 'GET') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return
+        }
+        const url = new URL(req.url, 'http://localhost')
+        const rawPath = url.searchParams.get('path')
+        const normPath = normalizePath(rawPath)
+        if (!normPath) {
+          json(res, 400, { ok: false, error: 'invalid-path' })
+          return
+        }
+        const check = resolveRepoOr400(normPath)
+        if (!check.ok) {
+          json(res, check.code, { ok: false, error: check.error, hint: check.hint })
+          return
+        }
+        const info = readBranches(check.path)
+        if (!info) {
+          json(res, 500, { ok: false, error: 'read-failed' })
+          return
+        }
+        json(res, 200, { ok: true, ...info })
+      } catch (e) {
+        console.error('[dsh-git-hub] /repos/branches error:', e)
+        json(res, 500, { ok: false, error: 'internal', message: e?.message || String(e) })
+      }
+    },
+  })
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/git-hub/repos/merge',
+    handler: async (req, res) => {
+      try {
+        if (req.method !== 'POST') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return
+        }
+        const body = await readJsonBody(req)
+        if (!body || typeof body.path !== 'string' || typeof body.source !== 'string') {
+          json(res, 400, { ok: false, error: 'invalid-body', hint: '需要 { path, source }' })
+          return
+        }
+        const path = normalizePath(body.path)
+        const check = resolveRepoOr400(path)
+        if (!check.ok) {
+          json(res, check.code, { ok: false, error: check.error, hint: check.hint })
+          return
+        }
+        const source = body.source.trim()
+        if (!source) {
+          json(res, 400, { ok: false, error: 'invalid-source' })
+          return
+        }
+        const noFF = !!body.noFF
+        const result = runMerge(check.path, source, noFF)
+        // 冲突 → 409，前端展示冲突文件列表 + abort 按钮
+        const status = !result.ok && result.error === 'conflict' ? 409 : (!result.ok ? 500 : 200)
+        json(res, status, result)
+      } catch (e) {
+        console.error('[dsh-git-hub] /repos/merge error:', e)
+        json(res, 500, { ok: false, error: 'internal', message: e?.message || String(e) })
+      }
+    },
+  })
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/git-hub/repos/pull',
+    handler: async (req, res) => {
+      try {
+        if (req.method !== 'POST') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return
+        }
+        const body = await readJsonBody(req)
+        if (!body || typeof body.path !== 'string') {
+          json(res, 400, { ok: false, error: 'invalid-body', hint: '需要 { path }' })
+          return
+        }
+        const path = normalizePath(body.path)
+        const check = resolveRepoOr400(path)
+        if (!check.ok) {
+          json(res, check.code, { ok: false, error: check.error, hint: check.hint })
+          return
+        }
+        const rebase = !!body.rebase
+        const result = runPull(check.path, rebase)
+        const status = !result.ok && result.error === 'conflict' ? 409 : (!result.ok ? 500 : 200)
+        json(res, status, result)
+      } catch (e) {
+        console.error('[dsh-git-hub] /repos/pull error:', e)
+        json(res, 500, { ok: false, error: 'internal', message: e?.message || String(e) })
+      }
+    },
+  })
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/git-hub/repos/merge-abort',
+    handler: async (req, res) => {
+      try {
+        if (req.method !== 'POST') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return
+        }
+        const body = await readJsonBody(req)
+        if (!body || typeof body.path !== 'string') {
+          json(res, 400, { ok: false, error: 'invalid-body', hint: '需要 { path }' })
+          return
+        }
+        const path = normalizePath(body.path)
+        const check = resolveRepoOr400(path)
+        if (!check.ok) {
+          json(res, check.code, { ok: false, error: check.error, hint: check.hint })
+          return
+        }
+        const result = runMergeAbort(check.path)
+        const status = !result.ok && result.error === 'nothing-to-abort' ? 400 : (!result.ok ? 500 : 200)
+        json(res, status, result)
+      } catch (e) {
+        console.error('[dsh-git-hub] /repos/merge-abort error:', e)
+        json(res, 500, { ok: false, error: 'internal', message: e?.message || String(e) })
+      }
+    },
+  })
+
+  /* /api/git-hub/repos/merge-status：扫所有可合并仓库（给抽屉批量渲染用） */
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/git-hub/repos/merge-status',
+    handler: async (req, res) => {
+      try {
+        if (req.method !== 'GET') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return
+        }
+        const repos = await listMergeableRepos()
+        json(res, 200, { ok: true, repos })
+      } catch (e) {
+        console.error('[dsh-git-hub] /repos/merge-status error:', e)
         json(res, 500, { ok: false, error: 'internal' })
       }
     },
