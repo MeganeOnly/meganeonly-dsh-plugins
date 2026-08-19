@@ -160,13 +160,18 @@ window.__ModuleLoader__.load({
       ".DGH_pushBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:500;transition:background .12s,border-color .12s;flex:none;}" +
       ".DGH_pushBtn:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_pushBtn:disabled{opacity:.45;cursor:not-allowed;}" +
-      // v0.2.2：commit 工具行
-      ".DGH_commitRow{flex:none;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);display:flex;flex-direction:column;gap:6px;}" +
-      ".DGH_commitMeta{font-size:11px;color:var(--dsw-alias-label-secondary);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}" +
+      // v0.2.2：commit 工具区
+      ".DGH_commitSection{flex:none;padding:0;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);}" +
+      ".DGH_commitSectionEmpty{padding:10px 14px;font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:center;font-style:italic;}" +
+      ".DGH_commitRepo{padding:10px 14px;border-top:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:6px;}" +
+      ".DGH_commitRepo:first-child{border-top:none;}" +
+      ".DGH_commitRepoName{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary);display:flex;align-items:center;gap:6px;}" +
+      ".DGH_commitRepoPath{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--dsw-alias-label-tertiary);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}" +
+      ".DGH_commitMeta{font-size:11px;color:var(--dsw-alias-label-secondary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;}" +
       ".DGH_commitBranch{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);border-radius:4px;padding:1px 6px;}" +
       ".DGH_commitBadge{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-radius:999px;padding:1px 8px;font-weight:600;}" +
-      ".DGH_commitBadge[data-zero=\"true\"]{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);font-weight:400;}" +
-      ".DGH_commitLast{color:var(--dsw-alias-label-tertiary);font-size:10.5px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%;}" +
+      ".DGH_commitFiles{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);border-radius:4px;padding:4px 6px;max-height:64px;overflow-y:auto;line-height:1.5;white-space:pre-wrap;word-break:break-all;}" +
+      ".DGH_commitFileStatus{color:var(--dsw-alias-button-info-fill);font-weight:600;margin-right:2px;}" +
       ".DGH_commitForm{display:flex;gap:6px;align-items:center;}" +
       ".DGH_commitInput{flex:1;min-width:0;font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-sizing:border-box;}" +
       ".DGH_commitInput:focus{outline:none;border-color:var(--dsw-alias-button-info-fill);}" +
@@ -326,7 +331,7 @@ window.__ModuleLoader__.load({
       this.selectionMode = false;  // v0.1.7：隐藏选择模式（点卡片 = toggleHide）
       this.showHidden = false;     // v0.1.7：仅 selectionMode 内有效（模式内展开被隐藏项查看）
       this.lastPush = null;        // 最近推送状态
-      this.commitStatus = null;    // v0.2.2：commit 仓库工作区状态 { branch, filesChanged, lastCommit }
+      this.commitRepos = [];       // v0.2.2：所有 scanRoots 下有改动的 git 仓库 [{ path, name, branch, files, filesChanged, lastCommit }]
       this.commitBusy = false;     // v0.2.2：commit 操作进行中（按钮 disabled + 文字改 "提交中…"）
       this.listeners = new Set();
       var doc = this.store.load();
@@ -360,7 +365,7 @@ window.__ModuleLoader__.load({
         selectionMode: this.selectionMode,
         showHidden: this.showHidden,
         lastPush: this.lastPush,
-        commitStatus: this.commitStatus,    // v0.2.2
+        commitRepos: this.commitRepos,      // v0.2.2
         commitBusy: this.commitBusy,        // v0.2.2
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
@@ -447,6 +452,8 @@ window.__ModuleLoader__.load({
         self.setError(e && e.message ? e.message : String(e));
       }).then(function () {
         self.setLoading(false);
+        // v0.2.2：刷新仓库列表时同步刷 commit 状态（commit / push 后 unpushed 变化）
+        return self.loadCommitStatus();
       });
     };
     /** 拉 config（含 toolAvailable） */
@@ -573,24 +580,20 @@ window.__ModuleLoader__.load({
         this._pushPollTimer = null;
       }
     };
-    /** v0.2.2：拉 commit 仓库工作区状态（branch + 改动数） */
+    /** v0.2.2：拉所有有改动的 git 仓库（branch + 文件名列表） */
     Controller.prototype.loadCommitStatus = function () {
       var self = this;
       return apiFetch("/api/git-hub/commit-status").then(function (data) {
         if (data && data.ok) {
-          self.commitStatus = {
-            branch: data.branch || null,
-            filesChanged: data.filesChanged || 0,
-            lastCommit: data.lastCommit || null,
-          };
+          self.commitRepos = Array.isArray(data.repos) ? data.repos : [];
           self.notify();
         }
       }).catch(function (e) {
         console.warn("[dsh-git-hub] loadCommitStatus failed:", e);
       });
     };
-    /** v0.2.2：手动 commit（git add -A + git commit -m <message>） */
-    Controller.prototype.commit = function (message) {
+    /** v0.2.2：手动 commit 指定仓库（git add -A + git commit -m <message>） */
+    Controller.prototype.commit = function (repoPath, message) {
       var self = this;
       var msg = (message || "").trim();
       if (!msg) {
@@ -601,11 +604,15 @@ window.__ModuleLoader__.load({
         showToast("message 不支持多行（先用单行，未来可加）", "error");
         return Promise.resolve();
       }
+      if (!repoPath) {
+        showToast("内部错误：缺仓库路径", "error");
+        return Promise.resolve();
+      }
       this.commitBusy = true;
       this.notify();
       return apiFetch("/api/git-hub/commit", {
         method: "POST",
-        body: { message: msg },
+        body: { cwd: repoPath, message: msg },
       }).then(function (data) {
         if (!data || !data.ok) {
           var errKey = data && data.error;
@@ -620,8 +627,10 @@ window.__ModuleLoader__.load({
           if (data && data.stderr) console.warn("[dsh-git-hub] commit stderr:", data.stderr);
           return;
         }
-        showToast("已 commit " + data.sha + "（" + data.filesChanged + " 个文件）", "info");
-        // 刷新工作区状态 + 仓库列表（commit 后主面板的 "ahead" 状态也变了）
+        // 仓库名（basename）让 toast 更易读
+        var repoName = (data.cwd || "").split(/[\\/]/).pop() || "?";
+        showToast(repoName + " 已 commit " + data.sha + "（" + data.filesChanged + " 个文件）", "info");
+        // 刷新 commit 状态 + 仓库列表
         return self.loadCommitStatus().then(function () { return self.refresh(true); });
       }).catch(function (e) {
         showToast("commit 失败：" + (e && e.message ? e.message : e), "error");
@@ -838,62 +847,93 @@ window.__ModuleLoader__.load({
         pushStatusEl.innerHTML = '<span class="DGH_pushStatusDot" data-running="' + (running ? "true" : "false") + '"></span><span>' + escapeHtml(txt) + '</span>';
       }
 
-      /** v0.2.2：渲染 commit 工具行（branch 徽章 + 改动数 + message 输入框 + 提交按钮） */
-      function renderCommitRow(row, controller) {
+      /** v0.2.2：渲染 commit 工具区（每个有改动的仓库一行：仓库名 + branch + 文件列表 + 输入框 + 提交按钮） */
+      function renderCommitSection(row, controller) {
         var snap = controller.getSnapshot();
-        var cs = snap.commitStatus || {};
-        var branch = cs.branch || "?";
-        var files = cs.filesChanged || 0;
-        var last = cs.lastCommit;
+        var repos = Array.isArray(snap.commitRepos) ? snap.commitRepos : [];
         var busy = !!snap.commitBusy;
 
-        var lastTxt = last
-          ? "最近: " + last.sha + " " + (last.message || "")
-          : (cs.lastCommit === null && cs.branch ? "（无 commit 记录）" : "");
+        if (repos.length === 0) {
+          row.innerHTML = '<div class="DGH_commitSectionEmpty">所有仓库均无未提交改动 ✓</div>';
+          return;
+        }
 
-        row.innerHTML =
-          '<div class="DGH_commitMeta">' +
-            '<span class="DGH_commitBranch">' + escapeHtml(branch) + '</span>' +
-            '<span class="DGH_commitBadge" data-zero="' + (files === 0 ? "true" : "false") + '">' + files + ' 改动</span>' +
-            (lastTxt ? '<span class="DGH_commitLast" title="' + escapeHtml(lastTxt) + '">' + escapeHtml(lastTxt) + '</span>' : '') +
-          '</div>' +
-          '<div class="DGH_commitForm">' +
-            '<input class="DGH_commitInput" type="text" placeholder="commit message（单行）" maxlength="200" ' + (busy ? "disabled" : "") + ' />' +
-            '<button class="DGH_commitSubmit" ' + (busy || files === 0 ? "disabled" : "") + '>' + (busy ? "提交中…" : "提交") + '</button>' +
-          '</div>';
-
-        var input = row.querySelector(".DGH_commitInput");
-        var submit = row.querySelector(".DGH_commitSubmit");
-        // 提交：点按钮 或 Enter
-        var doCommit = function () {
-          var v = input.value;
-          input.value = "";
-          controller.commit(v);
-        };
-        submit.addEventListener("click", doCommit);
-        input.addEventListener("keydown", function (e) {
-          if (e.key === "Enter" && !e.isComposing) {
-            e.preventDefault();
-            doCommit();
+        // 收集所有 input 元素引用，用于 commit 按钮回调
+        var inputs = [];
+        var html = "";
+        for (var i = 0; i < repos.length; i++) {
+          var r = repos[i];
+          var files = r.files || [];
+          // 文件名预览（最多 8 个，超过显示 +N more）
+          var fileLines = "";
+          var maxShow = 8;
+          for (var j = 0; j < Math.min(files.length, maxShow); j++) {
+            var f = files[j];
+            fileLines += '<span class="DGH_commitFileStatus">' + escapeHtml(f.status || "?") + '</span>' + escapeHtml(f.path) + "\n";
           }
-        });
-        // 自动聚焦（drawer 打开后）
-        if (snap.drawerOpen && !busy) {
-          setTimeout(function () { try { input.focus({ preventScroll: true }); } catch (_) {} }, 50);
+          if (files.length > maxShow) {
+            fileLines += '<span style="color:var(--dsw-alias-label-tertiary)">… 还有 ' + (files.length - maxShow) + ' 个</span>';
+          }
+          var lastTxt = r.lastCommit ? (r.lastCommit.sha + " " + (r.lastCommit.message || "")) : "";
+          html +=
+            '<div class="DGH_commitRepo" data-repo-path="' + escapeHtml(r.path) + '">' +
+              '<div class="DGH_commitRepoName">' +
+                escapeHtml(r.name) +
+                '<span class="DGH_commitRepoPath" title="' + escapeHtml(r.path) + '">' + escapeHtml(r.path) + '</span>' +
+              '</div>' +
+              '<div class="DGH_commitMeta">' +
+                '<span class="DGH_commitBranch">' + escapeHtml(r.branch || "?") + '</span>' +
+                '<span class="DGH_commitBadge">' + files.length + ' 改动</span>' +
+                (lastTxt ? '<span style="font-size:10.5px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0" title="' + escapeHtml(lastTxt) + '">' + escapeHtml(lastTxt) + '</span>' : '') +
+              '</div>' +
+              (fileLines ? '<div class="DGH_commitFiles">' + fileLines + '</div>' : '') +
+              '<div class="DGH_commitForm">' +
+                '<input class="DGH_commitInput" type="text" placeholder="commit message（单行）" maxlength="200" ' + (busy ? "disabled" : "") + ' />' +
+                '<button class="DGH_commitSubmit" ' + (busy ? "disabled" : "") + '>' + (busy ? "提交中…" : "提交") + '</button>' +
+              '</div>' +
+            '</div>';
+        }
+        row.innerHTML = html;
+
+        // 给每行挂事件
+        var repoRows = row.querySelectorAll(".DGH_commitRepo");
+        for (var k = 0; k < repoRows.length; k++) {
+          (function (repoEl) {
+            var repoPath = repoEl.getAttribute("data-repo-path");
+            var input = repoEl.querySelector(".DGH_commitInput");
+            var submit = repoEl.querySelector(".DGH_commitSubmit");
+            inputs.push(input);
+            var doCommit = function () {
+              var v = input.value;
+              input.value = "";
+              controller.commit(repoPath, v);
+            };
+            submit.addEventListener("click", doCommit);
+            input.addEventListener("keydown", function (e) {
+              if (e.key === "Enter" && !e.isComposing) {
+                e.preventDefault();
+                doCommit();
+              }
+            });
+          })(repoRows[k]);
+        }
+        // 自动聚焦第一个 input（drawer 打开 + 无 commit 进行中）
+        if (snap.drawerOpen && !busy && inputs[0]) {
+          setTimeout(function () { try { inputs[0].focus({ preventScroll: true }); } catch (_) {} }, 50);
         }
       }
 
       function renderBody() {
         var snap = controller.getSnapshot();
 
-        // v0.2.2：commit 工具行（持久显示，紧贴 header 下）
-        var existingCommit = bodyEl.querySelector(".DGH_commitRow");
+        // v0.2.2：commit 工具区（持久显示，紧贴 header 下；多仓库）
+        var existingCommit = bodyEl.querySelector(".DGH_commitSection");
         if (!existingCommit) {
           existingCommit = document.createElement("div");
-          existingCommit.className = "DGH_commitRow";
+          existingCommit.className = "DGH_commitSection";
           bodyEl.insertBefore(existingCommit, bodyEl.firstChild);
         }
-        renderCommitRow(existingCommit, controller);
+        renderCommitSection(existingCommit, controller);
 
         // 配置面板（按需插到 body 顶部）
         var existingCfg = bodyEl.querySelector(".DGH_config");

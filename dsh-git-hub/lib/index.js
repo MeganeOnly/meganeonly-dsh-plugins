@@ -585,12 +585,25 @@ export function apply(ctx) {
     return { ok: true, sha, filesChanged: files.length, message }
   }
 
-  /** 读 commit 仓库的工作区状态：branch + 改动数（不 add）。 */
-  function readCommitStatus(cwd) {
-    const branch = gitSync(['rev-parse', '--abbrev-ref', 'HEAD'], cwd)
-    const statusOut = gitSync(['status', '--porcelain'], cwd)
-    const files = statusOut ? statusOut.split('\n').filter((l) => l.trim().length > 0) : []
-    const lastCommitRaw = gitSync(['log', '-1', '--format=%H|%s|%aI'], cwd)
+  /** 读单仓库 commit 状态：branch + 改动文件列表（不 add）。返回 null = 仓库不可读 / 跳过。 */
+  function readRepoCommitState(repoPath) {
+    const branch = gitSync(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath)
+    if (branch === null) return null // 不可读（如 worktree detached / 权限）
+    const statusOut = gitSync(['status', '--porcelain'], repoPath)
+    if (statusOut === null) return null
+    // 解析 porcelain 输出：第一列是状态码，第二列起是路径
+    // 格式: " M path" / "M  path" / "A  path" / "?? path" / "R  old -> new" 等
+    const files = []
+    for (const line of statusOut.split('\n')) {
+      if (line.length < 3) continue
+      const status = line.slice(0, 2).trim()
+      const rest = line.slice(3)
+      // rename 是 "old -> new"，只显示新名
+      const arrowIdx = rest.indexOf(' -> ')
+      const path = arrowIdx >= 0 ? rest.slice(arrowIdx + 4) : rest
+      files.push({ status: status || '?', path })
+    }
+    const lastCommitRaw = gitSync(['log', '-1', '--format=%H|%s|%aI'], repoPath)
     let lastCommit = null
     if (lastCommitRaw) {
       const t = lastCommitRaw.trim()
@@ -600,12 +613,34 @@ export function apply(ctx) {
       }
     }
     return {
-      ok: true,
-      cwd,
-      branch: branch ? branch.trim() : null,
+      path: repoPath,
+      name: basename(repoPath),
+      branch: branch.trim() || null,
+      files,
       filesChanged: files.length,
       lastCommit,
     }
+  }
+
+  /** 扫所有 scanRoots 下的 git 仓库，返回有改动的那些（不 add）。 */
+  async function listChangedRepos() {
+    const cfg = await loadConfig()
+    const repoPaths = []
+    for (const root of cfg.scanRoots) {
+      if (!isDirectory(root)) continue
+      try {
+        const found = scanRoot(root)
+        for (const p of found) repoPaths.push(p)
+      } catch (_) { /* ignore single root failure */ }
+    }
+    const results = []
+    for (const p of repoPaths) {
+      try {
+        const state = readRepoCommitState(p)
+        if (state && state.filesChanged > 0) results.push(state)
+      } catch (_) { /* skip unreadable repo */ }
+    }
+    return results
   }
 
   ctx.webServer.register({
@@ -660,12 +695,9 @@ export function apply(ctx) {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return
         }
-        const cwd = DEFAULT_COMMIT_CWD
-        if (!existsSync(cwd)) {
-          json(res, 200, { ok: false, error: 'cwd-not-found', cwd })
-          return
-        }
-        json(res, 200, readCommitStatus(cwd))
+        // 扫所有 scanRoots 下的 git 仓库，返回有改动的列表
+        const repos = await listChangedRepos()
+        json(res, 200, { ok: true, repos })
       } catch (e) {
         console.error('[dsh-git-hub] /commit-status error:', e)
         json(res, 500, { ok: false, error: 'internal' })
