@@ -179,6 +179,36 @@ window.__ModuleLoader__.load({
       ".DGH_commitSubmit{font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:6px;padding:5px 12px;flex:none;transition:background .12s;}" +
       ".DGH_commitSubmit:hover:not(:disabled){background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_commitSubmit:disabled{background:var(--dsw-alias-bg-component-disabled);color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l1);cursor:not-allowed;}" +
+      // v0.3.0：merge / pull 工具区
+      ".DGH_mergeSection{flex:none;padding:0;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);}" +
+      ".DGH_mergeSectionEmpty{padding:10px 14px;font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:center;font-style:italic;}" +
+      ".DGH_mergeRepo{padding:10px 14px;border-top:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:6px;}" +
+      ".DGH_mergeRepo:first-child{border-top:none;}" +
+      ".DGH_mergeRepoName{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary);display:flex;align-items:center;gap:6px;}" +
+      ".DGH_mergeRepoPath{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--dsw-alias-label-tertiary);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}" +
+      ".DGH_mergeMeta{font-size:11px;color:var(--dsw-alias-label-secondary);display:flex;align-items:center;gap:6px;flex-wrap:wrap;}" +
+      ".DGH_mergeBranch{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);border-radius:4px;padding:1px 6px;}" +
+      ".DGH_mergeBadge{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-radius:999px;padding:1px 8px;font-weight:600;}" +
+      ".DGH_mergeBadge[data-kind=\"conflict\"]{background:rgba(220,38,38,.85);color:#fff;}" +
+      ".DGH_mergeBadge[data-kind=\"rebase\"]{background:rgba(234,88,12,.85);color:#fff;}" +
+      ".DGH_mergeBadge[data-kind=\"upstream\"]{background:rgba(99,102,241,.15);color:#4338ca;}" +
+      ".DGH_mergeConflictBanner{padding:6px 8px;background:rgba(220,38,38,.1);border:1px solid rgba(220,38,38,.4);border-radius:6px;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--dsw-alias-state-error-primary);}" +
+      ".DGH_mergeConflictTitle{display:flex;align-items:center;gap:6px;font-weight:600;}" +
+      ".DGH_mergeConflictList{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;padding-left:18px;list-style:disc;color:var(--dsw-alias-label-secondary);}" +
+      ".DGH_mergeConflictList li{margin:1px 0;}" +
+      ".DGH_mergeForm{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}" +
+      ".DGH_mergeSelect{flex:1;min-width:0;font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-sizing:border-box;}" +
+      ".DGH_mergeSelect:focus{outline:none;border-color:var(--dsw-alias-button-info-fill);}" +
+      ".DGH_mergeSelect:disabled{background:var(--dsw-alias-bg-component-disabled);color:var(--dsw-alias-label-tertiary);}" +
+      ".DGH_mergeBtn,.DGH_pullBtn,.DGH_abortBtn{font:inherit;font-size:12px;font-weight:600;cursor:pointer;border-radius:6px;padding:5px 10px;flex:none;transition:background .12s;}" +
+      ".DGH_mergeBtn{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);}" +
+      ".DGH_mergeBtn:hover:not(:disabled){background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
+      ".DGH_pullBtn{background:transparent;color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);}" +
+      ".DGH_pullBtn:hover:not(:disabled){background:var(--dsw-specific-sidebar-nav-item-hover);border-color:var(--dsw-alias-label-dimmed);}" +
+      ".DGH_abortBtn{background:rgba(220,38,38,.1);color:var(--dsw-alias-state-error-primary);border:1px solid rgba(220,38,38,.4);}" +
+      ".DGH_abortBtn:hover:not(:disabled){background:rgba(220,38,38,.18);border-color:rgba(220,38,38,.7);}" +
+      ".DGH_mergeBtn:disabled,.DGH_pullBtn:disabled,.DGH_abortBtn:disabled{opacity:.45;cursor:not-allowed;}" +
+      ".DGH_mergeHint{font-size:10.5px;color:var(--dsw-alias-label-tertiary);line-height:1.5;}" +
       // 配置面板
       ".DGH_config{border-bottom:1px solid var(--dsw-alias-border-l1);padding:10px 14px;display:flex;flex-direction:column;gap:8px;background:var(--dsw-alias-bg-layer-2);}" +
       ".DGH_configLabel{font-size:11px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.04em;}" +
@@ -333,6 +363,9 @@ window.__ModuleLoader__.load({
       this.lastPush = null;        // 最近推送状态
       this.commitRepos = [];       // v0.2.2：所有 scanRoots 下有改动的 git 仓库 [{ path, name, branch, files, filesChanged, lastCommit }]
       this.commitBusy = false;     // v0.2.2：commit 操作进行中（按钮 disabled + 文字改 "提交中…"）
+      this.mergeRepos = [];        // v0.3.0：可合并/拉取的仓库 [{ path, name, branches, current, upstream, mergeInProgress, rebaseInProgress }]
+      this.mergeBusy = null;       // v0.3.0：当前 merge/pull 操作的目标 repo path 或 null（按钮 disabled 用）
+      this.lastMergeResult = null; // v0.3.0：最近一次操作结果，{ repo, op, ok, status?, error?, conflicts? }
       this.listeners = new Set();
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
@@ -367,6 +400,9 @@ window.__ModuleLoader__.load({
         lastPush: this.lastPush,
         commitRepos: this.commitRepos,      // v0.2.2
         commitBusy: this.commitBusy,        // v0.2.2
+        mergeRepos: this.mergeRepos,        // v0.3.0
+        mergeBusy: this.mergeBusy,          // v0.3.0
+        lastMergeResult: this.lastMergeResult, // v0.3.0
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
         drawerOpen: this.drawerOpen,
@@ -380,6 +416,7 @@ window.__ModuleLoader__.load({
         this.refresh(false);
         this.pollPushStatus();
         this.loadCommitStatus(); // v0.2.2：刷新 commit 工具行的 branch + 改动数
+        this.loadMergeStatus(); // v0.3.0：刷新 merge/pull/abort 工具区
       } else {
         // 抽屉关闭：v0.2.1 智能轮询，停掉所有 push 轮询 timer
         this.stopPushPoll();
@@ -639,6 +676,161 @@ window.__ModuleLoader__.load({
         self.notify();
       });
     };
+
+    /* ===== v0.3.0 merge / pull / abort ===== */
+
+    /** 拉所有可合并/拉取的仓库（≥2 本地分支 / 有 upstream / 冲突中） */
+    Controller.prototype.loadMergeStatus = function () {
+      var self = this;
+      return apiFetch("/api/git-hub/repos/merge-status").then(function (data) {
+        if (data && data.ok) {
+          self.mergeRepos = Array.isArray(data.repos) ? data.repos : [];
+          self.notify();
+        }
+      }).catch(function (e) {
+        console.warn("[dsh-git-hub] loadMergeStatus failed:", e);
+      });
+    };
+
+    /**
+     * 把 <source> 分支 merge 进当前分支（source 默认 = 选中的非当前分支）。
+     * noFF = true → 强制 merge commit（不 fast-forward），保留分支痕迹
+     */
+    Controller.prototype.mergeRepo = function (repoPath, source, noFF) {
+      var self = this;
+      if (!repoPath || !source) {
+        showToast("内部错误：缺仓库路径或源分支", "error");
+        return Promise.resolve();
+      }
+      if (source === "__none__") {
+        showToast("请选择一个源分支", "error");
+        return Promise.resolve();
+      }
+      this.mergeBusy = repoPath;
+      this.lastMergeResult = null;
+      this.notify();
+      return apiFetch("/api/git-hub/repos/merge", {
+        method: "POST",
+        body: { path: repoPath, source: source, noFF: !!noFF },
+      }).then(function (data) {
+        if (!data || !data.ok) {
+          var errKey = data && data.error;
+          var hint;
+          if (errKey === "merge-in-progress") hint = data.hint || "已有未完成的合并";
+          else if (errKey === "dirty-worktree") hint = data.hint || "工作区有未提交改动";
+          else if (errKey === "invalid-source") hint = data.hint || "找不到分支";
+          else if (errKey === "conflict") hint = "合并冲突：" + (data.conflicts || []).join(", ") + "（点 abort 终止）";
+          else if (errKey === "merge-failed") hint = "merge 失败（看 stderr）";
+          else hint = "merge 失败：" + (errKey || "未知错误");
+          showToast(hint, "error");
+          if (data && data.stderr) console.warn("[dsh-git-hub] merge stderr:", data.stderr);
+          self.lastMergeResult = { repo: repoPath, op: "merge", ok: false, error: errKey, conflicts: data.conflicts || [], stderr: data.stderr };
+          return;
+        }
+        var repoName = repoPath.split(/[\\/]/).pop() || "?";
+        var msg;
+        if (data.status === "fast-forward") msg = repoName + " 已 fast-forward " + data.headBefore + " → " + data.headAfter;
+        else if (data.status === "merged") msg = repoName + " 已 merge（" + data.headAfter + "）";
+        else if (data.status === "already-up-to-date") msg = repoName + " 已是最新，无需 merge";
+        else msg = repoName + " merge 完成";
+        showToast(msg, "info");
+        self.lastMergeResult = { repo: repoPath, op: "merge", ok: true, status: data.status, headBefore: data.headBefore, headAfter: data.headAfter };
+      }).catch(function (e) {
+        showToast("merge 失败：" + (e && e.message ? e.message : e), "error");
+      }).then(function () {
+        self.mergeBusy = null;
+        // 重新拉 merge 状态（HEAD 变了 + 可能产生新分支）+ 仓库列表（branch / upstream）
+        return self.loadMergeStatus().then(function () { return self.refresh(true); });
+      }).then(function () {
+        self.notify();
+      });
+    };
+
+    /**
+     * 拉上游（git pull [--rebase]）。rebase=false → 默认 merge 模式；
+     * 冲突时不动合并状态，让用户决定 abort / 解决。
+     */
+    Controller.prototype.pullRepo = function (repoPath, rebase) {
+      var self = this;
+      if (!repoPath) {
+        showToast("内部错误：缺仓库路径", "error");
+        return Promise.resolve();
+      }
+      this.mergeBusy = repoPath;
+      this.lastMergeResult = null;
+      this.notify();
+      return apiFetch("/api/git-hub/repos/pull", {
+        method: "POST",
+        body: { path: repoPath, rebase: !!rebase },
+      }).then(function (data) {
+        if (!data || !data.ok) {
+          var errKey = data && data.error;
+          var hint;
+          if (errKey === "merge-in-progress") hint = data.hint || "已有未完成的合并";
+          else if (errKey === "rebase-in-progress") hint = data.hint || "已有未完成的变基";
+          else if (errKey === "dirty-worktree") hint = data.hint || "工作区有未提交改动";
+          else if (errKey === "no-upstream") hint = data.hint || "当前分支没有 upstream";
+          else if (errKey === "conflict") hint = (data.conflictType || "merge") + " 冲突：" + (data.conflicts || []).join(", ") + "（点 abort 终止）";
+          else if (errKey === "pull-failed") hint = "pull 失败（看 stderr）";
+          else hint = "pull 失败：" + (errKey || "未知错误");
+          showToast(hint, "error");
+          if (data && data.stderr) console.warn("[dsh-git-hub] pull stderr:", data.stderr);
+          self.lastMergeResult = { repo: repoPath, op: "pull", ok: false, error: errKey, conflicts: data.conflicts || [], stderr: data.stderr, conflictType: data.conflictType };
+          return;
+        }
+        var repoName = repoPath.split(/[\\/]/).pop() || "?";
+        var msg;
+        if (data.status === "already-up-to-date") msg = repoName + " 已是最新，无需 pull";
+        else if (data.status === "rebased") msg = repoName + " 已 rebase " + data.headBefore + " → " + data.headAfter;
+        else if (data.status === "merged") msg = repoName + " 已 pull " + data.headBefore + " → " + data.headAfter;
+        else msg = repoName + " pull 完成";
+        showToast(msg, "info");
+        self.lastMergeResult = { repo: repoPath, op: "pull", ok: true, status: data.status, headBefore: data.headBefore, headAfter: data.headAfter };
+      }).catch(function (e) {
+        showToast("pull 失败：" + (e && e.message ? e.message : e), "error");
+      }).then(function () {
+        self.mergeBusy = null;
+        return self.loadMergeStatus().then(function () { return self.refresh(true); });
+      }).then(function () {
+        self.notify();
+      });
+    };
+
+    /** Abort merge 或 rebase（取决于当前冲突态） */
+    Controller.prototype.abortMerge = function (repoPath) {
+      var self = this;
+      if (!repoPath) {
+        showToast("内部错误：缺仓库路径", "error");
+        return Promise.resolve();
+      }
+      this.mergeBusy = repoPath;
+      this.notify();
+      return apiFetch("/api/git-hub/repos/merge-abort", {
+        method: "POST",
+        body: { path: repoPath },
+      }).then(function (data) {
+        if (!data || !data.ok) {
+          var errKey = data && data.error;
+          var hint;
+          if (errKey === "nothing-to-abort") hint = data.hint || "当前没有进行中的合并/变基";
+          else if (errKey === "abort-failed") hint = "abort 失败（看 stderr）";
+          else hint = "abort 失败：" + (errKey || "未知错误");
+          showToast(hint, "error");
+          if (data && data.stderr) console.warn("[dsh-git-hub] abort stderr:", data.stderr);
+          return;
+        }
+        var repoName = repoPath.split(/[\\/]/).pop() || "?";
+        showToast(repoName + " 已 abort " + (data.aborted === "rebase" ? "rebase" : "merge"), "info");
+      }).catch(function (e) {
+        showToast("abort 失败：" + (e && e.message ? e.message : e), "error");
+      }).then(function () {
+        self.mergeBusy = null;
+        return self.loadMergeStatus().then(function () { return self.refresh(true); });
+      }).then(function () {
+        self.notify();
+      });
+    };
+
     /** 把仓库摘要发到当前会话（让 agent 调 mcp__github__） */
     Controller.prototype.sendRepoToSession = function (repo) {
       var self = this;
@@ -923,6 +1115,115 @@ window.__ModuleLoader__.load({
         }
       }
 
+      /**
+       * v0.3.0：渲染 merge / pull 工具区。每个可合并仓库一行：
+       *   - 仓库名 + path + current branch + 分支数 + upstream 徽章 + 冲突/变基徽章
+       *   - 冲突横幅（mergeInProgress / rebaseInProgress）：冲突文件列表 + abort 按钮
+       *   - 操作行：源分支下拉 + merge 按钮 + pull 按钮（upstream 存在时）+ rebase 按钮
+       *   - 忙态：mergeBusy === repo.path 时所有按钮 disabled
+       */
+      function renderMergeSection(row, controller) {
+        var snap = controller.getSnapshot();
+        var repos = Array.isArray(snap.mergeRepos) ? snap.mergeRepos : [];
+        var busyPath = snap.mergeBusy || null;
+        var lastResult = snap.lastMergeResult || null;
+
+        if (repos.length === 0) {
+          row.innerHTML = '<div class="DGH_mergeSectionEmpty">无可合并/拉取的仓库 ✓</div>';
+          return;
+        }
+
+        var html = "";
+        for (var i = 0; i < repos.length; i++) {
+          var r = repos[i];
+          var branches = Array.isArray(r.branches) ? r.branches : [];
+          var current = r.current || "(unknown)";
+          var inConflict = !!r.mergeInProgress;
+          var inRebase = !!r.rebaseInProgress;
+          var hasUpstream = !!r.upstream;
+          var otherBranches = branches.filter(function (b) { return !b.isCurrent; });
+          var repoBusy = busyPath === r.path;
+
+          html +=
+            '<div class="DGH_mergeRepo" data-repo-path="' + escapeHtml(r.path) + '">' +
+              '<div class="DGH_mergeRepoName">' +
+                escapeHtml(r.name) +
+                '<span class="DGH_mergeRepoPath" title="' + escapeHtml(r.path) + '">' + escapeHtml(r.path) + '</span>' +
+              '</div>' +
+              '<div class="DGH_mergeMeta">' +
+                '<span class="DGH_mergeBranch">' + escapeHtml(current) + '</span>' +
+                (branches.length > 1
+                  ? '<span class="DGH_mergeBadge">' + branches.length + ' 分支</span>'
+                  : '') +
+                (hasUpstream
+                  ? '<span class="DGH_mergeBadge" data-kind="upstream" title="upstream = ' + escapeHtml(r.upstream) + '">↑ ' + escapeHtml(r.upstream) + '</span>'
+                  : '') +
+                (inConflict
+                  ? '<span class="DGH_mergeBadge" data-kind="conflict">⚠ 合并冲突</span>'
+                  : '') +
+                (inRebase
+                  ? '<span class="DGH_mergeBadge" data-kind="rebase">⚠ 变基冲突</span>'
+                  : '') +
+              '</div>' +
+              (function () {
+                // 冲突横幅：展示冲突文件列表 + abort 按钮
+                if (!inConflict && !inRebase) return "";
+                var kind = inRebase ? "rebase" : "merge";
+                var list = (lastResult && lastResult.repo === r.path && Array.isArray(lastResult.conflicts) && lastResult.conflicts.length > 0)
+                  ? lastResult.conflicts
+                  : [];
+                var listHtml = list.length > 0
+                  ? '<ul class="DGH_mergeConflictList">' + list.map(function (f) { return '<li>' + escapeHtml(f) + '</li>'; }).join("") + '</ul>'
+                  : '<div class="DGH_mergeHint">解决冲突后再 commit；或点右侧 abort 终止</div>';
+                return '<div class="DGH_mergeConflictBanner">' +
+                  '<div class="DGH_mergeConflictTitle">' +
+                    '<span>⚠</span><span>' + (inRebase ? '变基冲突未解决' : '合并冲突未解决') + '（在 ' + escapeHtml(current) + ' 上）</span>' +
+                  '</div>' +
+                  listHtml +
+                '</div>';
+              })() +
+              (inConflict || inRebase
+                ? '<div class="DGH_mergeForm">' +
+                    '<button class="DGH_abortBtn" data-action="abort" ' + (repoBusy ? "disabled" : "") + '>✕ abort</button>' +
+                  '</div>'
+                : '<div class="DGH_mergeForm">' +
+                    (otherBranches.length > 0
+                      ? '<select class="DGH_mergeSelect" data-role="source" ' + (repoBusy ? "disabled" : "") + '>' +
+                          otherBranches.map(function (b) { return '<option value="' + escapeHtml(b.name) + '">' + escapeHtml(b.name) + '</option>'; }).join("") +
+                        '</select>' +
+                        '<button class="DGH_mergeBtn" data-action="merge" ' + (repoBusy ? "disabled" : "") + '>→ merge</button>'
+                      : '<span class="DGH_mergeHint">没有其他本地分支可 merge</span>') +
+                    (hasUpstream
+                      ? '<button class="DGH_pullBtn" data-action="pull" ' + (repoBusy ? "disabled" : "") + ' title="git pull（merge 模式）">↑ pull</button>' +
+                        '<button class="DGH_pullBtn" data-action="pull-rebase" ' + (repoBusy ? "disabled" : "") + ' title="git pull --rebase">⤴ rebase</button>'
+                      : '') +
+                  '</div>') +
+              '<div class="DGH_mergeHint">操作前需工作区干净；冲突会保留状态，可 abort 或解决后 commit</div>' +
+            '</div>';
+        }
+        row.innerHTML = html;
+
+        // 挂事件：每行内 buttons / select
+        var repoRows = row.querySelectorAll(".DGH_mergeRepo");
+        for (var k = 0; k < repoRows.length; k++) {
+          (function (repoEl) {
+            var repoPath = repoEl.getAttribute("data-repo-path");
+            var abortBtn = repoEl.querySelector('[data-action="abort"]');
+            var mergeBtn = repoEl.querySelector('[data-action="merge"]');
+            var pullBtn = repoEl.querySelector('[data-action="pull"]');
+            var rebaseBtn = repoEl.querySelector('[data-action="pull-rebase"]');
+            var select = repoEl.querySelector('[data-role="source"]');
+            if (abortBtn) abortBtn.addEventListener("click", function () { controller.abortMerge(repoPath); });
+            if (mergeBtn) mergeBtn.addEventListener("click", function () {
+              var src = select ? select.value : "__none__";
+              controller.mergeRepo(repoPath, src, false);
+            });
+            if (pullBtn) pullBtn.addEventListener("click", function () { controller.pullRepo(repoPath, false); });
+            if (rebaseBtn) rebaseBtn.addEventListener("click", function () { controller.pullRepo(repoPath, true); });
+          })(repoRows[k]);
+        }
+      }
+
       function renderBody() {
         var snap = controller.getSnapshot();
 
@@ -934,6 +1235,20 @@ window.__ModuleLoader__.load({
           bodyEl.insertBefore(existingCommit, bodyEl.firstChild);
         }
         renderCommitSection(existingCommit, controller);
+
+        // v0.3.0：merge / pull 工具区（紧贴 commit 区下）
+        var existingMerge = bodyEl.querySelector(".DGH_mergeSection");
+        if (!existingMerge) {
+          existingMerge = document.createElement("div");
+          existingMerge.className = "DGH_mergeSection";
+          // 插到 commit 区之后（commit 区在第一个位置）
+          if (existingCommit.nextSibling) {
+            bodyEl.insertBefore(existingMerge, existingCommit.nextSibling);
+          } else {
+            bodyEl.appendChild(existingMerge);
+          }
+        }
+        renderMergeSection(existingMerge, controller);
 
         // 配置面板（按需插到 body 顶部）
         var existingCfg = bodyEl.querySelector(".DGH_config");
