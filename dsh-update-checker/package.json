@@ -2,8 +2,25 @@
   "name": "dsh-update-checker",
   "version": "0.1.1",
   "author": "MeganeOnly",
-  "description": "检查 DeepSeek Harness 本体（@deepseek-ai/dsh）在 npm 上是否有新版本，并提供一键升级（npm install -g @deepseek-ai/dsh@latest），升级后提示重启生效。作者：MeganeOnly。",
-  "private": true,
+  "description": "检查 DeepSeek Harness 本体（@deepseek-ai/dsh）在 npm 上是否有新版本，并提供一键升级（npm install -g @deepseek-ai/dsh@latest），升级后提示重启生效。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins.git",
+    "directory": "dsh-update-checker"
+  },
+  "bugs": {
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/issues"
+  },
+  "homepage": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/tree/main/dsh-update-checker#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "update-checker",
+    "semver",
+    "npm",
+    "version"
+  ],
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -12,6 +29,14 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

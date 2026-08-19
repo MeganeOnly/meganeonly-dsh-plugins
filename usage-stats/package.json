@@ -2,8 +2,25 @@
   "name": "dsh-usage-stats",
   "version": "0.1.1",
   "author": "MeganeOnly",
-  "description": "使用统计：跨会话汇总 token 用量（输入/输出/缓存/推理，模型侧精确值）、按日趋势、按模型分解、会话与工具排行。数据直接解码 ~/.dsh/sessions 的会话日志，增量缓存，设置页查看。作者：MeganeOnly。",
-  "private": true,
+  "description": "使用统计：跨会话汇总 token 用量（输入/输出/缓存/推理，模型侧精确值）、按日趋势、按模型分解、会话与工具排行。数据直接解码 ~/.dsh/sessions 的会话日志，增量缓存，设置页查看。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins.git",
+    "directory": "usage-stats"
+  },
+  "bugs": {
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/issues"
+  },
+  "homepage": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/tree/main/usage-stats#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "usage-statistics",
+    "token-usage",
+    "analytics",
+    "dashboard"
+  ],
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -12,6 +29,14 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
