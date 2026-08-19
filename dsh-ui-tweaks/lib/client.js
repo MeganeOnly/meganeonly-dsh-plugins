@@ -211,7 +211,10 @@ window.__ModuleLoader__.load({
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
             "/* === simple-mode : status row === */\n" +
-            ".dsh-ui-tweaks-status{display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:18px;margin-left:10px;vertical-align:middle;flex:none}";
+            // visibility:visible 防御:万一 DSH 渲染时把 [class*=\"turnStatus\"] 包在某个
+            // 被 simple-mode CSS 隐藏的元素(如 [data-chat-flow-kind=\"tool-call\"])里,
+            // 父元素 display:none 会让状态行跟着看不见。visibility 兜底保证可见。
+            ".dsh-ui-tweaks-status{display:inline-flex !important;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:18px;margin-left:10px;vertical-align:middle;flex:none;visibility:visible !important}";
         }
       },
       {
@@ -937,6 +940,10 @@ window.__ModuleLoader__.load({
       var turnObserver = null;
       var intervalId = null;
       var lastTurnStatus = null;
+      // 暴露给 apply() 读取的运行状态——避免外部另起 `_running` 标志导致状态
+      // 不一致（apply() 的 onStateChange 用 simpleController.running 读判断，
+      // 与 createTrajectoryTabHider 的 `get running()` 风格对齐）。
+      var isRunning = false;
 
       function ensureStatusSpan() {
         if (typeof document === "undefined") return null;
@@ -952,7 +959,11 @@ window.__ModuleLoader__.load({
       function findTurnStatus() {
         if (typeof document === "undefined") return null;
         var nodes = document.querySelectorAll(SIMPLE_TURN_STATUS_SEL);
-        for (var i = 0; i < nodes.length; i++) {
+        // 倒序遍历——文档顺序里最新 turn 在最后。当前正在运行的 turn 的 status
+        // 元素会一直被 DSH 重渲保持在 DOM 末尾；历史已结束 turn 的 status 元素
+        // 同样含 turnStatus 类但排在前。取最后一个可以确保状态行只注入当前 turn,
+        // 滚动到上方看历史对话时不会被错误地注入到旧 turn 上。
+        for (var i = nodes.length - 1; i >= 0; i--) {
           var el = nodes[i];
           if (el.querySelector("#" + SIMPLE_STATUS_ID) !== null) continue;
           return el;
@@ -1005,6 +1016,7 @@ window.__ModuleLoader__.load({
       function start() {
         if (typeof window === "undefined") return;
         if (intervalId !== null) return;
+        isRunning = true;
         intervalId = window.setInterval(tick, SIMPLE_POLL_MS);
         tick();
       }
@@ -1014,8 +1026,13 @@ window.__ModuleLoader__.load({
         detach();
         current = null;
         lastTurnStatus = null;
+        isRunning = false;
       }
-      return { start: start, stop: stop };
+      return {
+        start: start,
+        stop: stop,
+        get running() { return isRunning; }
+      };
     }
 
     // ====================================================================
@@ -1560,14 +1577,12 @@ window.__ModuleLoader__.load({
         if (!isFinite(newPx) || newPx < 0) newPx = 380;
         applyDebugMode(!!detail.conversationShiftDebug, !!detail.conversationShift, newPx);
         if (detail.simpleModeEnabled) {
-          if (!simpleController._running) {
+          if (!simpleController.running) {
             simpleController.start();
-            simpleController._running = true;
           }
         } else {
-          if (simpleController._running) {
+          if (simpleController.running) {
             simpleController.stop();
-            simpleController._running = false;
           }
         }
         if (detail.hideTrajectoryTab) {
