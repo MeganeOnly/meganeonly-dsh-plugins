@@ -904,6 +904,17 @@ window.__ModuleLoader__.load({
       if (name === "edit" || name === "write") return "正在修改文件…";
       if (name === "grep" || name === "glob") return "正在查找…";
       if (name === "bash" || name === "pwsh" || name === "run_code") return "正在执行命令…";
+      // 子 agent / 任务调度——不细分工具名（task / subagent / agent），统一文案即可
+      if (name === "task" || name === "subagent" || name === "agent") return "正在调度子任务…";
+      // 待办 / 计划类（todo / plan / update_plan）——内部细节差异不影响用户视角
+      if (name === "todo" || name === "plan" || name === "update_plan") return "正在整理计划…";
+      // 代码智能查询——LSP 类工具用户能识别即可
+      if (name === "lsp" || name === "intellisense") return "正在查询代码…";
+      // goal / objective 类工具（DSH 目标/任务跟踪）
+      if (name === "goal" || name === "objective") return "正在处理目标…";
+      // git / commit / push ——代码版本控制
+      if (name === "commit" || name === "git") return "正在提交代码…";
+      if (name === "push") return "正在推送…";
       return "正在处理…";
     }
 
