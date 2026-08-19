@@ -4,6 +4,27 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+- **合并工具区**：抽屉内 commit 区下方新增「🔀 合并」区，每可合并仓库一行：本地分支下拉 → merge 进当前分支 / 拉上游（`git pull` 或 `git pull --rebase`）/ 检测 `.git/MERGE_HEAD` 与 rebase-merge 给出冲突文件列表 + ✕ abort 按钮。仅对「≥2 本地分支 / 有 upstream / 处于合并/变基冲突中」的仓库展示，其他仓库零噪声。
+  - 冲突态判定走文件系统（`.git/MERGE_HEAD` / `rebase-merge` / `rebase-apply`），比解析 `status` 输出更可靠，覆盖 merge / rebase / pull --rebase 全部入口。
+  - dirty 工作区硬阻断：避免 merge 失败 + 工作区污染难回滚。
+  - 冲突不主动 abort → 保留状态给用户决定"解决后 commit"或"abort"。
+  - `parseConflictFiles` 处理 Windows stdout 输出（`CONFLICT` 行常写到 stdout 而非 stderr）+ rename `old -> new` / 引号包裹路径 / 去重。
+- **手动 commit 工具多仓库**：抽屉顶部 commit 区遍历 scanRoots 下所有有改动的仓库，每行一个仓库 + 输入框 + 提交按钮；繁忙期间所有提交按钮 disabled。
+
+### Host 路由
+
+新增 4 个路由（`lib/index.js`）：
+
+- `GET /api/git-hub/repos/branches?path=...`：列本地分支 + 冲突态
+- `POST /api/git-hub/repos/merge`：调 `git merge [--no-ff] <source>`
+- `POST /api/git-hub/repos/pull`：调 `git pull [--rebase]`
+- `POST /api/git-hub/repos/merge-abort`：调 `git merge --abort` / `rebase --abort`
+- `GET /api/git-hub/repos/merge-status`：扫所有可合并仓库（批量渲染用）
+
 ## [0.2.1] - 2026-08-19
 
 作为独立 npm 包发布的初始版本，包含以下已有功能。
