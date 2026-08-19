@@ -423,9 +423,9 @@
         var currentHidden = Array.from(controller.hiddenPaths || []);
         panelEl.innerHTML =
           '<div class="DGH_configLabel">扫描根路径（每行一个）</div>' +
-          '<textarea class="DGH_configTextarea" data-role="roots" spellcheck="false" placeholder="例如：&#10;F:\\AllWorkSpace&#10;E:\\">' + escapeHtml(current.join("\n")) + '</textarea>' +
+          '<textarea class="DGH_configTextarea" data-role="roots" spellcheck="false" placeholder="例如：&#10;C:\\your-workspace&#10;D:\\secondary">' + escapeHtml(current.join("\n")) + '</textarea>' +
           '<div class="DGH_configLabel" style="margin-top:10px">已隐藏仓库（每行一个绝对路径，不在列表显示）</div>' +
-          '<textarea class="DGH_configTextarea" data-role="hidden" spellcheck="false" placeholder="例如：&#10;F:\\AllWorkSpace\\.dsh-plugins.archive&#10;E:\\dsh-skills">' + escapeHtml(currentHidden.join("\n")) + '</textarea>' +
+          '<textarea class="DGH_configTextarea" data-role="hidden" spellcheck="false" placeholder="例如：&#10;C:\\your-workspace\\.archive&#10;D:\\your-secondary">' + escapeHtml(currentHidden.join("\n")) + '</textarea>' +
           '<div class="DGH_configFooter">' +
             '<span class="DGH_configHint">保存后自动重新扫描</span>' +
             '<button class="DGH_saveBtn" data-action="save">保存</button>' +

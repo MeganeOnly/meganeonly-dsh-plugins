@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **commit 工具区可见性开关**：抽屉 header 在 refresh 按钮旁新增 git-commit-style toggle（左右两圆点 + 直线的小图标）。点击 = 切换「抽屉顶部 commit 区是否显示」，状态持久化到 `localStorage`（沿用既有 schema 演进不升 key 的约定，新字段 `commitSectionVisible: boolean`，缺字段默认 `false`，隐式迁移 v2 → v3）。
+  - 默认隐藏：贴合「commit 工具区在抽屉里几乎是噪声，多数情况下日常 commit 走 daily-push 一条龙就够了」的实际使用方式——首次升级后 commit 区不再自动出现在抽屉顶部，要手动 commit 时再点开。
+  - 实现要点：受控渲染——`renderBody` 在开关关闭时彻底从 DOM 移除 `.DGH_commitSection` 节点（不留空容器 + 跳过 `renderCommitSection` 调用，省一次 `loadCommitStatus` 入口触发的网络请求）。merge 区在 commit 区关闭时直接挂在 body 顶部，仓库列表布局不变。
+  - toggle 按钮视觉态：`data-active="true"` 填色（同 select-toggle 语义）；`data-active="false"` 淡灰（明确传达「这是关闭态」）。
+
 ### 维护
 
 - **client bundle 模块化拆分**：将原 `lib/client.js`（88 KB / 1586 行单文件 bundle）按职责拆成 `lib/client-src/` 下 14 个源文件（constants / utils / summary / toast / styles / storage / controller / fab / drawer / view / apply / ...）。新增 `lib/build-client.cjs` 构建脚本将源文件按文件名升序拼接回 `lib/client.js`；DSH 加载契约（`__ModuleLoader__.load` 单文件）保持不变。

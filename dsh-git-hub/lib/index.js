@@ -53,8 +53,9 @@ const CONFIG_FILENAME = '.git-hub-config.json'
 
 const DEFAULT_SCAN_ROOTS = ['F:\\AllWorkSpace', 'E:\\']
 const DEFAULT_PUSH_TOOL = 'F:\\AllWorkSpace\\tools\\daily-push.cjs'
-// 手动 commit 按钮操作的源仓库（dsh-plugins monorepo 工作区）
-const DEFAULT_COMMIT_CWD = 'E:\\dsh-plugins'
+// 手动 commit 按钮操作的源仓库（dsh-plugins monorepo 工作区）；
+// 通过环境变量 DSH_GIT_HUB_COMMIT_CWD 配置；未设置时占位（client 通常会传 cwd，fallback 几乎走不到）
+const DEFAULT_COMMIT_CWD = process.env.DSH_GIT_HUB_COMMIT_CWD || '<set DSH_GIT_HUB_COMMIT_CWD env var>'
 
 const SCAN_CACHE_TTL_MS = 5_000
 const GIT_CMD_TIMEOUT_MS = 5_000

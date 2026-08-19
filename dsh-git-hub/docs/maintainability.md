@@ -1,6 +1,6 @@
 # dsh-git-hub 拆分清单
 
-本插件的 client bundle 在 `lib/client.js` 已拆分为 `lib/client-src/` 多文件结构。通用规范（marker 约定、ES5 编码风格、构建脚本格式、字节验证、阈值）写在 [`E:\dsh-plugins\docs\maintainability.md`](../../docs/maintainability.md)——**那是本仓库所有 DSH 插件共用的规范**。
+本插件的 client bundle 在 `lib/client.js` 已拆分为 `lib/client-src/` 多文件结构。通用规范（marker 约定、ES5 编码风格、构建脚本格式、字节验证、阈值）写在 [`../../docs/maintainability.md`](../../docs/maintainability.md)——**那是本仓库所有 DSH 插件共用的规范**。
 
 本文件只列**本插件**的具体 section 拆分。
 
@@ -32,7 +32,7 @@ dsh-git-hub 的 `lib/client-src/` 现行结构（v0.3.0 拆解 + preflight marke
 
 ## 三、相关
 
-- 通用规范：[`E:\dsh-plugins\docs\maintainability.md`](../../docs/maintainability.md)
+- 通用规范：[`../../docs/maintainability.md`](../../docs/maintainability.md)
 - 构建脚本：`lib/build-client.cjs`
 - 字节校验：`lib/verify-client.cjs`
-- DSH 插件作者 skill：`F:\.dsh\skills\dsh-persistent-plugin-authoring\SKILL.md`
+- DSH 插件作者 skill：`dsh-persistent-plugin-authoring`（DSH skill 目录下）

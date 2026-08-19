@@ -204,7 +204,7 @@
     /**
      * 全部推送：v0.1.7 重写为"循环调 pushRepo 跳过 hidden"
      *  - 原因：host half 的 /api/git-hub/push-all 是调 daily-push.cjs --all，
-     *    会扫描 F:\AllWorkSpace + E:\ 所有本地 .git 仓库（包括 hidden）；
+     *    会扫描本机多盘所有 .git 仓库（包括 hidden）；
      *    但 hidden 用户语义是"几乎等于不要碰"，不能被 daily-push 扫到推送
      *  - 实现：client 端过滤 hidden，只对 visible repos 逐个 spawn daily-push.cjs --repo
      *  - 状态条：依次启动，pollPushStatus 显示"全部推送运行中 X 个"
