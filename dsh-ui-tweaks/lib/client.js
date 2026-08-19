@@ -1,6 +1,20 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.7.4：hide-sidebar-tooltip 四次修复——v0.7.3 修了"闪一下"但留下"窄黑框"。
+ *   根因：DSH Tooltip 组件是 `<span role="tooltip">` 没背景，纯文字；但 HoverCard
+ *   组件的 **card div**（`createPortal(card, document.body)` 的产物）有独立 CSS 类
+ *   `_card_<hash>_<line>`（当前 hash = `1b2ny`），CSS 内容是
+ *     `position:fixed; z-index:100; width:244px; padding:12px 16px;
+ *      border-radius:12px; background:#2C2C2E; box-shadow:lv3`。
+ *   所以 v0.7.3 用 `[class*="_hoverContent"]` 隐藏**内容**后，card div 本身
+ *   仍可见——背景色 #2C2C2E + box-shadow 就是用户看到的"窄黑框"。
+ *
+ *   修法：CSS 用 `:has()` 找"含 _hoverContent 后代的 body 直接子 div"——那就是
+ *   card div 本身。`:has()` 在 Chromium 105+ 可用（DSH 是 Electron = Chromium），
+ *   不依赖 hash。同时把 card class 也加进 CSS 选择器列表（用更具体的
+ *   `_card_<hovercard 模块特征>` 模式）做双保险。
+ *
  * v0.7.3：hide-sidebar-tooltip 的 HoverCard 部分三次修复——v0.7.1 的 JS
  *   observer 还是能看到"闪一下然后消失"。原因：HoverCard portal div mount
  *   到浏览器 paint 之间有至少一帧延迟；JS observer 即使去掉 80ms throttle
@@ -13,16 +27,6 @@
  *   视觉上看不到"闪一下"。JS observer（v0.7.1 加的 data-dsh-ui-tweaks-hidden-hover-card
  *   标记）保留作 DSH 升级 hash 变了后的兜底（DSH 升级后 CSS selector 失效，
  *   JS observer 接管——可能闪 80ms，但不至于完全漏网）。
- *
- * v0.7.2：新增 hide-chat-tab——对话顶部"对话"标签隐藏。和 v0.7.0 的
- *   hide-trajectory-tab 配套，两个 tab 按钮都关掉后 tablist 整体视觉消失
- *   （DSH `tabs.length > 1` 才渲染 tablist——但 DSH 实际仍注册 2 个 view entry，
- *   所以 tablist DOM 还在，只是两个按钮都被 display:none）。
- *   实现：把 v0.7.0 的 createTrajectoryTabHider 重构为通用 createTabHider(opts)
- *   工厂——`{ targetLabels, hiddenValue, safeLabels }`。两个 hider 都用：
- *     - hide-trajectory-tab：target="轨迹", safe="对话"（默认 view）
- *     - hide-chat-tab：      target="对话", safe="对话"（默认 view）
- *   safe 都是"对话"——避免两个 tab 按钮都关掉后用户卡在轨迹视图出不来。
  *
  * v0.7.1：hide-sidebar-tooltip 二次修复——v0.6.1 把 selector 改成
  *   `[role="tooltip"]`，DSH 自己的 Tooltip 组件（`<span role="tooltip">`）确实
@@ -124,7 +128,7 @@ window.__ModuleLoader__.load({
 
     var inject = ["slots"];
 
-    var VERSION = "0.7.3";
+    var VERSION = "0.7.4";
     var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
     var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
     var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -233,6 +237,15 @@ window.__ModuleLoader__.load({
         //   display:none!important。CSS 在 mount 时立即生效，根本不画——
         //   视觉上看不到"闪一下"。JS observer 保留作 DSH 升级 hash 变了后
         //   的兜底。
+        // v0.7.4 v0.7.3 还有"窄黑框"——因为 HoverCard card div（不是内容）有
+        //   自己的 CSS 类 `_card_<hash>_<line>`（当前 hash=1b2ny），CSS 内容是
+        //     `position:fixed; z-index:100; width:244px; padding:12px 16px;
+        //      border-radius:12px; background:#2C2C2E; box-shadow:lv3`。
+        //   隐藏了 _hoverContent 内容，但 card div 本身（背景色 #2C2C2E）还在。
+        //   修法：用 CSS `:has()` 找"含 _hoverContent 后代的 body 直接子 div"
+        //   ——就是 card div。`:has()` 在 Chromium 105+ 可用（DSH Electron）。
+        //   同时用更具体的 card class 模式（`_card_<hovercard module hash>`）
+        //   做双保险。CSS 在 mount 时立即生效——彻底消除"闪"+"窄框"。
         id: "hide-sidebar-tooltip",
         name: "隐藏侧栏悬浮提示",
         description: "鼠标悬停在左侧栏会话项 / 工作窗口时弹出的深色卡片——展示会话全名 + 相对时间 + 状态（开发者用的 HoverCard），以及按钮上的简短 Tooltip 浮层。开启后全部关掉，根本用不上。",
@@ -240,22 +253,29 @@ window.__ModuleLoader__.load({
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.hideSidebarTooltip) return null;
-          return "/* === hide-sidebar-tooltip v0.7.3 : DSH Tooltip + HoverCard — 三层 selector === */\n" +
+          return "/* === hide-sidebar-tooltip v0.7.4 : DSH Tooltip + HoverCard (含 card div 本体) — 四层 selector === */\n" +
             // L1: DSH Tooltip 组件（@deepseek-ai/dsh-client-ui-primitives 的 Tooltip.js）
             //     渲染 <span role=\"tooltip\"> 作为锚点的兄弟节点 inline 渲染——
             //     不 portal 到 body；className 是 undefined（CSS module stub 是空对象）。
             //     全 app 里 role=\"tooltip\" 只在 Tooltip 组件里出现——全局干掉无副作用。
             "[role=\"tooltip\"]{display:none!important}\n" +
-            // L2: HoverCard 内容 CSS module hash 类（DSH workspace 包，当前 hash 是 YDXeBa_）。
+            // L2: HoverCard **内容** CSS module hash 类（DSH workspace 包，当前 hash 是 YDXeBa_）。
+            //     隐藏 SessionHoverContent / WorkspaceHoverContent 内部元素——
+            //     标题、时间、状态、路径。
             //     这是**主防线**——CSS 在 mount 时立即生效，根本不画。
-            //     5 个 hash 类（_hoverContent / _hoverTitle / _hoverTime / _hoverStatus /
-            //     _hoverPath）任意命中即隐藏。DSH 升级后 hash 变了改这里一处即可
-            //     （同时 HOVER_CARD_CLASS_HINTS 数组也要同步——JS observer 兜底用）。
             "[class*=\"_hoverContent\"],[class*=\"_hoverTitle\"],[class*=\"_hoverTime\"],[class*=\"_hoverStatus\"],[class*=\"_hoverPath\"]{display:none!important}\n" +
-            // L3: HoverCard 兜底——JS observer（v0.7.1 加的 createSidebarHoverCardHider）
+            // L3: HoverCard **card div 本身**——v0.7.4 新增。card div 有自己的 CSS 类
+            //     `_card_<hash>_<line>`，CSS 给它 `background:#2C2C2E; box-shadow:lv3`——
+            //     即使隐藏了内容（v0.7.3），card 背景框仍在——就是用户看到的"窄黑框"。
+            //     用 `:has(> [class*=_hoverContent])` 找"含 hoverContent 直接子元素
+            //     的 body > div"——这是 card div（content 是它的直接子元素）。
+            //     `:has()` 在 Chromium 105+ 可用，DSH Electron 是现代 Chromium。
+            //     这条不依赖 hash——彻底解决"窄框"问题。
+            "body > div:has(> [class*=\"_hoverContent\"]){display:none!important}\n" +
+            // L4: 兜底——JS observer（v0.7.1 加的 createSidebarHoverCardHider）
             //     给 portal 出来的 body > div 打 data-dsh-ui-tweaks-hidden-hover-card
-            //     标记。L2 失效时（DSH 升级 hash 变了）L3 接管——可能闪 80ms+
-            //     （observer throttle），但不会完全漏。
+            //     标记。L2/L3 失效时（DSH 升级 hash 变了 或 :has() 不支持）L4 接管——
+            //     可能闪 80ms+（observer throttle），但不会完全漏。
             "[data-dsh-ui-tweaks-hidden-hover-card]{display:none!important}";
         }
       },
