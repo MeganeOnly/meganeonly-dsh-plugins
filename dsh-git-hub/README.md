@@ -74,3 +74,8 @@ pnpm install --no-frozen-lockfile
 ## 许可证
 
 [MIT](./LICENSE)
+
+## 开发
+
+- 浏览器 half 的源码按职责拆分为 `lib/client-src/*.js`（见 `docs/maintainability.md`），构建脚本 `lib/build-client.cjs` 将其按序拼接回 `lib/client.js`。编辑源后跑 `npm run build:client` 同时提交 `client.js`，DSH 加载契约不变。
+- 宿主 half 改动后**需重启 DSH**；浏览器 half 改动**只需刷新页面**（`dsh-client-modules` 路由读文件时 `cache-control: no-cache`，无需复制到 `node_modules` 副本）。

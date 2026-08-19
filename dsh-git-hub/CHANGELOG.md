@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### 维护
+
+- **client bundle 模块化拆分**：将原 `lib/client.js`（88 KB / 1586 行单文件 bundle）按职责拆成 `lib/client-src/` 下 14 个源文件（constants / utils / summary / toast / styles / storage / controller / fab / drawer / view / apply / ...）。新增 `lib/build-client.cjs` 构建脚本将源文件按文件名升序拼接回 `lib/client.js`；DSH 加载契约（`__ModuleLoader__.load` 单文件）保持不变。
+  - 拆分原则：每个 section 一个文件，文件名用两位前缀控制拼接顺序（`00-banner.js` / `10-loader-open.js` / `20-constants.js` / ... / `Z9-loader-close.js`）。`Z0-` / `Z9-` 前缀保证最后加载的"scaffolding"始终排在所有 section 之后，无需按 commit 依次 rename。
+  - 字节级一致性保证：每一拆 step 用 `git diff` 验证过 `lib/client.js` 输出与 HEAD 完全一致（同字节数 90030，无任何差异），下游 DSH 加载行为零变化。
+  - 维护流程：编辑 `lib/client-src/*.js` → 跑 `npm run build:client` → 同时提交源与生成的 `client.js`（部署走 `file:` 依赖，详见 `docs/maintainability.md`）。
+- 在 `package.json` 中新增 `npm run build:client` 入口。
+
 ### 新增
 
 - **合并工具区**：抽屉内 commit 区下方新增「🔀 合并」区，每可合并仓库一行：本地分支下拉 → merge 进当前分支 / 拉上游（`git pull` 或 `git pull --rebase`）/ 检测 `.git/MERGE_HEAD` 与 rebase-merge 给出冲突文件列表 + ✕ abort 按钮。仅对「≥2 本地分支 / 有 upstream / 处于合并/变基冲突中」的仓库展示，其他仓库零噪声。
