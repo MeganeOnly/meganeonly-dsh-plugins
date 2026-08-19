@@ -79,6 +79,90 @@ var X = ...;                  // 首行变量
 
 **结果一致性**：所有 section 文件首行 100% 同形，未来按 marker 定位 boundary 的提取/合并逻辑无需为特例再写代码。
 
+## 三三、client-src 编码风格（硬约束）
+
+编辑 `lib/client-src/*.js` 时**必须遵守**：这些 source 被原样拼进 bundle，AI 维护时不需要重新理解风格；改了不一致的风格，diff review 与 AI 重构（"把 var 改成 const"这种 whole-file 改造）会变得困难且无收益。
+
+**语言级别**：ES5 语法，无 ES2015+ 特性。
+
+| 允许 | 不允许（哪怕能跑） |
+| --- | --- |
+| `var X = ...` | `const X` / `let X` |
+| `function NAME(...) { ... }` 函数声明 | `var NAME = (...) => ...` / `const NAME = function() {}` 之外的行内赋值 |
+| `function NAME(...) { ... }` + `NAME.prototype.method = function() {...}` | `class NAME { method() { ... } }` |
+| 字符串双引号 `"..."` | 模板字符串 `` `...` `` / 单引号 `'...'`（除 `'__none__'` 这类约定常量外） |
+| `===` / `!==` | `==` / `!=`（允许 B0-view.js 现有的 `s == null` 这种 legacy 写法渐迁，但不引入新用法） |
+| `.then(function() {...})` | `async function` / `await` |
+| `for` / `while` 经典循环 | `for (const x of arr)` / `.forEach(function() {...})`（允许 callback 形式） |
+
+**唯一允许箭头函数的位置**：`10-loader-open.js` 的 `factory: (require) => { ... }` —— 这是 `window.__ModuleLoader__.load` 的 spec 强制的。其他文件里的内部函数全部使用 `function` 声明。
+
+**模块 / 类结构模式**（本项目仅有的"类"）：
+
+```js
+function ModuleName(arg1, deps) {
+  this.field = ...;
+}
+ModuleName.prototype.methodName = function (arg) {
+  var self = this;
+  return apiFetch(...).then(function (data) {
+    return self.field;
+  });
+};
+```
+
+控制器类（Controller / LocalStorageStore）就是这套；新加的"类"也按这个写，不引 `class` 关键字——保持 bundle 零编译依赖（参考 `dsh-persistent-plugin-authoring` § III "peek-hour-lock 即手写零依赖，语法检查通过即可"）。
+
+**注释规范**：
+
+```js
+/** 单行 JSDoc 描述函数/方法做什么。 */      // 用在文档化过的 public 函数/方法上
+function publicMethod() { ... }                // 主行紧跟 JSDoc 之上，无空行
+
+// 行内注释（解释 why，不解释 what）             // 中文 / 英文都接受；项目里现以中文为主
+this.dirty = false;  // 单字段后置注释 OK
+```
+
+- JSDoc 用单行 `/** ... */` 即可，本项目不强制 @param/@returns 完整 tag
+- 章节内子模块用 `// ----- xxx -----` 或 `/* ===== v0.X.X xxx ===== */` 隔开（如 80-controller.js 里的 v0.3.0 merge/pull/abort 段落）
+- 不要在生成的 bundle 文件里写 linter-disable 行
+
+**字符串拼接**：用 `+` 而不是模板字符串：
+
+```js
+// ✓
+showToast(repoName + " 已 commit " + data.sha + "（" + data.filesChanged + " 个文件）", "info");
+// ✗ （模板字符串在这里是异类）
+showToast(`${repoName} 已 commit ${data.sha}（${data.filesChanged} 个文件）`, "info");
+```
+
+**async 流程**：所有异步走 Promise + `.then(function() {})` 链式，**不用** `async/await`。`Controller.prototype.commit` / `mergeRepo` / `pullRepo` 等都是这个模式。
+
+**DOM**：
+
+- 仅用 vanilla DOM API：`document.createElement`、`element.appendChild`、`element.addEventListener`、`element.querySelector`、`element.dataset.xxx`
+- 不要引 React / jQuery / shadcn 等任何库
+- 多面板互斥、隐藏选择模式、抽屉滑入等都用 `position:fixed` + `<html data-...>` 属性 + CustomEvent 协调（参见 `dsh-persistent-plugin-authoring` § III）
+
+**模块边界**：source 文件之间**不**互 require/import。所有跨 section 共享的"私有常量"放 `20-constants.js`。其它（如 `apiFetch`、`showToast`、`escapeHtml`）通过**同 factory body 内顶层定义 + 引用**——拼接产物里这些都在同一个 closure 范围内。
+
+**禁止的"AI 风格漂移"清单**——以下模式虽然 JS 合法，但**禁止在 client-src 中使用**，原因是会让 future AI 重构脚本（如全局 "var → const"）的危险区域扩大：
+
+```js
+// 全部禁止
+const X = 1;
+let Y = 2;
+const arrow = (a) => a + 1;
+class Foo {}
+async function bar() { await something; }
+const tmpl = `hello ${name}`;
+arr.map(x => x * 2);
+arr.forEach(x => do(x));
+for (const x of arr) { ... }
+```
+
+**理由**：client bundle 由 14 个 source 文件拼成，任何"全局风格迁移"或"自动重构"工具如果针对这些文件做替换，会跨文件改变大量语法。但是反过来，**顶层 loader 的 arrow（`(require) => {...}`）** 必须保留——那是被 spec 强制的、跨文件也不需要替换的边界。
+
 ## 四、编辑流程
 
 ```bash
