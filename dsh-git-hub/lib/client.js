@@ -160,6 +160,20 @@ window.__ModuleLoader__.load({
       ".DGH_pushBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:500;transition:background .12s,border-color .12s;flex:none;}" +
       ".DGH_pushBtn:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_pushBtn:disabled{opacity:.45;cursor:not-allowed;}" +
+      // v0.2.2：commit 工具行
+      ".DGH_commitRow{flex:none;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);display:flex;flex-direction:column;gap:6px;}" +
+      ".DGH_commitMeta{font-size:11px;color:var(--dsw-alias-label-secondary);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}" +
+      ".DGH_commitBranch{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);border-radius:4px;padding:1px 6px;}" +
+      ".DGH_commitBadge{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-radius:999px;padding:1px 8px;font-weight:600;}" +
+      ".DGH_commitBadge[data-zero=\"true\"]{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l1);font-weight:400;}" +
+      ".DGH_commitLast{color:var(--dsw-alias-label-tertiary);font-size:10.5px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%;}" +
+      ".DGH_commitForm{display:flex;gap:6px;align-items:center;}" +
+      ".DGH_commitInput{flex:1;min-width:0;font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-sizing:border-box;}" +
+      ".DGH_commitInput:focus{outline:none;border-color:var(--dsw-alias-button-info-fill);}" +
+      ".DGH_commitInput:disabled{background:var(--dsw-alias-bg-component-disabled);color:var(--dsw-alias-label-tertiary);}" +
+      ".DGH_commitSubmit{font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:6px;padding:5px 12px;flex:none;transition:background .12s;}" +
+      ".DGH_commitSubmit:hover:not(:disabled){background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
+      ".DGH_commitSubmit:disabled{background:var(--dsw-alias-bg-component-disabled);color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l1);cursor:not-allowed;}" +
       // 配置面板
       ".DGH_config{border-bottom:1px solid var(--dsw-alias-border-l1);padding:10px 14px;display:flex;flex-direction:column;gap:8px;background:var(--dsw-alias-bg-layer-2);}" +
       ".DGH_configLabel{font-size:11px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.04em;}" +
@@ -312,6 +326,8 @@ window.__ModuleLoader__.load({
       this.selectionMode = false;  // v0.1.7：隐藏选择模式（点卡片 = toggleHide）
       this.showHidden = false;     // v0.1.7：仅 selectionMode 内有效（模式内展开被隐藏项查看）
       this.lastPush = null;        // 最近推送状态
+      this.commitStatus = null;    // v0.2.2：commit 仓库工作区状态 { branch, filesChanged, lastCommit }
+      this.commitBusy = false;     // v0.2.2：commit 操作进行中（按钮 disabled + 文字改 "提交中…"）
       this.listeners = new Set();
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
@@ -344,6 +360,8 @@ window.__ModuleLoader__.load({
         selectionMode: this.selectionMode,
         showHidden: this.showHidden,
         lastPush: this.lastPush,
+        commitStatus: this.commitStatus,    // v0.2.2
+        commitBusy: this.commitBusy,        // v0.2.2
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
         drawerOpen: this.drawerOpen,
@@ -356,6 +374,7 @@ window.__ModuleLoader__.load({
         // pollPushStatus 内部若发现 push 仍在跑，会自动 startPushPoll）
         this.refresh(false);
         this.pollPushStatus();
+        this.loadCommitStatus(); // v0.2.2：刷新 commit 工具行的 branch + 改动数
       } else {
         // 抽屉关闭：v0.2.1 智能轮询，停掉所有 push 轮询 timer
         this.stopPushPoll();
@@ -553,6 +572,63 @@ window.__ModuleLoader__.load({
         clearInterval(this._pushPollTimer);
         this._pushPollTimer = null;
       }
+    };
+    /** v0.2.2：拉 commit 仓库工作区状态（branch + 改动数） */
+    Controller.prototype.loadCommitStatus = function () {
+      var self = this;
+      return apiFetch("/api/git-hub/commit-status").then(function (data) {
+        if (data && data.ok) {
+          self.commitStatus = {
+            branch: data.branch || null,
+            filesChanged: data.filesChanged || 0,
+            lastCommit: data.lastCommit || null,
+          };
+          self.notify();
+        }
+      }).catch(function (e) {
+        console.warn("[dsh-git-hub] loadCommitStatus failed:", e);
+      });
+    };
+    /** v0.2.2：手动 commit（git add -A + git commit -m <message>） */
+    Controller.prototype.commit = function (message) {
+      var self = this;
+      var msg = (message || "").trim();
+      if (!msg) {
+        showToast("请输入 commit message", "error");
+        return Promise.resolve();
+      }
+      if (msg.indexOf("\n") >= 0) {
+        showToast("message 不支持多行（先用单行，未来可加）", "error");
+        return Promise.resolve();
+      }
+      this.commitBusy = true;
+      this.notify();
+      return apiFetch("/api/git-hub/commit", {
+        method: "POST",
+        body: { message: msg },
+      }).then(function (data) {
+        if (!data || !data.ok) {
+          var errKey = data && data.error;
+          var hint;
+          if (errKey === "no-changes") hint = "工作区没有改动，无需 commit";
+          else if (errKey === "empty-message") hint = "message 不能为空";
+          else if (errKey === "multiline-not-supported") hint = "message 不支持多行";
+          else if (errKey === "commit-failed") hint = "commit 失败（看 stderr）";
+          else if (errKey === "cwd-not-found") hint = "找不到仓库目录 " + (data.cwd || "");
+          else hint = "commit 失败：" + (errKey || "未知错误");
+          showToast(hint, "error");
+          if (data && data.stderr) console.warn("[dsh-git-hub] commit stderr:", data.stderr);
+          return;
+        }
+        showToast("已 commit " + data.sha + "（" + data.filesChanged + " 个文件）", "info");
+        // 刷新工作区状态 + 仓库列表（commit 后主面板的 "ahead" 状态也变了）
+        return self.loadCommitStatus().then(function () { return self.refresh(true); });
+      }).catch(function (e) {
+        showToast("commit 失败：" + (e && e.message ? e.message : e), "error");
+      }).then(function () {
+        self.commitBusy = false;
+        self.notify();
+      });
     };
     /** 把仓库摘要发到当前会话（让 agent 调 mcp__github__） */
     Controller.prototype.sendRepoToSession = function (repo) {
@@ -762,8 +838,62 @@ window.__ModuleLoader__.load({
         pushStatusEl.innerHTML = '<span class="DGH_pushStatusDot" data-running="' + (running ? "true" : "false") + '"></span><span>' + escapeHtml(txt) + '</span>';
       }
 
+      /** v0.2.2：渲染 commit 工具行（branch 徽章 + 改动数 + message 输入框 + 提交按钮） */
+      function renderCommitRow(row, controller) {
+        var snap = controller.getSnapshot();
+        var cs = snap.commitStatus || {};
+        var branch = cs.branch || "?";
+        var files = cs.filesChanged || 0;
+        var last = cs.lastCommit;
+        var busy = !!snap.commitBusy;
+
+        var lastTxt = last
+          ? "最近: " + last.sha + " " + (last.message || "")
+          : (cs.lastCommit === null && cs.branch ? "（无 commit 记录）" : "");
+
+        row.innerHTML =
+          '<div class="DGH_commitMeta">' +
+            '<span class="DGH_commitBranch">' + escapeHtml(branch) + '</span>' +
+            '<span class="DGH_commitBadge" data-zero="' + (files === 0 ? "true" : "false") + '">' + files + ' 改动</span>' +
+            (lastTxt ? '<span class="DGH_commitLast" title="' + escapeHtml(lastTxt) + '">' + escapeHtml(lastTxt) + '</span>' : '') +
+          '</div>' +
+          '<div class="DGH_commitForm">' +
+            '<input class="DGH_commitInput" type="text" placeholder="commit message（单行）" maxlength="200" ' + (busy ? "disabled" : "") + ' />' +
+            '<button class="DGH_commitSubmit" ' + (busy || files === 0 ? "disabled" : "") + '>' + (busy ? "提交中…" : "提交") + '</button>' +
+          '</div>';
+
+        var input = row.querySelector(".DGH_commitInput");
+        var submit = row.querySelector(".DGH_commitSubmit");
+        // 提交：点按钮 或 Enter
+        var doCommit = function () {
+          var v = input.value;
+          input.value = "";
+          controller.commit(v);
+        };
+        submit.addEventListener("click", doCommit);
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && !e.isComposing) {
+            e.preventDefault();
+            doCommit();
+          }
+        });
+        // 自动聚焦（drawer 打开后）
+        if (snap.drawerOpen && !busy) {
+          setTimeout(function () { try { input.focus({ preventScroll: true }); } catch (_) {} }, 50);
+        }
+      }
+
       function renderBody() {
         var snap = controller.getSnapshot();
+
+        // v0.2.2：commit 工具行（持久显示，紧贴 header 下）
+        var existingCommit = bodyEl.querySelector(".DGH_commitRow");
+        if (!existingCommit) {
+          existingCommit = document.createElement("div");
+          existingCommit.className = "DGH_commitRow";
+          bodyEl.insertBefore(existingCommit, bodyEl.firstChild);
+        }
+        renderCommitRow(existingCommit, controller);
 
         // 配置面板（按需插到 body 顶部）
         var existingCfg = bodyEl.querySelector(".DGH_config");

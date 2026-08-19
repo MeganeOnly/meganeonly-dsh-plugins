@@ -20,6 +20,8 @@
  *   POST /api/git-hub/push-all         — 后台 spawn daily-push.cjs --all --yes
  *   POST /api/git-hub/repos/push       — 单仓库 { path }
  *   GET  /api/git-hub/push-status      — 最近推送状态（PID + 退出码）
+ *   POST /api/git-hub/commit           — 提交 dsh-plugins 源仓库 { message }
+ *   GET  /api/git-hub/commit-status    — 读 dsh-plugins 源仓库工作区状态（branch + 改动数）
  *
  * 作者：MeganeOnly
  */
@@ -43,6 +45,8 @@ const CONFIG_FILENAME = '.git-hub-config.json'
 
 const DEFAULT_SCAN_ROOTS = ['F:\\AllWorkSpace', 'E:\\']
 const DEFAULT_PUSH_TOOL = 'F:\\AllWorkSpace\\tools\\daily-push.cjs'
+// 手动 commit 按钮操作的源仓库（dsh-plugins monorepo 工作区）
+const DEFAULT_COMMIT_CWD = 'E:\\dsh-plugins'
 
 const SCAN_CACHE_TTL_MS = 5_000
 const GIT_CMD_TIMEOUT_MS = 5_000
@@ -537,6 +541,133 @@ export function apply(ctx) {
         })
       } catch (e) {
         console.error('[dsh-git-hub] /push-status error:', e)
+        json(res, 500, { ok: false, error: 'internal' })
+      }
+    },
+  })
+
+  /* ----- 手动 commit 工具（v0.2.2 add） ----- */
+
+  /** 跑 commit 流程：git add -A + git commit -m <msg>，返回新 SHA / 改动数。 */
+  function runCommit(cwd, message) {
+    // 1. git add -A（失败抛错）
+    execFileSync('git', ['add', '-A'], {
+      cwd, encoding: 'utf8', timeout: GIT_CMD_TIMEOUT_MS, windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    // 2. 统计 staged 改动行数（git status --porcelain 在 add 后）
+    const statusOut = execFileSync('git', ['status', '--porcelain'], {
+      cwd, encoding: 'utf8', timeout: GIT_CMD_TIMEOUT_MS, windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const files = statusOut.split('\n').filter((l) => l.trim().length > 0)
+    if (files.length === 0) {
+      return { ok: false, error: 'no-changes' }
+    }
+    // 3. git commit -m <message>（commit 用 20s timeout，pre-commit hook 可能慢）
+    try {
+      execFileSync('git', ['commit', '-m', message], {
+        cwd, encoding: 'utf8', timeout: GIT_CMD_TIMEOUT_MS * 4, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (e) {
+      // 区分"什么都没 staged"和"实际 commit 失败"——前者 add 后已过滤，
+      // 到这里说明 pre-commit hook 失败 / message 校验失败 / 锁冲突等
+      const stderr = e.stderr ? e.stderr.toString() : ''
+      const stdout = e.stdout ? e.stdout.toString() : ''
+      return { ok: false, error: 'commit-failed', stderr, stdout }
+    }
+    // 4. 取新 SHA
+    const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd, encoding: 'utf8', timeout: GIT_CMD_TIMEOUT_MS, windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+    return { ok: true, sha, filesChanged: files.length, message }
+  }
+
+  /** 读 commit 仓库的工作区状态：branch + 改动数（不 add）。 */
+  function readCommitStatus(cwd) {
+    const branch = gitSync(['rev-parse', '--abbrev-ref', 'HEAD'], cwd)
+    const statusOut = gitSync(['status', '--porcelain'], cwd)
+    const files = statusOut ? statusOut.split('\n').filter((l) => l.trim().length > 0) : []
+    const lastCommitRaw = gitSync(['log', '-1', '--format=%H|%s|%aI'], cwd)
+    let lastCommit = null
+    if (lastCommitRaw) {
+      const t = lastCommitRaw.trim()
+      if (t) {
+        const [s, m, d] = t.split('|')
+        lastCommit = { sha: (s || '').slice(0, 7), message: m || '', date: d || '' }
+      }
+    }
+    return {
+      ok: true,
+      cwd,
+      branch: branch ? branch.trim() : null,
+      filesChanged: files.length,
+      lastCommit,
+    }
+  }
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/git-hub/commit',
+    handler: async (req, res) => {
+      try {
+        if (req.method !== 'POST') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return
+        }
+        const body = await readJsonBody(req)
+        if (!body || typeof body.message !== 'string') {
+          json(res, 400, { ok: false, error: 'invalid-body' })
+          return
+        }
+        const message = body.message.trim()
+        if (!message) {
+          json(res, 400, { ok: false, error: 'empty-message' })
+          return
+        }
+        // 单行 message（git -m 不支持多行；想写多行未来用 -F 文件）
+        if (message.includes('\n')) {
+          json(res, 400, { ok: false, error: 'multiline-not-supported' })
+          return
+        }
+        const cwd = (body.cwd && typeof body.cwd === 'string') ? body.cwd : DEFAULT_COMMIT_CWD
+        if (!existsSync(cwd)) {
+          json(res, 400, { ok: false, error: 'cwd-not-found', cwd })
+          return
+        }
+        const result = runCommit(cwd, message)
+        if (!result.ok) {
+          const status = result.error === 'no-changes' ? 400 : 500
+          json(res, status, { ok: false, error: result.error, stderr: result.stderr, stdout: result.stdout })
+          return
+        }
+        json(res, 200, { ok: true, sha: result.sha, filesChanged: result.filesChanged, message: result.message, cwd })
+      } catch (e) {
+        console.error('[dsh-git-hub] /commit error:', e)
+        json(res, 500, { ok: false, error: 'internal', message: e?.message || String(e) })
+      }
+    },
+  })
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/git-hub/commit-status',
+    handler: async (req, res) => {
+      try {
+        if (req.method !== 'GET') {
+          json(res, 405, { ok: false, error: 'method-not-allowed' })
+          return
+        }
+        const cwd = DEFAULT_COMMIT_CWD
+        if (!existsSync(cwd)) {
+          json(res, 200, { ok: false, error: 'cwd-not-found', cwd })
+          return
+        }
+        json(res, 200, readCommitStatus(cwd))
+      } catch (e) {
+        console.error('[dsh-git-hub] /commit-status error:', e)
         json(res, 500, { ok: false, error: 'internal' })
       }
     },
