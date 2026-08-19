@@ -1,6 +1,16 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.7.2：新增 hide-chat-tab——对话顶部"对话"标签隐藏。和 v0.7.0 的
+ *   hide-trajectory-tab 配套，两个 tab 按钮都关掉后 tablist 整体视觉消失
+ *   （DSH `tabs.length > 1` 才渲染 tablist——但 DSH 实际仍注册 2 个 view entry，
+ *   所以 tablist DOM 还在，只是两个按钮都被 display:none）。
+ *   实现：把 v0.7.0 的 createTrajectoryTabHider 重构为通用 createTabHider(opts)
+ *   工厂——`{ targetLabels, hiddenValue, safeLabels }`。两个 hider 都用：
+ *     - hide-trajectory-tab：target="轨迹", safe="对话"（默认 view）
+ *     - hide-chat-tab：      target="对话", safe="对话"（默认 view）
+ *   safe 都是"对话"——避免两个 tab 按钮都关掉后用户卡在轨迹视图出不来。
+ *
  * v0.7.1：hide-sidebar-tooltip 二次修复——v0.6.1 把 selector 改成
  *   `[role="tooltip"]`，DSH 自己的 Tooltip 组件（`<span role="tooltip">`）确实
  *   被干掉了。但用户反馈"提示还是在"，"全称 X小时前 空闲 这样子"——
@@ -117,7 +127,7 @@ window.__ModuleLoader__.load({
 
     var inject = ["slots"];
 
-    var VERSION = "0.7.1";
+    var VERSION = "0.7.2";
     var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
     var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
     var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -266,6 +276,31 @@ window.__ModuleLoader__.load({
           if (!state.hideTrajectoryTab) return null;
           return "/* === hide-trajectory-tab v0.7.0 : JS-side MutationObserver 给 \"轨迹\"/\"Trajectory\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"trajectory\"，CSS 命中隐藏 === */\n" +
             "[data-dsh-ui-tweaks-hidden-tab=\"trajectory\"]{display:none!important}";
+        }
+      },
+      {
+        // v0.7.2 新增。和 hide-trajectory-tab 配套——两个 tab 按钮都关掉后，
+        // tablist 整体视觉上消失（DSH `tabs.length > 1` 才渲染 tablist——
+        // 但 DSH 仍注册 2 个 view entry，所以 tablist DOM 还在，只是两个按钮
+        // 都被 display:none）。
+        //
+        // 单独开 hide-chat-tab 也有意义：默认 view 永远是"对话"，标签按钮
+        // 显示"对话"毫无信息量（用户看到它也不会做任何事）——纯视觉噪音。
+        // 开启后整个 tablist 视觉消失（前提是也开了 hide-trajectory-tab）。
+        //
+        // 实现和 trajectory hider 一样：JS 端用通用 createTabHider 工厂（v0.7.2
+        // 重构了 createTrajectoryTabHider 为 createTabHider(opts)），target="对话"，
+        // safe="对话"（DSH 默认 view）——如果当前不在对话（比如用户手动切到轨迹
+        // 后再开启 hide-chat-tab），强制 click 对话切回。
+        id: "hide-chat-tab",
+        name: "隐藏对话中的\"对话\"标签",
+        description: "对话顶部\"对话\"标签——开启后和 hide-trajectory-tab 一起把两个标签都关掉，整个 tablist 视觉消失。\"对话\"是默认 view，标签显示它毫无信息量，纯噪音。如果当前正停在轨迹视图会自动切回对话页。",
+        configKeys: { enabled: "hideChatTab", value: "hideChatTab" },
+        defaults: { enabled: true, value: true },
+        buildCSS: function (state) {
+          if (!state.hideChatTab) return null;
+          return "/* === hide-chat-tab v0.7.2 : JS-side MutationObserver 给 \"对话\"/\"Chat\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"chat\"，CSS 命中隐藏 === */\n" +
+            "[data-dsh-ui-tweaks-hidden-tab=\"chat\"]{display:none!important}";
         }
       }
     ];
@@ -957,32 +992,33 @@ window.__ModuleLoader__.load({
     }
 
     // ====================================================================
-    // v0.7.0：轨迹标签隐藏 controller（hide-trajectory-tab 副作用）
+    // v0.7.0 + v0.7.2：通用 tab hider 工厂（hide-trajectory-tab + hide-chat-tab 副作用）
     // --------------------------------------------------------------------
     // DSH 对话顶部有 [role="tablist"] 包含 "对话"(Chat) + "轨迹"(Trajectory)
     // 两个标签（renderSlot("conversation.view", ...) 注册的两个 view entry）。
     // 用户点击"轨迹"会进入 TrajectoryView——开发者视角的事件账本。
     //
+    // v0.7.2 重构：原 createTrajectoryTabHider 拆成通用 createTabHider(opts)
+    // 工厂——`{ targetLabels, hiddenValue, safeLabels }`——两个 tweak 都用。
+    //   - hide-trajectory-tab：target="轨迹", safe="对话"
+    //   - hide-chat-tab：      target="对话", safe="对话"
+    // safe 都是"对话"（DSH 默认 view）——避免两个 tab 都被关掉后用户卡在轨迹。
+    //
     // controller 职责：
-    //   1. 巡检 [role="tablist"] 内按钮文本，找到"轨迹"/"Trajectory" 打
-    //      data-dsh-ui-tweaks-hidden-tab="trajectory" 标记（CSS 命中隐藏）
-    //   2. 如果这个标签当前 aria-selected="true"（用户正在轨迹视图），
-    //      点击"对话"/"Chat"标签自动切回对话页——避免用户卡在轨迹视图
-    //   3. 巡检 [data-conversation-composer-overlay]（TrajectoryView 根元素
-    //      唯一标识）作为兜底——万一未来 DSH 重构按钮结构导致 [role=tablist]
-    //      找不到，仍能识别出"轨迹视图被渲染了"并切回对话
+    //   1. 巡检 [role="tablist"] 内按钮文本，找到 targetLabels 匹配的按钮，
+    //      打 data-dsh-ui-tweaks-hidden-tab=<hiddenValue> 标记（CSS 命中隐藏）
+    //   2. 如果 safeLabels 匹配的"安全 tab"当前不是 aria-selected="true"——
+    //      程序点击它（即使被 CSS display:none，click 仍能触发 React setView），
+    //      确保 view 在默认对话页，避免用户卡在轨迹视图
     //
     // MutationObserver 观察 document.body 子树——DSH React 重渲或切换会话
-    // 会重建 tablist，必须重新巡检。startShellShimObserver 已经在观察 body
-    // 子树了，但为了轨迹标签的逻辑独立、不耦合 chatflow marks 的幂等性，
-    // 这里用独立的 observer（overhead 可忽略）。
+    // 会重建 tablist，必须重新巡检。
     // ====================================================================
 
     // 多语言匹配集合。DSH 用 zh / en 两种 UI 语言；其它 locale 暂不支持。
     var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];
     var CHAT_TAB_LABELS = ["对话", "Chat"];
     var TRAJECTORY_TAB_HIDDEN_ATTR = "data-dsh-ui-tweaks-hidden-tab";
-    var TRAJECTORY_TAB_HIDDEN_VALUE = "trajectory";
 
     function findTabButtonByLabels(labels) {
       if (typeof document === "undefined") return null;
@@ -996,25 +1032,51 @@ window.__ModuleLoader__.load({
       return null;
     }
 
-    function createTrajectoryTabHider() {
+    /**
+     * v0.7.0 起的通用 tab hider 工厂。负责两件事：
+     *   1. 给目标 tab 按钮打 data-dsh-ui-tweaks-hidden-tab=<hiddenValue> 标记
+     *      → CSS 命中隐藏
+     *   2. 确保"安全 tab"始终是当前选中的——避免两个 tab 都被隐藏时用户
+     *      卡在某个非默认 view 上出不来。安全 tab 在 DSH 里就是 Chat
+     *      （default view）。
+     *
+     * 用法：
+     *   - hide-trajectory-tab：
+     *       targetLabels = ["轨迹", "Trajectory"]
+     *       hiddenValue = "trajectory"
+     *       safeLabels = ["对话", "Chat"]
+     *     行为：标记轨迹 tab 隐藏；如果轨迹被选中（用户之前手动切到轨迹
+     *     视图），点击对话 tab 切回——避免两个 tab 都关后用户卡在轨迹。
+     *
+     *   - hide-chat-tab：
+     *       targetLabels = ["对话", "Chat"]
+     *       hiddenValue = "chat"
+     *       safeLabels = ["对话", "Chat"]   // 同 target（chat 是 default）
+     *     行为：标记对话 tab 隐藏；如果对话不是当前选中的（即用户在轨迹
+     *     视图），点击对话 tab 切回——同上原因。
+     *
+     * safeLabels 之所以设成"对话"而不是"轨迹"——chat 是 DSH 默认 view，
+     * hide-trajectory + hide-chat 一起开时，安全的归宿就是 chat（即使两个
+     * tab 按钮都不可见，程序 click 仍能切 view）。
+     */
+    function createTabHider(opts) {
       var observer = null;
       var isRunning = false;
 
       function tick() {
         if (typeof document === "undefined") return;
-        var trajectoryTab = findTabButtonByLabels(TRAJECTORY_TAB_LABELS);
-        if (trajectoryTab) {
-          // 1) 打标记 → CSS 隐藏
-          if (trajectoryTab.getAttribute(TRAJECTORY_TAB_HIDDEN_ATTR) !== TRAJECTORY_TAB_HIDDEN_VALUE) {
-            trajectoryTab.setAttribute(TRAJECTORY_TAB_HIDDEN_ATTR, TRAJECTORY_TAB_HIDDEN_VALUE);
-          }
-          // 2) 如果当前选中轨迹 → 切回对话
-          if (trajectoryTab.getAttribute("aria-selected") === "true") {
-            var chatTab = findTabButtonByLabels(CHAT_TAB_LABELS);
-            if (chatTab && typeof chatTab.click === "function") {
-              chatTab.click();
-            }
-          }
+
+        // 1) 标记目标 tab 隐藏
+        var target = findTabButtonByLabels(opts.targetLabels);
+        if (target && target.getAttribute(TRAJECTORY_TAB_HIDDEN_ATTR) !== opts.hiddenValue) {
+          target.setAttribute(TRAJECTORY_TAB_HIDDEN_ATTR, opts.hiddenValue);
+        }
+
+        // 2) 确保安全 tab 始终是当前选中（即使其按钮被 CSS display:none，
+        //    程序 click 仍能触发 React 的 setView，切 view）
+        var safe = findTabButtonByLabels(opts.safeLabels);
+        if (safe && safe.getAttribute("aria-selected") !== "true") {
+          if (typeof safe.click === "function") safe.click();
         }
       }
 
@@ -1048,16 +1110,15 @@ window.__ModuleLoader__.load({
         if (observer !== null) { observer.disconnect(); observer = null; }
         // 移除已打的标记（CSS 注入也会被移除，状态自洽）
         if (typeof document !== "undefined") {
-          var marked = document.querySelectorAll('[' + TRAJECTORY_TAB_HIDDEN_ATTR + '="' + TRAJECTORY_TAB_HIDDEN_VALUE + '"]');
+          var marked = document.querySelectorAll(
+            '[' + TRAJECTORY_TAB_HIDDEN_ATTR + '="' + opts.hiddenValue + '"]'
+          );
           for (var i = 0; i < marked.length; i++) {
             marked[i].removeAttribute(TRAJECTORY_TAB_HIDDEN_ATTR);
           }
         }
       }
 
-      // 暴露 running getter 给 apply() / onStateChange 用——避免外部另起
-      // 一个 `controller._running` 标志导致状态不一致（simpleController
-      // 那种模式需要 apply() 维护 _running 标志，controller 内部其实不知情）。
       return {
         start: start,
         stop: stop,
@@ -1442,9 +1503,23 @@ window.__ModuleLoader__.load({
       var simpleController = createSimpleModeStatusController();
       if (initialState.simpleModeEnabled) simpleController.start();
 
-      // 6b) v0.7.0：轨迹标签隐藏 controller
-      var trajectoryHider = createTrajectoryTabHider();
+      // 6b) v0.7.0 + v0.7.2：tab 隐藏 controllers（用通用 createTabHider 工厂）
+      //     hide-trajectory-tab 标记 "轨迹" 按钮 + 兜底点击"对话"切回
+      //     hide-chat-tab       标记 "对话" 按钮 + 兜底确保在"对话"视图
+      //     两个 safe tab 都是 "对话"（DSH 默认 view）——避免两个 tab 都隐藏
+      //     后用户卡在轨迹视图出不来。
+      var trajectoryHider = createTabHider({
+        targetLabels: TRAJECTORY_TAB_LABELS,
+        hiddenValue: "trajectory",
+        safeLabels: CHAT_TAB_LABELS
+      });
       if (initialState.hideTrajectoryTab) trajectoryHider.start();
+      var chatHider = createTabHider({
+        targetLabels: CHAT_TAB_LABELS,
+        hiddenValue: "chat",
+        safeLabels: CHAT_TAB_LABELS
+      });
+      if (initialState.hideChatTab) chatHider.start();
 
       // 6c) v0.6.2：侧栏 HoverCard 隐藏 controller
       var hoverCardHider = createSidebarHoverCardHider();
@@ -1469,23 +1544,20 @@ window.__ModuleLoader__.load({
           }
         }
         if (detail.hideTrajectoryTab) {
-          if (!trajectoryHider.running) {
-            trajectoryHider.start();
-          }
+          if (!trajectoryHider.running) trajectoryHider.start();
         } else {
-          if (trajectoryHider.running) {
-            trajectoryHider.stop();
-          }
+          if (trajectoryHider.running) trajectoryHider.stop();
+        }
+        if (detail.hideChatTab) {
+          if (!chatHider.running) chatHider.start();
+        } else {
+          if (chatHider.running) chatHider.stop();
         }
         // v0.6.2：HoverCard hider 跟随 hideSidebarTooltip 开关
         if (detail.hideSidebarTooltip) {
-          if (!hoverCardHider.running) {
-            hoverCardHider.start();
-          }
+          if (!hoverCardHider.running) hoverCardHider.start();
         } else {
-          if (hoverCardHider.running) {
-            hoverCardHider.stop();
-          }
+          if (hoverCardHider.running) hoverCardHider.stop();
         }
       }
       if (typeof window !== "undefined" && window.addEventListener) {

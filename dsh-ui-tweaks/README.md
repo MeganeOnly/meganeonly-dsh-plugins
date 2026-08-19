@@ -2,7 +2,7 @@
 
 作者：MeganeOnly
 
-**DSH 外观设计微调合集（v0.7.1：`hide-sidebar-tooltip` 二次修复——之前一直把『侧栏悬浮提示』当成 Radix Tooltip，但实测是 DSH 的 HoverCard 组件）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller、轨迹标签 hider、侧栏 HoverCard hider）。
+**DSH 外观设计微调合集（v0.7.2：新增 `hide-chat-tab`——对话顶部"对话"标签隐藏；两个 tab 按钮都关掉后 tablist 整体视觉消失）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller、轨迹 / 对话标签 hider、侧栏 HoverCard hider）。
 
 - **host half**：v0.3.0 起退化为零副作用 placeholder（cordis bundle 注册用占位）。**不**注册 DSH settings namespace、不读 settings 文档。
 - **client half**：状态用浏览器 `localStorage` 自管（key `dsh-ui-tweaks/state`），注册独立顶层 `settings.section` slot（id=`ui-tweaks`, order=5），用 React 函数组件直接渲染控件，立即写 localStorage + 重注入 CSS。无 settingsScope 依赖。
@@ -99,13 +99,22 @@ v0.7.0 新增。DSH 对话顶部（`@deepseek-ai/dsh-client-ui-conversation/lib/
 
 非开发者根本用不上，看着也容易困惑。开启后用 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记打掉——CSS 命中隐藏。
 
-**实现关键**：
-- **JS 端**：CSS 没有 `:text()` 选择器无法匹配按钮文本。`createTrajectoryTabHider()` controller 用 `MutationObserver(document.body, {childList, subtree})` 巡检 `[role="tablist"] [role="tab"]` 列表，找文本等于 `"轨迹"` 或 `"Trajectory"` 的按钮，打 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记。
+**实现关键**（v0.7.2 重构）：
+- v0.7.2 起，原 `createTrajectoryTabHider` 重构为通用 `createTabHider(opts)` 工厂——`{ targetLabels, hiddenValue, safeLabels }`。两个 tweak 都用。
+- **JS 端**：CSS 没有 `:text()` 选择器无法匹配按钮文本。controller 用 `MutationObserver(document.body, {childList, subtree})` 巡检 `[role="tablist"] [role="tab"]` 列表，找文本匹配 targetLabels 的按钮，打 `data-dsh-ui-tweaks-hidden-tab=<hiddenValue>` 标记。
 - **CSS 端**：`[data-dsh-ui-tweaks-hidden-tab="trajectory"]{display:none!important}` 命中标记元素隐藏。
-- **副作用**：如果轨迹标签当前 `aria-selected="true"`（用户正在轨迹视图），点击"对话"/"Chat" 标签自动切回对话页——避免用户卡在轨迹视图出不来。
-- **关掉时**：`stop()` 主动移除已打的标记 + disconnect observer；切回 chat view（如果当前停在轨迹）。
+- **safe tab 兜底**：如果 safeLabels 匹配的"安全 tab"当前不是 `aria-selected="true"`（用户正在其它视图），程序 click 它（即使被 CSS display:none，click 仍能触发 React `setView`）。两个 tweak 的 safe 都是 `"对话"`（DSH 默认 view）——避免两个 tab 按钮都关掉后用户卡在轨迹视图。
+- **关掉时**：`stop()` 主动移除已打的标记 + disconnect observer。
 
-**DSH 升级应对**：按钮文本变（比如本地化新增语言）或结构变（tab 移出 `[role="tablist"]`），需要相应更新 `TRAJECTORY_TAB_LABELS` 数组或 `findTabButtonByLabels` 选择器。
+**DSH 升级应对**：按钮文本变（比如本地化新增语言）或结构变（tab 移出 `[role="tablist"]`），需要相应更新 `TRAJECTORY_TAB_LABELS` / `CHAT_TAB_LABELS` 数组或 `findTabButtonByLabels` 选择器。
+
+### "隐藏对话中的'对话'标签" 行为
+
+v0.7.2 新增。和 hide-trajectory-tab 配套——两个 tab 按钮都关掉后，tablist 整体视觉消失（DSH `tabs.length > 1` 才渲染 tablist DOM，但两个按钮都被 `display:none`，看起来啥都没有）。
+
+单独开 hide-chat-tab 也有意义：默认 view 永远是"对话"，标签按钮显示"对话"毫无信息量——纯视觉噪音。开启后整个 tablist 视觉消失（前提是也开了 hide-trajectory-tab）。
+
+**实现**：用同一个通用 `createTabHider` 工厂，`targetLabels: CHAT_TAB_LABELS`, `hiddenValue: "chat"`, `safeLabels: CHAT_TAB_LABELS`（safe 和 target 都是"对话"，因为 chat 是 DSH 默认 view）。如果当前不在对话视图（比如用户手动切到轨迹后开启），程序 click 对话按钮切回。
 
 ## 诊断与验证
 
@@ -138,7 +147,8 @@ window.__dshUiTweaks.reshim()                // 立即重跑 self-shim（调试�
 | `conversation-shift-debug` | 对话右缩调试高亮 | 开启后给 conversation 列加 4px 黄色 outline + 黑底白字浮动 label 显示当前像素值，并在 DevTools console.info 打出命中元素诊断。调试用——对话右缩关闭时也能开。 | 开关（`conversationShiftDebug`，默认关） |
 | `simple-mode` | 简洁模式 | 隐藏思考（think 推理）、工具调用（read/edit/pwsh/bash/grep/glob 等）、上下文注入行、其它纯过程节点（compaction / model-retry / turn-error / turn-max-tokens），整体 display:none 不留白。输入框上方常驻一条极简状态行（"正在思考…" / "正在阅读…" / "正在执行命令…"），运行结束自动消失。状态行用 DOM 注入 `[class*="turnStatus"]` 跟随 TurnStatus 重渲（MutationObserver + 250ms 心跳），工具名从 `[data-chat-flow-kind="tool-call"]` 节点反推（不依赖 settingsScope）。 | 开关（`simpleModeEnabled`，默认开） |
 | `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 鼠标悬停在左侧栏会话项 / 工作窗口时 DSH 默认弹出一个深色卡片——**不是 Radix Tooltip，是 DSH 的 HoverCard**（`dsh-client-ui-primitives`）——展示全称 + 相对时间 + 状态（开发者用的调试信息）。v0.6.1 修了 Tooltip selector；v0.7.1 才补上 HoverCard——用 JS MutationObserver 给 portal 到 body 的 HoverCard div 打 `data-dsh-ui-tweaks-hidden-hover-card` 标记（探测目标 = workspace 包的 CSS Module hash 类 `_hoverContent / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath`），CSS 命中隐藏。`[role="tooltip"]` + `[data-dsh-ui-tweaks-hidden-hover-card]` 两条 selector 合用覆盖 Tooltip + HoverCard。 | 开关（`hideSidebarTooltip`，默认开） |
-| `hide-trajectory-tab` | 隐藏对话中的"轨迹"标签 | 对话顶部多了一个"轨迹"标签——展示模型/工具调用的事件账本（开发者视角，含 turn/step/tool-call 时间线、详情、搜索等调试功能）。非开发者用不上，看着也容易困惑。v0.7.0 实现：JS MutationObserver 巡检 `[role="tablist"]` 找文本为"轨迹"/"Trajectory"的按钮，打 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记，CSS 命中隐藏。如果当前 view 正是轨迹（aria-selected=true），自动点击"对话"/"Chat"标签切回对话页——避免卡在轨迹视图出不来。 | 开关（`hideTrajectoryTab`，默认开） |
+| `hide-trajectory-tab` | 隐藏对话中的"轨迹"标签 | 对话顶部多了一个"轨迹"标签——展示模型/工具调用的事件账本（开发者视角，含 turn/step/tool-call 时间线、详情、搜索等调试功能）。非开发者用不上，看着也容易困惑。v0.7.0 实现，v0.7.2 重构为通用 `createTabHider(opts)` 工厂（两个 tab tweak 共用）：JS MutationObserver 巡检 `[role="tablist"]` 找文本为"轨迹"/"Trajectory"的按钮，打 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记，CSS 命中隐藏。safe tab = "对话"——safe 不在选中态时自动点击切回。 | 开关（`hideTrajectoryTab`，默认开） |
+| `hide-chat-tab` | 隐藏对话中的"对话"标签 | "对话"是默认 view（永远选中），标签按钮显示它毫无信息量，纯视觉噪音。和 hide-trajectory-tab 一起开 → 两个 tab 按钮都 display:none，tablist 整体视觉消失。v0.7.2 新增：复用 `createTabHider(opts)` 工厂，`targetLabels: CHAT_TAB_LABELS`, `safeLabels: CHAT_TAB_LABELS`（safe 和 target 同——chat 是 DSH 默认 view）。如果当前不在对话视图（比如用户手动切到轨迹后才开启），程序 click 对话按钮切回。 | 开关（`hideChatTab`，默认开） |
 
 ## 如何加新调整
 
@@ -196,7 +206,7 @@ var TWEAKS = [
 
 - **不依赖 settingsScope / DSH settings namespace**：v0.3.0 起 tweak 状态完全在浏览器侧管理（localStorage）。原因见 DECISIONS.md C003——DSH API gateway 的 `exposedNamespaces()` 硬编码白名单对第三方插件 silent filter。
 - **self-shim 4 层 selector（v0.5.0）**：本插件独占 self-shim，不依赖 `@linxin666/dsh-web-ui-all`。L1 数据属性 → L2 CSS Module 子串 → L3 grid 解析 → L4 兜底。配合 `MutationObserver(document.body, {childList,subtree})` 在 DSH React 重渲时自动重新种属性。
-- **副作用总线**：UiTweaksSection 在 useEffect 里 dispatch `CustomEvent("dsh-ui-tweaks-state-change", { detail: state })`；apply() 订阅事件分发到 `applyDebugMode()`、简洁模式状态行 controller 的 `start()/stop()`、**v0.7.0 起** trajectory tab hider 的 `start()/stop()`（自动切回 chat view）。
+- **副作用总线**：UiTweaksSection 在 useEffect 里 dispatch `CustomEvent("dsh-ui-tweaks-state-change", { detail: state })`；apply() 订阅事件分发到 `applyDebugMode()`、简洁模式状态行 controller 的 `start()/stop()`、**v0.7.0 起** trajectory / chat tab hider（共用通用 `createTabHider(opts)` 工厂，v0.7.2 重构）、**v0.7.1 起** 侧栏 HoverCard hider 的 `start()/stop()`（自动给 portal div 打 `data-dsh-ui-tweaks-hidden-hover-card` 标记）。
 - **视觉锚点（v0.5.0）**：右缩开启时 conversation 列右边界画 1px 红线 (`#dc2626`)；调试开启时 4px 黄 outline + 浮动 label。两层视觉反馈让用户**哪怕没有右面板也能立刻看到效果**。
 - **诊断 API（v0.5.0）**：`window.__dshUiTweaks` 暴露 `VERSION / getState / getInjectedCSS / getMatchedElements / debug / setState / reshim`。每条 tweak row 加 "诊断" 按钮直接输出这一条的 buildCSS + 命中元素。
 - **Controller-less 设计**：v0.2.1 用的 `UiTweaksController` + `useSyncExternalStore` 改为 React 原生 `useState` + `useEffect`——简单一个 section 不需要外部 store 抽象，状态完全在 React 树内。
