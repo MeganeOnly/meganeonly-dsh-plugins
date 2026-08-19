@@ -2,7 +2,7 @@
 
 作者：MeganeOnly
 
-**DSH 外观设计微调合集（v0.6.0：在 v0.5.5 基础上新增 `hide-sidebar-tooltip` 纯 CSS 关闭侧栏 Radix Tooltip）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller）。
+**DSH 外观设计微调合集（v0.6.1：修复 v0.6.0 `hide-sidebar-tooltip` 失效 selector）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller）。
 
 - **host half**：v0.3.0 起退化为零副作用 placeholder（cordis bundle 注册用占位）。**不**注册 DSH settings namespace、不读 settings 文档。
 - **client half**：状态用浏览器 `localStorage` 自管（key `dsh-ui-tweaks/state`），注册独立顶层 `settings.section` slot（id=`ui-tweaks`, order=5），用 React 函数组件直接渲染控件，立即写 localStorage + 重注入 CSS。无 settingsScope 依赖。
@@ -68,7 +68,14 @@ v0.4.0 起的工作模式——隐藏思考 / 工具调用 / 上下文行 / 过�
 
 ### "隐藏侧栏悬浮提示" 行为
 
-v0.6.0 新增。DSH 侧栏会话项在 hover 时默认会通过 Radix UI Tooltip 弹出深色方框展示会话全名。开启后用 CSS-only 干掉所有相关浮层——三 selector 兜底（Radix 内容容器 + portal wrapper + CSS Module `TooltipContent` 后缀）：`display:none !important`。
+v0.6.0 新增 → **v0.6.1 修复 selector**。DSH 侧栏会话项 / 工作窗口在 hover 时默认会通过 DSH 自己的 Tooltip 组件（`@deepseek-ai/dsh-client-ui-primitives/lib/types/Tooltip.js`）弹出深色方框展示会话全名。
+
+**v0.6.0 失效原因**：DSH Tooltip 组件渲染结构是 `<span role="tooltip" className={undefined} style={{left,top}}>`——作为锚点的兄弟节点 inline 渲染，**不 portal 到 body**；className 是 undefined（CSS module stub 是 `var Tooltip_module_css_default = {};`）。所以 v0.6.0 的三条 selector 一条都不命中：
+- `body > [role="tooltip"]` ← 不是 body 直接子级
+- `body > div:has(> [role="tooltip"])` ← 同上
+- `[class*="TooltipContent"]` ← className 是 undefined 无子串匹配
+
+**v0.6.1 修法**：直接 `[role="tooltip"]{display:none!important}`。DSH 全 app 里 `role="tooltip"` 只在 Tooltip 组件里出现——全局干掉无副作用（与 v0.6.0 文档描述"全局关闭"一致）。
 
 ## 诊断与验证
 
@@ -100,7 +107,7 @@ window.__dshUiTweaks.reshim()                // 立即重跑 self-shim（调试�
 | `conversation-shift` | 对话区右缩 | JS 探测 DOM 找真正 chatflow 容器 + inputArea → 打 `data-dsh-ui-tweaks-shift-target` 标记 → CSS 只命中被标记元素 + conv 列容器不变（grid 列宽 + 滚动条 + 滚动指示器保持在原位）。探测失败时回退标记 conv 列容器（v0.5.1 兜底行为）。**自给自足**——不依赖任何外部桥接包；self-shim 4 层 selector 找 conv 列。 | 开关（`conversationShift`）+ 像素值（`conversationShiftPx`，默认 380，0–800） |
 | `conversation-shift-debug` | 对话右缩调试高亮 | 开启后给 conversation 列加 4px 黄色 outline + 黑底白字浮动 label 显示当前像素值，并在 DevTools console.info 打出命中元素诊断。调试用——对话右缩关闭时也能开。 | 开关（`conversationShiftDebug`，默认关） |
 | `simple-mode` | 简洁模式 | 隐藏思考（think 推理）、工具调用（read/edit/pwsh/bash/grep/glob 等）、上下文注入行、其它纯过程节点（compaction / model-retry / turn-error / turn-max-tokens），整体 display:none 不留白。输入框上方常驻一条极简状态行（"正在思考…" / "正在阅读…" / "正在执行命令…"），运行结束自动消失。状态行用 DOM 注入 `[class*="turnStatus"]` 跟随 TurnStatus 重渲（MutationObserver + 250ms 心跳），工具名从 `[data-chat-flow-kind="tool-call"]` 节点反推（不依赖 settingsScope）。 | 开关（`simpleModeEnabled`，默认开） |
-| `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 鼠标悬停在左侧栏会话项 / 工作窗口时 DSH 默认弹出一个 Radix 风格的深色方框展示会话全名。开启后用 `display:none !important` 干掉所有 `body > [role="tooltip"]`（Radix Tooltip 内容容器）+ 其浮动 portal wrapper + CSS Module `TooltipContent` 后缀。不影响 sidebar 内部其他 hover 效果（背景色 / active 高亮等）。**全局关闭**——DSH 里 Tooltip 主要用在 sidebar，其它位置出现频次极低且 aria-label 仍可用。 | 开关（`hideSidebarTooltip`，默认开） |
+| `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 鼠标悬停在左侧栏会话项 / 工作窗口时 DSH 默认弹出一个深色方框展示会话全名。v0.6.1 修复 selector：DSH Tooltip 组件渲染 `<span role="tooltip">` 作为锚点兄弟节点 inline 渲染（不 portal 到 body，className=undefined），直接 `[role="tooltip"]{display:none!important}` 命中。**全局关闭**——DSH 全 app 只有 Tooltip 组件用 `role="tooltip"`，全局干掉无副作用；其它位置（goal / composer / message-feedback 等）出现频次极低且 aria-label 仍可用。 | 开关（`hideSidebarTooltip`，默认开） |
 
 ## 如何加新调整
 

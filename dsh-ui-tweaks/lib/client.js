@@ -1,6 +1,20 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.6.1：hide-sidebar-tooltip 修复——v0.6.0 的三个 selector 都错。
+ *   实测 DSH Tooltip 组件（`@deepseek-ai/dsh-client-ui-primitives/lib/types/Tooltip.js`）
+ *   渲染时是 `<span role="tooltip" className={undefined} style={{left,top}}>`，
+ *   作为锚点元素的兄弟节点 inline 渲染（**不 portal 到 body**），className 是
+ *   `undefined`（CSS module stub 是 `var Tooltip_module_css_default = {};`）。
+ *   所以 v0.6.0 的：
+ *     `body > [role="tooltip"]` ← 不是 body 直接子级
+ *     `body > div:has(> [role="tooltip"])` ← 同上
+ *     `[class*="TooltipContent"]` ← className 是 undefined，无子串匹配
+ *   三条 selector 一条都没命中。
+ *   修法：直接 `[role="tooltip"]{display:none!important}`——DSH Tooltip 组件是
+ *   唯一用 `role="tooltip"` 的地方，全局干掉无副作用（与 v0.6.0 文档描述
+ *   "全局关闭"一致）。
+ *
  * v0.6.0：在 v0.5.5 基础上新增 hide-sidebar-tooltip（用户反馈"悬停在左侧栏
  *   工作窗口时弹出展示会话全名的小方框"——Radix 风格的深色浮层根本用不上）。
  *   纯 CSS：隐藏 `body > [role="tooltip"]` + 浮动 portal wrapper +
@@ -74,7 +88,7 @@ window.__ModuleLoader__.load({
 
     var inject = ["slots"];
 
-    var VERSION = "0.6.0";
+    var VERSION = "0.6.1";
     var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
     var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
     var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -161,15 +175,18 @@ window.__ModuleLoader__.load({
         }
       },
       {
-        // v0.6.0 新增。DSH 侧栏的会话项 / 项目分组默认会在 hover 时通过
-        // Radix UI Tooltip（深色方框浮层）展示会话全名。Radix Tooltip 内容容器
-        // 渲染在 `<body>` 直接子级的 portal 里（[role="tooltip"] + 包它的 wrapper），
-        // 也可能挂 CSS Module className 后缀 `TooltipContent`。三 selector 兜底，
-        // `display:none !important` 干掉浮层。
+        // v0.6.0 新增 → v0.6.1 修复 selector。
+        // DSH Tooltip 组件（`@deepseek-ai/dsh-client-ui-primitives` 的 Tooltip.js）
+        // 渲染结构是 `<span role="tooltip">`，作为锚点的兄弟节点 inline 渲染——
+        // 不 portal 到 body；className 是 undefined（CSS module stub 是空对象）。
+        // 所以 Radix 风格的 portal selector（`body > [role="tooltip"]` /
+        // `body > div:has(> [role="tooltip"])` / `[class*="TooltipContent"]`）
+        // 一条都不命中。实测直接 `[role="tooltip"]` 是唯一有效 selector。
         //
-        // 注意：这是**全局**关闭所有 Radix Tooltip——DSH 里 Tooltip 主要用在
-        // sidebar；其它位置（设置页等）出现频次极低且 aria-label 仍可用。CSS :has
-        // 选择器在 Chromium 原生支持，DSH 是 Electron 即 Chromium 内核。
+        // 行为说明：DSH 整个 app 里 `role="tooltip"` 只在 Tooltip 组件里出现——
+        // 全局干掉无副作用。DSH Tooltip 主要用在 sidebar（侧栏会话项 / 工作窗口
+        // / 项目组）+ 其它零星位置（goal / composer / message-feedback 等），
+        // 零星位置 aria-label 仍可用，符合"全局关闭"预期。
         id: "hide-sidebar-tooltip",
         name: "隐藏侧栏悬浮提示",
         description: "鼠标悬停在左侧栏工作窗口时会弹出一个深色方框展示会话全名。开启后关掉这些浮层——根本用不上。",
@@ -177,10 +194,8 @@ window.__ModuleLoader__.load({
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.hideSidebarTooltip) return null;
-          return "/* === hide-sidebar-tooltip : kill Radix Tooltip portal (body direct child + wrapper + CSS Module suffix) === */\n" +
-            "body > [role=\"tooltip\"]{display:none!important}\n" +
-            "body > div:has(> [role=\"tooltip\"]){display:none!important}\n" +
-            "[class*=\"TooltipContent\"]{display:none!important}";
+          return "/* === hide-sidebar-tooltip v0.6.1 : DSH Tooltip 组件渲染 <span role=\"tooltip\">（inline, 不 portal, className=undefined）— 全局干掉 === */\n" +
+            "[role=\"tooltip\"]{display:none!important}";
         }
       }
     ];
