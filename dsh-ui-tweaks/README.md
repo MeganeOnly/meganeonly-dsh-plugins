@@ -2,7 +2,7 @@
 
 作者：MeganeOnly
 
-**DSH 外观设计微调合集（v0.6.1：修复 v0.6.0 `hide-sidebar-tooltip` 失效 selector）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller）。
+**DSH 外观设计微调合集（v0.7.0：新增 `hide-trajectory-tab`——对话顶部"轨迹"标签隐藏，非开发者用不上）**。集中维护一组个人对 DSH shell 视觉的微调，每条 tweak 通过 DSH 设置页的"界面微调"顶级 section 控制开关 + 参数，client bundle 根据状态动态生成 CSS 注入 `<head>`，并通过 `CustomEvent` 触发副作用（调试高亮、简洁模式状态行 DOM controller、轨迹标签 hider）。
 
 - **host half**：v0.3.0 起退化为零副作用 placeholder（cordis bundle 注册用占位）。**不**注册 DSH settings namespace、不读 settings 文档。
 - **client half**：状态用浏览器 `localStorage` 自管（key `dsh-ui-tweaks/state`），注册独立顶层 `settings.section` slot（id=`ui-tweaks`, order=5），用 React 函数组件直接渲染控件，立即写 localStorage + 重注入 CSS。无 settingsScope 依赖。
@@ -77,6 +77,20 @@ v0.6.0 新增 → **v0.6.1 修复 selector**。DSH 侧栏会话项 / 工作窗�
 
 **v0.6.1 修法**：直接 `[role="tooltip"]{display:none!important}`。DSH 全 app 里 `role="tooltip"` 只在 Tooltip 组件里出现——全局干掉无副作用（与 v0.6.0 文档描述"全局关闭"一致）。
 
+### "隐藏对话中的'轨迹'标签" 行为
+
+v0.7.0 新增。DSH 对话顶部（`@deepseek-ai/dsh-client-ui-conversation/lib/client.js:7034-7047`）渲染了一个 `[role="tablist"]`，含两个 tab 按钮："对话"（Chat）/ "轨迹"（Trajectory）。"轨迹"标签打开的是 `TrajectoryView`（`@deepseek-ai/dsh-client-ui-trajectory`），是开发者视角的模型/工具调用事件账本（turn / step / tool-call 时间线 + 详细记录 + 搜索 / 折叠 / 跳读等调试工具）。
+
+非开发者根本用不上，看着也容易困惑。开启后用 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记打掉——CSS 命中隐藏。
+
+**实现关键**：
+- **JS 端**：CSS 没有 `:text()` 选择器无法匹配按钮文本。`createTrajectoryTabHider()` controller 用 `MutationObserver(document.body, {childList, subtree})` 巡检 `[role="tablist"] [role="tab"]` 列表，找文本等于 `"轨迹"` 或 `"Trajectory"` 的按钮，打 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记。
+- **CSS 端**：`[data-dsh-ui-tweaks-hidden-tab="trajectory"]{display:none!important}` 命中标记元素隐藏。
+- **副作用**：如果轨迹标签当前 `aria-selected="true"`（用户正在轨迹视图），点击"对话"/"Chat" 标签自动切回对话页——避免用户卡在轨迹视图出不来。
+- **关掉时**：`stop()` 主动移除已打的标记 + disconnect observer；切回 chat view（如果当前停在轨迹）。
+
+**DSH 升级应对**：按钮文本变（比如本地化新增语言）或结构变（tab 移出 `[role="tablist"]`），需要相应更新 `TRAJECTORY_TAB_LABELS` 数组或 `findTabButtonByLabels` 选择器。
+
 ## 诊断与验证
 
 每条 tweak row 旁都有一个 **诊断** 按钮，点击在 console.groupCollapsed 里输出：
@@ -108,6 +122,7 @@ window.__dshUiTweaks.reshim()                // 立即重跑 self-shim（调试�
 | `conversation-shift-debug` | 对话右缩调试高亮 | 开启后给 conversation 列加 4px 黄色 outline + 黑底白字浮动 label 显示当前像素值，并在 DevTools console.info 打出命中元素诊断。调试用——对话右缩关闭时也能开。 | 开关（`conversationShiftDebug`，默认关） |
 | `simple-mode` | 简洁模式 | 隐藏思考（think 推理）、工具调用（read/edit/pwsh/bash/grep/glob 等）、上下文注入行、其它纯过程节点（compaction / model-retry / turn-error / turn-max-tokens），整体 display:none 不留白。输入框上方常驻一条极简状态行（"正在思考…" / "正在阅读…" / "正在执行命令…"），运行结束自动消失。状态行用 DOM 注入 `[class*="turnStatus"]` 跟随 TurnStatus 重渲（MutationObserver + 250ms 心跳），工具名从 `[data-chat-flow-kind="tool-call"]` 节点反推（不依赖 settingsScope）。 | 开关（`simpleModeEnabled`，默认开） |
 | `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 鼠标悬停在左侧栏会话项 / 工作窗口时 DSH 默认弹出一个深色方框展示会话全名。v0.6.1 修复 selector：DSH Tooltip 组件渲染 `<span role="tooltip">` 作为锚点兄弟节点 inline 渲染（不 portal 到 body，className=undefined），直接 `[role="tooltip"]{display:none!important}` 命中。**全局关闭**——DSH 全 app 只有 Tooltip 组件用 `role="tooltip"`，全局干掉无副作用；其它位置（goal / composer / message-feedback 等）出现频次极低且 aria-label 仍可用。 | 开关（`hideSidebarTooltip`，默认开） |
+| `hide-trajectory-tab` | 隐藏对话中的"轨迹"标签 | 对话顶部多了一个"轨迹"标签——展示模型/工具调用的事件账本（开发者视角，含 turn/step/tool-call 时间线、详情、搜索等调试功能）。非开发者用不上，看着也容易困惑。v0.7.0 实现：JS MutationObserver 巡检 `[role="tablist"]` 找文本为"轨迹"/"Trajectory"的按钮，打 `data-dsh-ui-tweaks-hidden-tab="trajectory"` 标记，CSS 命中隐藏。如果当前 view 正是轨迹（aria-selected=true），自动点击"对话"/"Chat"标签切回对话页——避免卡在轨迹视图出不来。 | 开关（`hideTrajectoryTab`，默认开） |
 
 ## 如何加新调整
 
@@ -165,7 +180,7 @@ var TWEAKS = [
 
 - **不依赖 settingsScope / DSH settings namespace**：v0.3.0 起 tweak 状态完全在浏览器侧管理（localStorage）。原因见 DECISIONS.md C003——DSH API gateway 的 `exposedNamespaces()` 硬编码白名单对第三方插件 silent filter。
 - **self-shim 4 层 selector（v0.5.0）**：本插件独占 self-shim，不依赖 `@linxin666/dsh-web-ui-all`。L1 数据属性 → L2 CSS Module 子串 → L3 grid 解析 → L4 兜底。配合 `MutationObserver(document.body, {childList,subtree})` 在 DSH React 重渲时自动重新种属性。
-- **副作用总线**：UiTweaksSection 在 useEffect 里 dispatch `CustomEvent("dsh-ui-tweaks-state-change", { detail: state })`；apply() 订阅事件分发到 `applyDebugMode()` 与简洁模式状态行 controller 的 `start()/stop()`。
+- **副作用总线**：UiTweaksSection 在 useEffect 里 dispatch `CustomEvent("dsh-ui-tweaks-state-change", { detail: state })`；apply() 订阅事件分发到 `applyDebugMode()`、简洁模式状态行 controller 的 `start()/stop()`、**v0.7.0 起** trajectory tab hider 的 `start()/stop()`（自动切回 chat view）。
 - **视觉锚点（v0.5.0）**：右缩开启时 conversation 列右边界画 1px 红线 (`#dc2626`)；调试开启时 4px 黄 outline + 浮动 label。两层视觉反馈让用户**哪怕没有右面板也能立刻看到效果**。
 - **诊断 API（v0.5.0）**：`window.__dshUiTweaks` 暴露 `VERSION / getState / getInjectedCSS / getMatchedElements / debug / setState / reshim`。每条 tweak row 加 "诊断" 按钮直接输出这一条的 buildCSS + 命中元素。
 - **Controller-less 设计**：v0.2.1 用的 `UiTweaksController` + `useSyncExternalStore` 改为 React 原生 `useState` + `useEffect`——简单一个 section 不需要外部 store 抽象，状态完全在 React 树内。

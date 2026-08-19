@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.6.1：修复 v0.6.0 hide-sidebar-tooltip 失效——DSH Tooltip 组件（@deepseek-ai/dsh-client-ui-primitives）渲染 <span role=\"tooltip\"> 作为锚点兄弟节点 inline 渲染，不 portal 到 body，className=undefined（CSS module stub 是空对象）；v0.6.0 三 selector 一条不命中——body > [role=tooltip] 不是 body 直接子级、body > div:has(> [role=tooltip]) 同上、[class*=TooltipContent] className 是 undefined 无子串匹配。修法：直接 [role=\"tooltip\"]{display:none!important}，DSH 全 app 只有 Tooltip 组件用 role=tooltip，全局干掉无副作用）。v0.6.0 在 v0.5.5 基础上新增 hide-sidebar-tooltip（虽然 selector 写错——本版本修复）。状态由 client half 用 localStorage 自管（详见 DECISIONS C003）。v0.5.5 conversation-shift 关键链：JS 动态探测 DOM 找真正的 chatflow 容器 + inputArea → 打 data-dsh-ui-tweaks-shift-target 标记 → CSS 只命中被标记元素（v0.5.2 `> *` 命中 0 的回归根治）；applyChatflowShiftMarks 加幂等性 + self-shim observer 作为 chatflow marks 的 body-level 兜底（v0.5.4 修『来回弹』后 v0.5.5 修『根本不移动』回归）；buildCSS 无 transition（避免 padding 在 MutationObserver 频繁重打标记时产生视觉循环）。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip 四条 tweak。作者：MeganeOnly。",
+  "description": "DSH 外观设计微调合集（v0.7.0：新增 hide-trajectory-tab——对话顶部"轨迹"标签页（DSH 开发者视角的模型/工具调用事件账本）隐藏。非开发者根本用不上。实现：JS MutationObserver 巡检 [role=tablist] 找文本为"轨迹"/"Trajectory" 的按钮，打 data-dsh-ui-tweaks-hidden-tab="trajectory" 标记 → CSS 命中隐藏；如果当前 view 正是轨迹（aria-selected=true），点击"对话"/"Chat" 标签自动切回对话页）。v0.6.1：修复 v0.6.0 hide-sidebar-tooltip 失效 selector。v0.6.0 在 v0.5.5 基础上新增 hide-sidebar-tooltip（虽然 selector 写错——本版本修复）。状态由 client half 用 localStorage 自管（详见 DECISIONS C003）。v0.5.5 conversation-shift 关键链：JS 动态探测 DOM 找真正的 chatflow 容器 + inputArea → 打 data-dsh-ui-tweaks-shift-target 标记 → CSS 只命中被标记元素（v0.5.2 `> *` 命中 0 的回归根治）；applyChatflowShiftMarks 加幂等性 + self-shim observer 作为 chatflow marks 的 body-level 兜底（v0.5.4 修『来回弹』后 v0.5.5 修『根本不移动』回归）；buildCSS 无 transition（避免 padding 在 MutationObserver 频繁重打标记时产生视觉循环）。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab 五条 tweak。作者：MeganeOnly。",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

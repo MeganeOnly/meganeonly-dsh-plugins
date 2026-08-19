@@ -1,6 +1,14 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.7.0：新增 hide-trajectory-tab——对话顶部"轨迹"标签页（DSH 开发者视角的
+ *   模型/工具事件账本）隐藏。非开发者根本用不上，看了也看不懂。
+ *   实现：JS 端 MutationObserver 巡检 `[role="tablist"]` 找文本为 "轨迹"/
+ *   "Trajectory" 的按钮，给它打 `data-dsh-ui-tweaks-hidden-tab="trajectory"`
+ *   标记；CSS `[data-dsh-ui-tweaks-hidden-tab="trajectory"]{display:none!important}`
+ *   隐藏。如果当前 view 正是轨迹（aria-selected="true"），点击"对话"/"Chat"
+ *   标签自动切回对话页——避免用户卡在轨迹视图出不来。
+ *
  * v0.6.1：hide-sidebar-tooltip 修复——v0.6.0 的三个 selector 都错。
  *   实测 DSH Tooltip 组件（`@deepseek-ai/dsh-client-ui-primitives/lib/types/Tooltip.js`）
  *   渲染时是 `<span role="tooltip" className={undefined} style={{left,top}}>`，
@@ -88,7 +96,7 @@ window.__ModuleLoader__.load({
 
     var inject = ["slots"];
 
-    var VERSION = "0.6.1";
+    var VERSION = "0.7.0";
     var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
     var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
     var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -196,6 +204,32 @@ window.__ModuleLoader__.load({
           if (!state.hideSidebarTooltip) return null;
           return "/* === hide-sidebar-tooltip v0.6.1 : DSH Tooltip 组件渲染 <span role=\"tooltip\">（inline, 不 portal, className=undefined）— 全局干掉 === */\n" +
             "[role=\"tooltip\"]{display:none!important}";
+        }
+      },
+      {
+        // v0.7.0 新增。DSH 对话顶部在 v0.1.0-rc.X 起多了"轨迹"标签页
+        // （id="trajectory"）——开发者视角的模型/工具调用事件账本（turn/step/
+        // tool-call 时间线 + 详细记录）。非开发者根本不需要，看了也看不懂。
+        //
+        // 渲染结构（DSH 源码 `dsh-client-ui-conversation/lib/client.js:7034-7047`）：
+        //   tabs = [role="tablist"] 容器
+        //   tabs.map(viewTab => jsx("button", { role:"tab", "aria-selected":..., children: viewTab.label }))
+        //   viewTab.label = t("view.trajectory") → "轨迹"(zh) / "Trajectory"(en)
+        //
+        // 纯 CSS 没法匹配"按钮文本是 轨迹"—CSS 没有 :text() 选择器。
+        // 解法：JS 端用 MutationObserver 巡检 [role="tablist"] 找文本匹配的按钮，
+        // 给它打 data-dsh-ui-tweaks-hidden-tab="trajectory" 标记 → CSS 命中隐藏。
+        // 配套副作用：如果当前 view 正是轨迹（aria-selected="true"），点击"对话"/
+        // "Chat" 标签自动切回对话页——避免用户卡在轨迹视图出不来。
+        id: "hide-trajectory-tab",
+        name: "隐藏对话中的\"轨迹\"标签",
+        description: "对话顶部多了一个\"轨迹\"标签——展示模型/工具调用的事件账本（开发者视角）。非开发者用不上，看着也容易困惑。开启后完全隐藏这个标签，如果当前正停在轨迹视图会自动切回对话页。",
+        configKeys: { enabled: "hideTrajectoryTab", value: "hideTrajectoryTab" },
+        defaults: { enabled: true, value: true },
+        buildCSS: function (state) {
+          if (!state.hideTrajectoryTab) return null;
+          return "/* === hide-trajectory-tab v0.7.0 : JS-side MutationObserver 给 \"轨迹\"/\"Trajectory\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"trajectory\"，CSS 命中隐藏 === */\n" +
+            "[data-dsh-ui-tweaks-hidden-tab=\"trajectory\"]{display:none!important}";
         }
       }
     ];
@@ -887,6 +921,115 @@ window.__ModuleLoader__.load({
     }
 
     // ====================================================================
+    // v0.7.0：轨迹标签隐藏 controller（hide-trajectory-tab 副作用）
+    // --------------------------------------------------------------------
+    // DSH 对话顶部有 [role="tablist"] 包含 "对话"(Chat) + "轨迹"(Trajectory)
+    // 两个标签（renderSlot("conversation.view", ...) 注册的两个 view entry）。
+    // 用户点击"轨迹"会进入 TrajectoryView——开发者视角的事件账本。
+    //
+    // controller 职责：
+    //   1. 巡检 [role="tablist"] 内按钮文本，找到"轨迹"/"Trajectory" 打
+    //      data-dsh-ui-tweaks-hidden-tab="trajectory" 标记（CSS 命中隐藏）
+    //   2. 如果这个标签当前 aria-selected="true"（用户正在轨迹视图），
+    //      点击"对话"/"Chat"标签自动切回对话页——避免用户卡在轨迹视图
+    //   3. 巡检 [data-conversation-composer-overlay]（TrajectoryView 根元素
+    //      唯一标识）作为兜底——万一未来 DSH 重构按钮结构导致 [role=tablist]
+    //      找不到，仍能识别出"轨迹视图被渲染了"并切回对话
+    //
+    // MutationObserver 观察 document.body 子树——DSH React 重渲或切换会话
+    // 会重建 tablist，必须重新巡检。startShellShimObserver 已经在观察 body
+    // 子树了，但为了轨迹标签的逻辑独立、不耦合 chatflow marks 的幂等性，
+    // 这里用独立的 observer（overhead 可忽略）。
+    // ====================================================================
+
+    // 多语言匹配集合。DSH 用 zh / en 两种 UI 语言；其它 locale 暂不支持。
+    var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];
+    var CHAT_TAB_LABELS = ["对话", "Chat"];
+    var TRAJECTORY_TAB_HIDDEN_ATTR = "data-dsh-ui-tweaks-hidden-tab";
+    var TRAJECTORY_TAB_HIDDEN_VALUE = "trajectory";
+
+    function findTabButtonByLabels(labels) {
+      if (typeof document === "undefined") return null;
+      var tabs = document.querySelectorAll('[role="tablist"] [role="tab"]');
+      for (var i = 0; i < tabs.length; i++) {
+        var text = (tabs[i].textContent || "").trim();
+        for (var j = 0; j < labels.length; j++) {
+          if (text === labels[j]) return tabs[i];
+        }
+      }
+      return null;
+    }
+
+    function createTrajectoryTabHider() {
+      var observer = null;
+      var isRunning = false;
+
+      function tick() {
+        if (typeof document === "undefined") return;
+        var trajectoryTab = findTabButtonByLabels(TRAJECTORY_TAB_LABELS);
+        if (trajectoryTab) {
+          // 1) 打标记 → CSS 隐藏
+          if (trajectoryTab.getAttribute(TRAJECTORY_TAB_HIDDEN_ATTR) !== TRAJECTORY_TAB_HIDDEN_VALUE) {
+            trajectoryTab.setAttribute(TRAJECTORY_TAB_HIDDEN_ATTR, TRAJECTORY_TAB_HIDDEN_VALUE);
+          }
+          // 2) 如果当前选中轨迹 → 切回对话
+          if (trajectoryTab.getAttribute("aria-selected") === "true") {
+            var chatTab = findTabButtonByLabels(CHAT_TAB_LABELS);
+            if (chatTab && typeof chatTab.click === "function") {
+              chatTab.click();
+            }
+          }
+        }
+      }
+
+      function start() {
+        if (isRunning) return;
+        isRunning = true;
+        if (typeof MutationObserver === "undefined" || typeof document === "undefined") {
+          tick();
+          return;
+        }
+        observer = new MutationObserver(function () {
+          // throttle：避免短时间内反复探测
+          if (observer._pending) return;
+          observer._pending = true;
+          (typeof window !== "undefined" && window.setTimeout)
+            ? window.setTimeout(function () {
+                observer._pending = false;
+                tick();
+              }, 80)
+            : tick();
+        });
+        try {
+          observer.observe(document.body, { childList: true, subtree: true });
+        } catch (e) { /* 静默：极端情况下（如 document.body 还没准备好）不报错 */ }
+        // 立即跑一次（start 时立即生效，不要等下一次 mutation）
+        tick();
+      }
+
+      function stop() {
+        isRunning = false;
+        if (observer !== null) { observer.disconnect(); observer = null; }
+        // 移除已打的标记（CSS 注入也会被移除，状态自洽）
+        if (typeof document !== "undefined") {
+          var marked = document.querySelectorAll('[' + TRAJECTORY_TAB_HIDDEN_ATTR + '="' + TRAJECTORY_TAB_HIDDEN_VALUE + '"]');
+          for (var i = 0; i < marked.length; i++) {
+            marked[i].removeAttribute(TRAJECTORY_TAB_HIDDEN_ATTR);
+          }
+        }
+      }
+
+      // 暴露 running getter 给 apply() / onStateChange 用——避免外部另起
+      // 一个 `controller._running` 标志导致状态不一致（simpleController
+      // 那种模式需要 apply() 维护 _running 标志，controller 内部其实不知情）。
+      return {
+        start: start,
+        stop: stop,
+        get running() { return isRunning; }
+      };
+    }
+
+    // ====================================================================
     // 诊断 API（暴露 window.__dshUiTweaks）
     // ====================================================================
 
@@ -1132,6 +1275,10 @@ window.__ModuleLoader__.load({
       var simpleController = createSimpleModeStatusController();
       if (initialState.simpleModeEnabled) simpleController.start();
 
+      // 6b) v0.7.0：轨迹标签隐藏 controller
+      var trajectoryHider = createTrajectoryTabHider();
+      if (initialState.hideTrajectoryTab) trajectoryHider.start();
+
       // 7) 监听 UI 状态变化
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
@@ -1148,6 +1295,15 @@ window.__ModuleLoader__.load({
           if (simpleController._running) {
             simpleController.stop();
             simpleController._running = false;
+          }
+        }
+        if (detail.hideTrajectoryTab) {
+          if (!trajectoryHider.running) {
+            trajectoryHider.start();
+          }
+        } else {
+          if (trajectoryHider.running) {
+            trajectoryHider.stop();
           }
         }
       }
