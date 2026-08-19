@@ -2,8 +2,25 @@
   "name": "dsh-ui-tweaks",
   "version": "0.7.4",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.7.4：hide-sidebar-tooltip 四次修复——v0.7.3 CSS 直接命中 _hoverContent 内容解决了『闪一下』，但用户反馈还有『窄黑框』。根因：HoverCard card div 本身（不是内容）有独立 CSS 类 `_card_<hash>_<line>`（当前 hash=1b2ny），CSS 内容是 `position:fixed; background:#2C2C2E; box-shadow:lv3`——隐藏了内容但 card 背景框还在。修法：用 CSS `:has()` 找『含 _hoverContent 后代的 body 直接子 div』就是 card div（`:has()` Chromium 105+ 可用，DSH Electron 是现代 Chromium）。彻底消除『闪』+『窄框』。v0.7.3 CSS 直接命中 _hoverContent 内容解决闪一下。v0.7.2：新增 hide-chat-tab + 重构 createTrajectoryTabHider 为通用 createTabHider(opts) 工厂。v0.7.1：hide-sidebar-tooltip 二次修复——之前一直把『侧栏悬浮提示』当成 Radix Tooltip 但实测是 DSH HoverCard 组件。v0.7.0：新增 hide-trajectory-tab。状态由 client half 用 localStorage 自管（详见 DECISIONS C003）。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab 六条 tweak。作者：MeganeOnly。",
-  "private": true,
+  "description": "DSH 外观设计微调合集（v0.7.1：hide-sidebar-tooltip 二次修复——侧栏悬浮提示实际是 DSH 自己的 HoverCard 组件（@deepseek-ai/dsh-client-ui-primitives/lib/types/HoverCard.js），而非 Radix Tooltip。HoverCard 在每条 session / workspace 行 hover 500ms 后 portal 一个 div 到 document.body，内容是 SessionHoverContent / WorkspaceHoverContent（CSS Module hash 类名 YDXeBa_hoverContent / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath）。HoverCard 的 card div 本身没有 className（HoverCard.module.css 是空 stub），role 只在 copyable 时才有，CSS 选择器难命中。修法：JS MutationObserver 巡检 body 直接子 div，找到含 hover 相关 hash 类的打 data-dsh-ui-tweaks-hidden-hover-card 标记；CSS 命中隐藏。加上 [role=tooltip]，Tooltip + HoverCard 一并覆盖）。v0.7.0：新增 hide-trajectory-tab。v0.6.1：hide-sidebar-tooltip selector 修复。状态由 client half 用 localStorage 自管。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab 五条 tweak。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins.git",
+    "directory": "dsh-ui-tweaks"
+  },
+  "bugs": {
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/issues"
+  },
+  "homepage": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/tree/main/dsh-ui-tweaks#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "ui",
+    "css",
+    "appearance",
+    "customization"
+  ],
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -12,6 +29,14 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

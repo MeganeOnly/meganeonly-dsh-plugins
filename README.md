@@ -38,6 +38,36 @@
 
 安装后可到 **设置 → 插件管理**（plugin-manager）/ **Skill 管理**（skill-manager）/ **MCP 管理**（mcp-manager）统一查看与启停。
 
+## 独立包发布
+
+每个子目录都是一个**可独立安装 / 发布的 npm 包**，与本仓库其余插件相互独立：
+
+- **版本号**：以各插件目录下的 `package.json` 为准（npm 仅看 `package.json#version`，不读仓库根）；
+- **变更记录**：每个插件目录维护各自的 `CHANGELOG.md`，互不耦合；
+- **依赖声明**：`files` 数组中已包含 `CHANGELOG.md` 和 `LICENSE`，`npm pack` 打出来的 tarball 自带完整的发布材料。
+
+仓库本身仍然保持 **monorepo** 结构（一个 git 仓库存放所有插件源代码、统一 review、共享共用脚本），但每个子包走**独立版本号**、独立 `CHANGELOG.md`、独立发布节奏，可以单独 `npm install`、单独 `npm publish`，互不影响。
+
+### 本地试打包
+
+```bash
+cd plugin-manager
+npm pack --dry-run
+```
+
+预期看到 `npm notice ... Files: [...]` 列表里同时包含 `lib/`、`cordis.patch.yml`、`README.md`、`CHANGELOG.md`、`LICENSE`、`package.json`；并提示 `package name: dsh-plugin-manager`、`version: 0.x.y`、tarball 路径。
+
+### 发布到 npm
+
+```bash
+cd skill-manager
+npm publish --access public
+```
+
+`--access public` 的主要用途是把 **scoped 包**（包名以 `@scope/` 开头，例如 `@meganeonly/dsh-skill-manager`）首次发布为公开包——scoped 包默认是私有的，必须显式指定 `--access public` 才能公开。
+
+**unscoped 包**（如 `dsh-plugin-manager`、`dsh-task-pool` 等）默认就是公开的，不需要写 `--access public`；示例中保留该参数主要是为了让上面这条 scoped 包场景的发布命令也能直接复用，避免为 unscoped 包再写一个特例。版本号会在 `package.json` + CHANGELOG 中同步体现。
+
 ## 插件说明
 
 ### plugin-manager — 插件管理
