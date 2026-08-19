@@ -127,6 +127,11 @@
       ".DGH_hiddenBarExit:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       // 选择模式 toggle 按钮激活态
       "[data-action=\"select-toggle\"][data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
+      // v0.4.0：commit 工具区可见性 toggle 按钮
+      // data-active=true → commit 区当前显示 → 按钮填色（与 select-toggle 一致的「激活」语义）
+      // data-active=false → commit 区当前隐藏 → 按钮淡灰（语义：这是 off 状态）
+      ".DGH_commitToggle[data-active=\"false\"]{opacity:.55;}" +
+      ".DGH_commitToggle[data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);opacity:1;}" +
       // FAB：top:130px = task-pool FAB(78~122)+ 8px 间距。两个 FAB 同时可见不重叠；
       // drawer 打开互斥协议保证两个 FAB 不会同时进入让位动画
       ".DGH_fab{position:fixed;top:130px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +

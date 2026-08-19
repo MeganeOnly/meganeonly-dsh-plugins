@@ -24,6 +24,7 @@
       function renderHeader() {
         var snap = controller.getSnapshot();
         var toolAvail = snap.config && snap.config.toolAvailable;
+        var commitVisible = !!snap.commitSectionVisible;
         var headerHtml =
           '<span class="DGH_title">Git/GitHub</span>' +
           '<button class="DGH_iconBtn" data-action="config" title="配置扫描根路径">' +
@@ -37,6 +38,12 @@
           '</button>' +
           '<button class="DGH_iconBtn" data-action="refresh" title="刷新仓库状态">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>' +
+          '</button>' +
+          // v0.4.0：commit 工具区可见性 toggle（在 refresh 之后、spacer 之前；icon = git commit dot on line）
+          // data-active=true 表示 commit 区当前显示；点击 = 关闭（→ data-active=false）
+          // data-active=false 表示 commit 区当前隐藏；点击 = 打开（→ data-active=true）
+          '<button class="DGH_iconBtn DGH_commitToggle" data-action="commit-toggle" title="' + (commitVisible ? '隐藏 commit 工具区' : '显示 commit 工具区') + '" data-active="' + (commitVisible ? 'true' : 'false') + '">' +
+            '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/><path d="M5 8h6"/></svg>' +
           '</button>' +
           '<span class="DGH_spacer"></span>' +
           '<button class="DGH_pushBtn" data-action="push-all" ' + (toolAvail ? "" : "disabled title=\"daily-push.cjs 不可用\"") + ' title="推送所有可见仓库（自动跳过 hidden）">⬆ 全部推送</button>' +
@@ -56,6 +63,10 @@
         });
         headerEl.querySelector('[data-action="refresh"]').addEventListener("click", function () {
           controller.refresh(true);
+        });
+        // v0.4.0：commit 工具区可见性 toggle
+        headerEl.querySelector('[data-action="commit-toggle"]').addEventListener("click", function () {
+          controller.toggleCommitSection();
         });
         headerEl.querySelector('[data-action="push-all"]').addEventListener("click", function () {
           controller.pushAll();
@@ -270,21 +281,27 @@
         var snap = controller.getSnapshot();
 
         // v0.2.2：commit 工具区（持久显示，紧贴 header 下；多仓库）
+        // v0.4.0：受 commitSectionVisible 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
         var existingCommit = bodyEl.querySelector(".DGH_commitSection");
-        if (!existingCommit) {
-          existingCommit = document.createElement("div");
-          existingCommit.className = "DGH_commitSection";
-          bodyEl.insertBefore(existingCommit, bodyEl.firstChild);
+        if (snap.commitSectionVisible) {
+          if (!existingCommit) {
+            existingCommit = document.createElement("div");
+            existingCommit.className = "DGH_commitSection";
+            bodyEl.insertBefore(existingCommit, bodyEl.firstChild);
+          }
+          renderCommitSection(existingCommit, controller);
+        } else if (existingCommit) {
+          existingCommit.remove();
+          existingCommit = null;
         }
-        renderCommitSection(existingCommit, controller);
 
         // v0.3.0：merge / pull 工具区（紧贴 commit 区下）
+        // commit 区关闭时，merge 区直接挂在 body 顶部（保持原有顺序语义：commit → merge → 列表）
         var existingMerge = bodyEl.querySelector(".DGH_mergeSection");
         if (!existingMerge) {
           existingMerge = document.createElement("div");
           existingMerge.className = "DGH_mergeSection";
-          // 插到 commit 区之后（commit 区在第一个位置）
-          if (existingCommit.nextSibling) {
+          if (existingCommit && existingCommit.nextSibling) {
             bodyEl.insertBefore(existingMerge, existingCommit.nextSibling);
           } else {
             bodyEl.appendChild(existingMerge);

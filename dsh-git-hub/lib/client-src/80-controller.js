@@ -20,12 +20,15 @@
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
       this.hiddenPaths = new Set(doc.hiddenPaths);
+      // v0.4.0：commit 工具区可见性（持久化在 store；默认 false = 隐藏，理由：用户表示用不上 commit 功能）
+      this.commitSectionVisible = doc.commitSectionVisible === true; // 严格 true 才算开，避免 undefined 误开
       this.drawerOpen = false;
     }
     Controller.prototype._persist = function () {
       this.store.save({
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
+        commitSectionVisible: this.commitSectionVisible,
       });
     };
     Controller.prototype.subscribe = function (fn) {
@@ -53,6 +56,7 @@
         mergeRepos: this.mergeRepos,        // v0.3.0
         mergeBusy: this.mergeBusy,          // v0.3.0
         lastMergeResult: this.lastMergeResult, // v0.3.0
+        commitSectionVisible: this.commitSectionVisible, // v0.4.0：commit 工具区可见性
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
         drawerOpen: this.drawerOpen,
@@ -113,6 +117,12 @@
     };
     Controller.prototype.setError = function (msg) {
       this.error = msg;
+      this.notify();
+    };
+    /** v0.4.0：切换抽屉内 commit 工具区可见性（持久化） */
+    Controller.prototype.toggleCommitSection = function () {
+      this.commitSectionVisible = !this.commitSectionVisible;
+      this._persist();
       this.notify();
     };
     Controller.prototype.setLoading = function (v) {

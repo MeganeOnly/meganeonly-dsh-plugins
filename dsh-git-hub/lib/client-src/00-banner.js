@@ -14,8 +14,10 @@
  *   - 自愈 DOM 挂载：MutationObserver 监听 body
  *
  * 数据形态：localStorage key dsh.gitHub.v1
- *   schema v1 = { pinnedPaths: string[] }                      （v0.1.0）
- *   schema v2 = { pinnedPaths: string[], hiddenPaths: string[] }（v0.1.6 新增 hiddenPaths；
- *                                                             缺字段默认 []，隐式迁移 v1 → v2，
- *                                                             schema 演进不升 key）
+ *   schema v1 = { pinnedPaths: string[] }                          （v0.1.0）
+ *   schema v2 = { pinnedPaths: string[], hiddenPaths: string[] }   （v0.1.6 新增 hiddenPaths；
+ *                                                                   缺字段默认 []，隐式迁移 v1 → v2，
+ *                                                                   schema 演进不升 key）
+ *   schema v3 = schema v2 + { commitSectionVisible?: boolean }     （v0.4.0 新增 commit 工具区可见性；
+ *                                                                   缺字段默认 false；隐式迁移 v2 → v3）
  */

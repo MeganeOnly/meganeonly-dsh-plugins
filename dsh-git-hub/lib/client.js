@@ -14,10 +14,12 @@
  *   - 自愈 DOM 挂载：MutationObserver 监听 body
  *
  * 数据形态：localStorage key dsh.gitHub.v1
- *   schema v1 = { pinnedPaths: string[] }                      （v0.1.0）
- *   schema v2 = { pinnedPaths: string[], hiddenPaths: string[] }（v0.1.6 新增 hiddenPaths；
- *                                                             缺字段默认 []，隐式迁移 v1 → v2，
- *                                                             schema 演进不升 key）
+ *   schema v1 = { pinnedPaths: string[] }                          （v0.1.0）
+ *   schema v2 = { pinnedPaths: string[], hiddenPaths: string[] }   （v0.1.6 新增 hiddenPaths；
+ *                                                                   缺字段默认 []，隐式迁移 v1 → v2，
+ *                                                                   schema 演进不升 key）
+ *   schema v3 = schema v2 + { commitSectionVisible?: boolean }     （v0.4.0 新增 commit 工具区可见性；
+ *                                                                   缺字段默认 false；隐式迁移 v2 → v3）
  */
 window.__ModuleLoader__.load({
   id: "dsh-git-hub",
@@ -276,6 +278,11 @@ window.__ModuleLoader__.load({
       ".DGH_hiddenBarExit:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       // 选择模式 toggle 按钮激活态
       "[data-action=\"select-toggle\"][data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
+      // v0.4.0：commit 工具区可见性 toggle 按钮
+      // data-active=true → commit 区当前显示 → 按钮填色（与 select-toggle 一致的「激活」语义）
+      // data-active=false → commit 区当前隐藏 → 按钮淡灰（语义：这是 off 状态）
+      ".DGH_commitToggle[data-active=\"false\"]{opacity:.55;}" +
+      ".DGH_commitToggle[data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);opacity:1;}" +
       // FAB：top:130px = task-pool FAB(78~122)+ 8px 间距。两个 FAB 同时可见不重叠；
       // drawer 打开互斥协议保证两个 FAB 不会同时进入让位动画
       ".DGH_fab{position:fixed;top:130px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
@@ -308,7 +315,7 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag);
     }
 
-    // ===== LocalStorageStore（钉住列表） =====
+    // ===== LocalStorageStore（钉住/隐藏/commit 区可见性） =====
     function LocalStorageStore() {
       var storage;
       try {
@@ -323,19 +330,22 @@ window.__ModuleLoader__.load({
       this.storage = storage;
     }
     LocalStorageStore.prototype.load = function () {
-      if (!this.storage) return { pinnedPaths: [], hiddenPaths: [] };
+      if (!this.storage) return { pinnedPaths: [], hiddenPaths: [], commitSectionVisible: false };
       try {
         var raw = this.storage.getItem(STORAGE_KEY);
-        if (!raw) return { pinnedPaths: [], hiddenPaths: [] };
+        if (!raw) return { pinnedPaths: [], hiddenPaths: [], commitSectionVisible: false };
         var parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object") return { pinnedPaths: [], hiddenPaths: [] };
+        if (!parsed || typeof parsed !== "object") return { pinnedPaths: [], hiddenPaths: [], commitSectionVisible: false };
         var pinned = Array.isArray(parsed.pinnedPaths) ? parsed.pinnedPaths.filter(function (p) { return typeof p === "string"; }) : [];
         // v1 → v2 隐式迁移：旧文档无 hiddenPaths，默认空数组
         var hidden = Array.isArray(parsed.hiddenPaths) ? parsed.hiddenPaths.filter(function (p) { return typeof p === "string"; }) : [];
-        return { pinnedPaths: pinned, hiddenPaths: hidden };
+        // v2 → v3 隐式迁移：旧文档无 commitSectionVisible，默认 false（v0.4.0 起的用户偏好默认）
+        // 缺字段 → false，意图：「我感覺我用不上」= 默认隐藏，需要时再点开
+        var commitSectionVisible = typeof parsed.commitSectionVisible === "boolean" ? parsed.commitSectionVisible : false;
+        return { pinnedPaths: pinned, hiddenPaths: hidden, commitSectionVisible: commitSectionVisible };
       } catch (e) {
         console.error("[dsh-git-hub] load failed; starting empty", e);
-        return { pinnedPaths: [], hiddenPaths: [] };
+        return { pinnedPaths: [], hiddenPaths: [], commitSectionVisible: false };
       }
     };
     LocalStorageStore.prototype.save = function (doc) {
@@ -344,6 +354,8 @@ window.__ModuleLoader__.load({
         this.storage.setItem(STORAGE_KEY, JSON.stringify({
           pinnedPaths: Array.isArray(doc.pinnedPaths) ? doc.pinnedPaths : [],
           hiddenPaths: Array.isArray(doc.hiddenPaths) ? doc.hiddenPaths : [],
+          // v0.4.0：commit 工具区可见性开关持久化
+          commitSectionVisible: typeof doc.commitSectionVisible === "boolean" ? doc.commitSectionVisible : false,
         }));
       } catch (e) {
         console.error("[dsh-git-hub] save failed", e);
@@ -372,12 +384,15 @@ window.__ModuleLoader__.load({
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
       this.hiddenPaths = new Set(doc.hiddenPaths);
+      // v0.4.0：commit 工具区可见性（持久化在 store；默认 false = 隐藏，理由：用户表示用不上 commit 功能）
+      this.commitSectionVisible = doc.commitSectionVisible === true; // 严格 true 才算开，避免 undefined 误开
       this.drawerOpen = false;
     }
     Controller.prototype._persist = function () {
       this.store.save({
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
+        commitSectionVisible: this.commitSectionVisible,
       });
     };
     Controller.prototype.subscribe = function (fn) {
@@ -405,6 +420,7 @@ window.__ModuleLoader__.load({
         mergeRepos: this.mergeRepos,        // v0.3.0
         mergeBusy: this.mergeBusy,          // v0.3.0
         lastMergeResult: this.lastMergeResult, // v0.3.0
+        commitSectionVisible: this.commitSectionVisible, // v0.4.0：commit 工具区可见性
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
         drawerOpen: this.drawerOpen,
@@ -465,6 +481,12 @@ window.__ModuleLoader__.load({
     };
     Controller.prototype.setError = function (msg) {
       this.error = msg;
+      this.notify();
+    };
+    /** v0.4.0：切换抽屉内 commit 工具区可见性（持久化） */
+    Controller.prototype.toggleCommitSection = function () {
+      this.commitSectionVisible = !this.commitSectionVisible;
+      this._persist();
       this.notify();
     };
     Controller.prototype.setLoading = function (v) {
@@ -984,6 +1006,7 @@ window.__ModuleLoader__.load({
       function renderHeader() {
         var snap = controller.getSnapshot();
         var toolAvail = snap.config && snap.config.toolAvailable;
+        var commitVisible = !!snap.commitSectionVisible;
         var headerHtml =
           '<span class="DGH_title">Git/GitHub</span>' +
           '<button class="DGH_iconBtn" data-action="config" title="配置扫描根路径">' +
@@ -997,6 +1020,12 @@ window.__ModuleLoader__.load({
           '</button>' +
           '<button class="DGH_iconBtn" data-action="refresh" title="刷新仓库状态">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>' +
+          '</button>' +
+          // v0.4.0：commit 工具区可见性 toggle（在 refresh 之后、spacer 之前；icon = git commit dot on line）
+          // data-active=true 表示 commit 区当前显示；点击 = 关闭（→ data-active=false）
+          // data-active=false 表示 commit 区当前隐藏；点击 = 打开（→ data-active=true）
+          '<button class="DGH_iconBtn DGH_commitToggle" data-action="commit-toggle" title="' + (commitVisible ? '隐藏 commit 工具区' : '显示 commit 工具区') + '" data-active="' + (commitVisible ? 'true' : 'false') + '">' +
+            '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/><path d="M5 8h6"/></svg>' +
           '</button>' +
           '<span class="DGH_spacer"></span>' +
           '<button class="DGH_pushBtn" data-action="push-all" ' + (toolAvail ? "" : "disabled title=\"daily-push.cjs 不可用\"") + ' title="推送所有可见仓库（自动跳过 hidden）">⬆ 全部推送</button>' +
@@ -1016,6 +1045,10 @@ window.__ModuleLoader__.load({
         });
         headerEl.querySelector('[data-action="refresh"]').addEventListener("click", function () {
           controller.refresh(true);
+        });
+        // v0.4.0：commit 工具区可见性 toggle
+        headerEl.querySelector('[data-action="commit-toggle"]').addEventListener("click", function () {
+          controller.toggleCommitSection();
         });
         headerEl.querySelector('[data-action="push-all"]').addEventListener("click", function () {
           controller.pushAll();
@@ -1230,21 +1263,27 @@ window.__ModuleLoader__.load({
         var snap = controller.getSnapshot();
 
         // v0.2.2：commit 工具区（持久显示，紧贴 header 下；多仓库）
+        // v0.4.0：受 commitSectionVisible 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
         var existingCommit = bodyEl.querySelector(".DGH_commitSection");
-        if (!existingCommit) {
-          existingCommit = document.createElement("div");
-          existingCommit.className = "DGH_commitSection";
-          bodyEl.insertBefore(existingCommit, bodyEl.firstChild);
+        if (snap.commitSectionVisible) {
+          if (!existingCommit) {
+            existingCommit = document.createElement("div");
+            existingCommit.className = "DGH_commitSection";
+            bodyEl.insertBefore(existingCommit, bodyEl.firstChild);
+          }
+          renderCommitSection(existingCommit, controller);
+        } else if (existingCommit) {
+          existingCommit.remove();
+          existingCommit = null;
         }
-        renderCommitSection(existingCommit, controller);
 
         // v0.3.0：merge / pull 工具区（紧贴 commit 区下）
+        // commit 区关闭时，merge 区直接挂在 body 顶部（保持原有顺序语义：commit → merge → 列表）
         var existingMerge = bodyEl.querySelector(".DGH_mergeSection");
         if (!existingMerge) {
           existingMerge = document.createElement("div");
           existingMerge.className = "DGH_mergeSection";
-          // 插到 commit 区之后（commit 区在第一个位置）
-          if (existingCommit.nextSibling) {
+          if (existingCommit && existingCommit.nextSibling) {
             bodyEl.insertBefore(existingMerge, existingCommit.nextSibling);
           } else {
             bodyEl.appendChild(existingMerge);
