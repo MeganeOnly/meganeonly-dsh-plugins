@@ -56,7 +56,7 @@ DSH 右侧 FAB + 抽屉模式的本地 git 仓库管理面板 v0.1.0。
 - 单次扫描最多 200 个仓库（`MAX_REPOS`）
 - 递归深度上限 8 层（`MAX_DEPTH`）
 - host half 5 秒缓存（`SCAN_CACHE_TTL_MS`）——开抽屉重复触发不会全量重扫；点 ↻ 刷新强制清缓存
-- 抽屉打开时 4 秒轮询 `/api/git-hub/push-status` 显示推送进度（PID + 退出码）
+- **v0.2.1 智能轮询** push-status：抽屉打开时**不立即**启动轮询；只在有推送运行时才以 4 秒间隔轮询 `/api/git-hub/push-status`，推送结束（exitCode 已设）或后端无 push 记录自动停轮询；抽屉关闭时兜底停止；网络瞬时错误保持当前 timer 状态。**空闲时 0 网络请求**
 
 ## 数据模型
 

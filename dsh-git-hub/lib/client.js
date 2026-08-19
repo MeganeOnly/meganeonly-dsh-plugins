@@ -38,7 +38,7 @@ window.__ModuleLoader__.load({
     var DRAWER_WIDTH = 420;
     var PANEL_NAME = "github";
     var ACTIVATE_EVENT = "dsh-panel-activate";
-    var POLL_INTERVAL_MS = 4000; // 抽屉打开时轮询 push-status 看推送进度
+    var POLL_INTERVAL_MS = 4000; // v0.2.1 智能轮询：仅在有推送运行时才以这个间隔轮询 push-status
 
     // ===== 工具函数 =====
     function beijingDate(ms) { return new Date(ms + 8 * 3600 * 1000); }
@@ -352,9 +352,13 @@ window.__ModuleLoader__.load({
     Controller.prototype.toggleDrawer = function () {
       this.drawerOpen = !this.drawerOpen;
       if (this.drawerOpen) {
-        // 抽屉打开：拉数据
+        // 抽屉打开：拉数据 + 探测推送状态（v0.2.1 智能轮询：
+        // pollPushStatus 内部若发现 push 仍在跑，会自动 startPushPoll）
         this.refresh(false);
         this.pollPushStatus();
+      } else {
+        // 抽屉关闭：v0.2.1 智能轮询，停掉所有 push 轮询 timer
+        this.stopPushPoll();
       }
       this.notify();
     };
@@ -467,7 +471,8 @@ window.__ModuleLoader__.load({
         showToast("已启动推送 PID=" + (data.pid || "?") + "（去终端看完整输出）", "info");
         self.lastPush = { startedAt: data.startedAt, pid: data.pid, exitCode: null, scope: "repo", repo: repoPath, running: true };
         self.notify();
-        // 启动后等几秒轮询 push-status
+        // v0.2.1 智能轮询：1.5s 后首次 pollPushStatus；pollPushStatus 见 running=true
+        // 会自动 startPushPoll；之后每 POLL_INTERVAL_MS 自动续跑直到 exitCode 出现。
         setTimeout(function () { self.pollPushStatus(); }, 1500);
       }).catch(function (e) {
         showToast("推送失败：" + (e && e.message ? e.message : e), "error");
@@ -506,7 +511,14 @@ window.__ModuleLoader__.load({
       }
       next();
     };
-    /** 轮询 push-status（抽屉打开时跑） */
+    /**
+     * v0.2.1 智能轮询：单次拉 push-status，根据返回结果决定启/停轮询 timer
+     *  - 仅在有推送运行时持续轮询（每 POLL_INTERVAL_MS 一次）
+     *  - 推送结束（exitCode != null）或后端无 push 记录 → 停轮询
+     *  - 抽屉关闭时由 toggleDrawer 调 stopPushPoll 兜底
+     *  - 网络瞬时错误保持轮询状态（避免误判为结束）
+     *  - 由 pushRepo 的 setTimeout 1500ms 首次触发；之后由 setInterval 续跑
+     */
     Controller.prototype.pollPushStatus = function () {
       var self = this;
       if (!self.drawerOpen) return;
@@ -514,8 +526,33 @@ window.__ModuleLoader__.load({
         if (data && data.ok && data.lastPush && data.lastPush.startedAt) {
           self.lastPush = data.lastPush;
           self.notify();
+          if (self.lastPush.running) {
+            // 推送仍在跑 → 确保 timer 启动（幂等）
+            self.startPushPoll();
+          } else {
+            // 已结束（exitCode 已设）→ 停轮询
+            self.stopPushPoll();
+          }
+        } else {
+          // 后端无 push 记录（清空 / 重启后）→ 停轮询
+          self.stopPushPoll();
         }
-      }).catch(function () { /* ignore */ });
+      }).catch(function () {
+        // 网络瞬时错误：保持当前 timer 状态，下次再判断
+      });
+    };
+    /** 启动 push-status 轮询 timer（幂等：已在跑则忽略） */
+    Controller.prototype.startPushPoll = function () {
+      if (this._pushPollTimer) return;
+      var self = this;
+      this._pushPollTimer = setInterval(function () { self.pollPushStatus(); }, POLL_INTERVAL_MS);
+    };
+    /** 停止 push-status 轮询 timer（幂等：未在跑则忽略） */
+    Controller.prototype.stopPushPoll = function () {
+      if (this._pushPollTimer) {
+        clearInterval(this._pushPollTimer);
+        this._pushPollTimer = null;
+      }
     };
     /** 把仓库摘要发到当前会话（让 agent 调 mcp__github__） */
     Controller.prototype.sendRepoToSession = function (repo) {
@@ -627,23 +664,15 @@ window.__ModuleLoader__.load({
       applyOpen();
       ensure();
 
-      // 抽屉打开时启动 polling
-      var pollTimer = null;
-      controller.subscribe(function () {
-        if (controller.getSnapshot().drawerOpen) {
-          if (!pollTimer) {
-            pollTimer = setInterval(function () { controller.pollPushStatus(); }, POLL_INTERVAL_MS);
-          }
-        } else {
-          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-        }
-      });
+      // v0.2.1 智能轮询：移除抽屉状态驱动的常驻 polling 订阅，
+      // 改为 pushRepo 触发 + pollPushStatus 自管理的 timer（详见 Controller.prototype.pollPushStatus）。
 
       return function () {
         document.removeEventListener(ACTIVATE_EVENT, onOtherActivate);
         waitObserver.disconnect();
         unsub();
-        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        // v0.2.1：dispose 时兜底停掉 push poll timer（避免悬挂 interval）
+        controller.stopPushPoll();
         document.documentElement.removeAttribute(DRAWER_ATTR);
         if (viewHandle && viewHandle.dispose) viewHandle.dispose();
         if (container) { container.remove(); container = undefined; }

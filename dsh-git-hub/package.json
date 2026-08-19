@@ -1,8 +1,8 @@
 {
   "name": "dsh-git-hub",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "MeganeOnly",
-  "description": "DSH Git/GitHub 管理面板 v0.2.0：右侧 FAB（top:108px 避让 task-pool）+ 抽屉显示本地 git 仓库列表(branch / dirty / 未推送 / 今日 commit / 最新 commit),一键调 daily-push.cjs 推送(全部或单个),把仓库摘要发到当前对话让 agent 调 mcp__github__ 处理 GitHub 侧问题。**v0.2.0 卡片紧凑化 + push 按钮内嵌 titleRow**——v0.1.9 只有 ⬆ 一个按钮在 actions 行底视觉突兀，按用户「现在卡片按钮就一个 push 感觉太丑了」反馈重构：push 按钮从 actions 行挪到 titleRow 末尾（与 name + branch 同行右侧），CSS 22x22 小方块带 ⬆ 图标；卡片 padding 10px 12px → 7px 10px；行间距 6px → 3px；字号 11px → 10px；badge padding 2px 7px → 1px 6px；repoName 加 flex:1 + ellipsis 让长仓库名截断不撑爆 titleRow；path/badges/lastCommit 透明度 0.75~0.85 让次要信息不抢眼；actions / actionBtn CSS 保留（dead code 备未来复用）。**v0.1.9 徽章人类语言 tooltip**——徽章悬停说人话。**v0.1.8 UI 简化**——卡片操作行只留 ⬆ 推送。**v0.1.7 隐藏选择模式 + hidden 阻止 push**。**v0.1.6 per-repo 隐藏**。**v0.1.5 ESM 修复**。**v0.1.4 FAB 协议升级**。默认扫描根 F:\\AllWorkSpace + E:\\,配置存 F:\\.dsh\\profiles\\web\\.git-hub-config.json。",
+  "description": "DSH Git/GitHub 管理面板 v0.2.1：右侧 FAB（top:108px 避让 task-pool）+ 抽屉显示本地 git 仓库列表(branch / dirty / 未推送 / 今日 commit / 最新 commit),一键调 daily-push.cjs 推送(全部或单个),把仓库摘要发到当前对话让 agent 调 mcp__github__ 处理 GitHub 侧问题。**v0.2.1 智能轮询 push-status**——抽屉打开时不立即启动轮询,只在有推送运行时才以 4 秒间隔轮询,推送结束自动停,空闲时 0 网络请求(按用户「隔三岔五就要刷新一次 太频繁了」反馈,v0.2.0 常驻轮询改为按需)。**v0.2.0 卡片紧凑化 + push 按钮内嵌 titleRow**——v0.1.9 只有 ⬆ 一个按钮在 actions 行底视觉突兀，按用户「现在卡片按钮就一个 push 感觉太丑了」反馈重构：push 按钮从 actions 行挪到 titleRow 末尾（与 name + branch 同行右侧），CSS 22x22 小方块带 ⬆ 图标；卡片 padding 10px 12px → 7px 10px；行间距 6px → 3px；字号 11px → 10px；badge padding 2px 7px → 1px 6px；repoName 加 flex:1 + ellipsis 让长仓库名截断不撑爆 titleRow；path/badges/lastCommit 透明度 0.75~0.85 让次要信息不抢眼；actions / actionBtn CSS 保留（dead code 备未来复用）。**v0.1.9 徽章人类语言 tooltip**——徽章悬停说人话。**v0.1.8 UI 简化**——卡片操作行只留 ⬆ 推送。**v0.1.7 隐藏选择模式 + hidden 阻止 push**。**v0.1.6 per-repo 隐藏**。**v0.1.5 ESM 修复**。**v0.1.4 FAB 协议升级**。默认扫描根 F:\\AllWorkSpace + E:\\,配置存 F:\\.dsh\\profiles\\web\\.git-hub-config.json。",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
