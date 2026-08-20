@@ -33,6 +33,12 @@
 
 ### 维护
 
+- **80-controller.js 二级拆分**：v0.5.0 之后，原 `80-controller.js` 单文件 497 行 / 24 KB，已顶到通用规范 § 八的 50-500 行软目标上限。同 B0-view.js 拆分前一样，AI 局部改多次因全文件过大误伤同变量引用。沿"按域拆分"思路收敛：
+  - `pushRepo` / `pushAll` / `pollPushStatus` / `startPushPoll` / `stopPushPoll` 抽出到 `82-controller-push.js`（101 行）
+  - `loadCommitStatus` / `commit` 抽出到 `84-controller-commit.js`（62 行）
+  - `loadMergeStatus` / `mergeRepo` / `pullRepo` / `abortMerge` / `sendRepoToSession` 抽出到 `86-controller-merge.js`（含域内 `/* ===== v0.3.0 merge / pull / abort ===== */` 注释）
+  - `80-controller.js` 收敛到 203 行，仅保留构造器 + 状态切换 + `refresh` / `loadConfig` / `saveConfig` 三个 config 入口
+  - 三个 commit 逐步执行，每步 `node --check` + `npm run build/verify:client` 验证；bundle 字节由 104088 → 104197（+109 字节，全是新文件首行 marker + 节边界换行，语义零变化）。`docs/maintainability.md` 同步更新 section 索引
 - **B0-view.js 二级拆分**：v0.5.0 之后，原 `B0-view.js` 单文件 639 行 / 38 KB，超出 50-500 行软目标一倍以上，AI 局部改多次因全文件过大误伤同变量引用。进一步收敛：
   - `buildRepoCard(repo, snap, controller)` 抽出到 `B5-repo-card.js`（131 行，独立成文件，无 `renderDrawerView` 闭包依赖）
   - `renderCommitSection` + `renderMergeSection` 抽出到 `B7-sections.js`（185 行，commit / merge-pull 工具区集中）

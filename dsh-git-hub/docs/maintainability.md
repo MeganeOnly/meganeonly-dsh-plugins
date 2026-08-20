@@ -18,7 +18,10 @@ dsh-git-hub 的 `lib/client-src/` 现行结构（v0.3.0 拆解 + preflight marke
 | `50-toast.js`     | `showToast(message, kind)`：右下角临时 toast                  |
 | `60-styles.js`    | CSS 字符串 + `injectCSS`：所有 DGH_ 前缀样式                |
 | `70-storage.js`   | `LocalStorageStore`（class）+ `load` / `save` 持久化钉住/隐藏列表 |
-| `80-controller.js` | `Controller` 类：状态、`refresh` / `loadConfig` / `saveConfig` / `pushRepo` / `pushAll` / `pollPushStatus` / `loadCommitStatus` / `commit` / `mergeRepo` / `pullRepo` / `abortMerge` / `sendRepoToSession` |
+| `80-controller.js` | `Controller` 类：构造器 + 状态 + 持久化 + UI 切换（`toggleDrawer` / `togglePin` / `toggleHide` / `setSelectionMode` / `toggleOptions` / `toggleSection`）+ config（`refresh` / `loadConfig` / `saveConfig`）|
+| `82-controller-push.js` | push 子系统：`pushRepo` / `pushAll` / `pollPushStatus` / `startPushPoll` / `stopPushPoll` |
+| `84-controller-commit.js` | commit 子系统：`loadCommitStatus` / `commit` |
+| `86-controller-merge.js` | merge / pull / abort + send 子系统：`loadMergeStatus` / `mergeRepo` / `pullRepo` / `abortMerge` / `sendRepoToSession`（含 `/* ===== v0.3.0 merge / pull / abort ===== */` 域内注释） |
 | `90-fab.js`       | FAB 图标 + `mountFab(controller)`                            |
 | `A0-drawer.js`    | `mountDrawer(controller)`：互斥协议（`KNOWN_DRAWER_ATTRS`）+ DOM 挂载 |
 | `B0-view.js`      | `renderDrawerView(container, controller)`：header（v0.5.0 「显示选项」按钮）/ `renderOptionsMenu` / push status / body 编排 / config panel（37 行内联，未单独拆文件） |
