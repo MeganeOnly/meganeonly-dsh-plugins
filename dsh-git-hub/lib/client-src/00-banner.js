@@ -20,4 +20,10 @@
  *                                                                   schema 演进不升 key）
  *   schema v3 = schema v2 + { commitSectionVisible?: boolean }     （v0.4.0 新增 commit 工具区可见性；
  *                                                                   缺字段默认 false；隐式迁移 v2 → v3）
+ *   schema v4 = schema v3 + { sections: { commit, merge, pushStatus, perCardPush } }
+ *                                                                 （v0.5.0 升级为「显示选项」菜单：
+ *                                                                  4 个功能区开关合并到 sections 对象；
+ *                                                                  v3 文档里 commitSectionVisible 自动
+ *                                                                  映射到 sections.commit，其他 3 个默认 true；
+ *                                                                  隐式迁移 v3 → v4，不升 key）
  */

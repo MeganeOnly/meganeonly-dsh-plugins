@@ -21,14 +21,14 @@ dsh-git-hub 的 `lib/client-src/` 现行结构（v0.3.0 拆解 + preflight marke
 | `80-controller.js` | `Controller` 类：状态、`refresh` / `loadConfig` / `saveConfig` / `pushRepo` / `pushAll` / `pollPushStatus` / `loadCommitStatus` / `commit` / `mergeRepo` / `pullRepo` / `abortMerge` / `sendRepoToSession` |
 | `90-fab.js`       | FAB 图标 + `mountFab(controller)`                            |
 | `A0-drawer.js`    | `mountDrawer(controller)`：互斥协议（`KNOWN_DRAWER_ATTRS`）+ DOM 挂载 |
-| `B0-view.js`      | `renderDrawerView(container, controller)`：header / push status / commit 工具区 / merge 工具区 / body / config panel / 仓库卡片 |
+| `B0-view.js`      | `renderDrawerView(container, controller)`：header（含「显示选项」按钮）/ `renderOptionsMenu`（v0.5.0：4 个 section 开关下拉菜单）/ push status / commit 工具区 / merge 工具区 / body / config panel / 仓库卡片 |
 | `C0-apply.js`     | `apply(ctx)` 函数 + exports（`apply` / `inject` / `name`） |
 
 ## 二、本插件特殊项
 
 - **bundle 大小**：v0.3.0 拆解完成 + preflight marker 后是 90082 字节。所有同类约束在通用 `maintainability.md` § 五
 - **互斥协议**：`dsh-panel-activate` CustomEvent + `<html data-dsh-github-drawer-open>` / `data-dsh-any-side-drawer-open`。见 `60-styles.js` 的 FAB 让位 CSS 与 `A0-drawer.js` 的 `KNOWN_DRAWER_ATTRS = [...]`
-- **持久化 schema**：`localStorage` key `dsh.gitHub.v1`，schema v2 = `{ pinnedPaths, hiddenPaths }`（v1→v2 隐式迁移；不升 key）。详细 schema 写在 `00-banner.js` 顶部注释
+- **持久化 schema**：`localStorage` key `dsh.gitHub.v1`，schema v4 = `{ pinnedPaths, hiddenPaths, sections: { commit, merge, pushStatus, perCardPush } }`（v1→v2→v3→v4 全部隐式迁移；不升 key）。详细 schema 写在 `00-banner.js` 顶部注释
 
 ## 三、相关
 

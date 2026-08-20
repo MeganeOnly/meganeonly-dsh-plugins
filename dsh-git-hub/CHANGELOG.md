@@ -4,6 +4,27 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-08-20
+
+### 新增
+
+- **显示选项菜单（统一管理多个功能区可见性）**：把 v0.4.0 加的「commit 工具区 toggle」按钮升级为「显示选项」按钮。drawer header 里同一个位置、同一枚 git-commit-dot-on-line 图标，点开后弹出浮层菜单，列出 4 个功能区的开关：
+  1. **commit 工具区** — 顶部手动 commit 输入框（v0.4.0 起；默认隐藏，沿用 v0.4.0 偏好）
+  2. **合并工具区** — merge / pull / rebase / abort（v0.3.0 起；默认显示）
+  3. **推送状态条** — drawer 顶部 push 进度（默认显示）
+  4. **仓库卡片推送按钮** — 每张仓库卡片标题行右上的 ⬆ 推送按钮（默认显示）
+  - 每个开关独立：受控渲染——关闭时彻底从 DOM 移除对应节点（不留空容器、不调对应 render 函数、不触发对应 API 请求）
+  - 持久化到 `localStorage`（沿用既有 schema 演进不升 key 的约定）：v4 = `{ pinnedPaths, hiddenPaths, sections: { commit, merge, pushStatus, perCardPush } }`；v3 文档里的 `commitSectionVisible` 字段自动映射到 `sections.commit`（保留用户 v0.4.0 默认隐藏偏好），其余 3 个 section 默认 `true`
+  - 按钮 `data-active` 反映菜单打开态（菜单开 = 填色、菜单关 = 淡灰）
+  - 交互：点按钮 toggle；点菜单外 / 按 Esc 关闭；同一时刻最多一个菜单展开
+
+### 维护
+
+- **localStorage schema v3 → v4 演进**：用 `sections` 对象替代 `commitSectionVisible` 单字段；旧字段保留兼容路径，隐式迁移 v3 → v4，不升 key
+- **Controller 拆分**：`toggleCommitSection` 单方法 → `toggleSection(key)` 通用方法（白名单 key ∈ {commit, merge, pushStatus, perCardPush}）；新增 `toggleOptions` / `closeOptions` 管理菜单开/关（不持久化，纯 UI 临时态，跟 `selectionMode` 一致）
+- **renderHeader 拆分**：内联 commit-toggle 按钮 → 「显示选项」按钮 + 抽出独立的 `renderOptionsMenu` 函数（菜单内容按需渲染）
+- **renderBody 受控扩展**：merge 区、pushStatus、perCardPush 三处新增 sections 守卫；pushStatus 在 render 函数内部检查（不开时彻底清空 + display:none），merge / perCardPush 在 renderBody 调用层守卫
+
 ## [Unreleased]
 
 ### 新增

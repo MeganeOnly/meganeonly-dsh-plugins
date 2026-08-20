@@ -24,7 +24,9 @@
       function renderHeader() {
         var snap = controller.getSnapshot();
         var toolAvail = snap.config && snap.config.toolAvailable;
-        var commitVisible = !!snap.commitSectionVisible;
+        // v0.5.0：commit-toggle 升级为「显示选项」按钮——commitVisible 改为 optionsOpen（菜单开/关态）
+        var optionsOpen = !!snap.optionsOpen;
+        var commitVisible = optionsOpen; // 旧字段别名（保留 v0.4.0 兼容，避免下面行内引用改动）
         var headerHtml =
           '<span class="DGH_title">Git/GitHub</span>' +
           '<button class="DGH_iconBtn" data-action="config" title="配置扫描根路径">' +
@@ -39,17 +41,20 @@
           '<button class="DGH_iconBtn" data-action="refresh" title="刷新仓库状态">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>' +
           '</button>' +
-          // v0.4.0：commit 工具区可见性 toggle（在 refresh 之后、spacer 之前；icon = git commit dot on line）
-          // data-active=true 表示 commit 区当前显示；点击 = 关闭（→ data-active=false）
-          // data-active=false 表示 commit 区当前隐藏；点击 = 打开（→ data-active=true）
-          '<button class="DGH_iconBtn DGH_commitToggle" data-action="commit-toggle" title="' + (commitVisible ? '隐藏 commit 工具区' : '显示 commit 工具区') + '" data-active="' + (commitVisible ? 'true' : 'false') + '">' +
+          // v0.5.0：原 commit-toggle（v0.4.0）升级为「显示选项」按钮
+          // - icon 沿用 git commit dot on line（中性图标代表「选项」）
+          // - data-active 反映 options 菜单打开态（true = 菜单开，false = 菜单关）
+          // - 点击 toggle 浮层菜单（4 个 section 开关）
+          '<button class="DGH_iconBtn DGH_commitToggle" data-action="options-toggle" title="显示选项（管理哪些功能区可见）" data-active="' + (optionsOpen ? 'true' : 'false') + '">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/><path d="M5 8h6"/></svg>' +
           '</button>' +
           '<span class="DGH_spacer"></span>' +
           '<button class="DGH_pushBtn" data-action="push-all" ' + (toolAvail ? "" : "disabled title=\"daily-push.cjs 不可用\"") + ' title="推送所有可见仓库（自动跳过 hidden）">⬆ 全部推送</button>' +
           '<button class="DGH_iconBtn" data-action="close" title="关闭（Esc）">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>' +
-          '</button>';
+          '</button>' +
+          // v0.5.0：options 下拉菜单容器（永远在 DOM 里，display 受 optionsOpen 控制；详见 renderOptionsMenu）
+          '<div class="DGH_optionsMenu" data-role="options-menu"></div>';
         headerEl.innerHTML = headerHtml;
         var configBtn = headerEl.querySelector('[data-action="config"]');
         if (snap.configPanelOpen) configBtn.dataset.active = "true";
@@ -64,9 +69,10 @@
         headerEl.querySelector('[data-action="refresh"]').addEventListener("click", function () {
           controller.refresh(true);
         });
-        // v0.4.0：commit 工具区可见性 toggle
-        headerEl.querySelector('[data-action="commit-toggle"]').addEventListener("click", function () {
-          controller.toggleCommitSection();
+        // v0.5.0：options 按钮 toggle 菜单（stopPropagation 避免触发 document click 关闭逻辑）
+        headerEl.querySelector('[data-action="options-toggle"]').addEventListener("click", function (e) {
+          e.stopPropagation();
+          controller.toggleOptions();
         });
         headerEl.querySelector('[data-action="push-all"]').addEventListener("click", function () {
           controller.pushAll();
@@ -74,10 +80,60 @@
         headerEl.querySelector('[data-action="close"]').addEventListener("click", function () {
           controller.closeDrawer();
         });
+        // v0.5.0：渲染 options 菜单内容（仅在打开时；关闭时清空 + display:none）
+        renderOptionsMenu();
+      }
+
+      /** v0.5.0：渲染 options 下拉菜单。菜单打开 = 列出 4 个 section 开关；关闭 = display:none。 */
+      function renderOptionsMenu() {
+        var menuEl = headerEl.querySelector('[data-role="options-menu"]');
+        if (!menuEl) return;
+        var snap = controller.getSnapshot();
+        var sections = (snap.sections && typeof snap.sections === "object") ? snap.sections : defaultSections();
+        if (!snap.optionsOpen) {
+          menuEl.style.display = "none";
+          menuEl.innerHTML = "";
+          return;
+        }
+        var items = [
+          { key: "commit",     label: "commit 工具区",   hint: "顶部手动 commit 输入" },
+          { key: "merge",      label: "合并工具区",     hint: "merge / pull / abort" },
+          { key: "pushStatus", label: "推送状态条",     hint: "推送运行时顶部进度" },
+          { key: "perCardPush", label: "卡片推送按钮",  hint: "每张仓库卡片右上的 ⬆" },
+        ];
+        var html = "";
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i];
+          var on = sections[it.key] === true;
+          html +=
+            '<div class="DGH_optionsMenuItem" data-section="' + it.key + '" data-on="' + (on ? "true" : "false") + '">' +
+              '<span class="DGH_optionsMenuCheck">' + (on ? "✓" : "") + '</span>' +
+              '<span class="DGH_optionsMenuLabel">' + it.label + '</span>' +
+              '<span style="font-size:10.5px;color:var(--dsw-alias-label-tertiary);flex:none">' + it.hint + '</span>' +
+            '</div>';
+        }
+        menuEl.innerHTML = html;
+        menuEl.style.display = "flex";
+        var itemEls = menuEl.querySelectorAll(".DGH_optionsMenuItem");
+        for (var j = 0; j < itemEls.length; j++) {
+          (function (el) {
+            el.addEventListener("click", function (e) {
+              e.stopPropagation(); // 阻止冒泡到 document click 关闭逻辑
+              var key = el.getAttribute("data-section");
+              controller.toggleSection(key);
+            });
+          })(itemEls[j]);
+        }
       }
 
       function renderPushStatus() {
         var snap = controller.getSnapshot();
+        // v0.5.0：pushStatus 受 sections.pushStatus 控制——关闭时彻底隐藏（不留空容器）
+        if (!(snap.sections && snap.sections.pushStatus === true)) {
+          pushStatusEl.style.display = "none";
+          pushStatusEl.innerHTML = "";
+          return;
+        }
         var lp = snap.lastPush;
         if (!lp || !lp.startedAt) {
           pushStatusEl.style.display = "none";
@@ -281,9 +337,9 @@
         var snap = controller.getSnapshot();
 
         // v0.2.2：commit 工具区（持久显示，紧贴 header 下；多仓库）
-        // v0.4.0：受 commitSectionVisible 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
+        // v0.5.0：受 sections.commit 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
         var existingCommit = bodyEl.querySelector(".DGH_commitSection");
-        if (snap.commitSectionVisible) {
+        if (snap.sections && snap.sections.commit === true) {
           if (!existingCommit) {
             existingCommit = document.createElement("div");
             existingCommit.className = "DGH_commitSection";
@@ -296,18 +352,24 @@
         }
 
         // v0.3.0：merge / pull 工具区（紧贴 commit 区下）
+        // v0.5.0：受 sections.merge 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderMergeSection）
         // commit 区关闭时，merge 区直接挂在 body 顶部（保持原有顺序语义：commit → merge → 列表）
         var existingMerge = bodyEl.querySelector(".DGH_mergeSection");
-        if (!existingMerge) {
-          existingMerge = document.createElement("div");
-          existingMerge.className = "DGH_mergeSection";
-          if (existingCommit && existingCommit.nextSibling) {
-            bodyEl.insertBefore(existingMerge, existingCommit.nextSibling);
-          } else {
-            bodyEl.appendChild(existingMerge);
+        if (snap.sections && snap.sections.merge === true) {
+          if (!existingMerge) {
+            existingMerge = document.createElement("div");
+            existingMerge.className = "DGH_mergeSection";
+            if (existingCommit && existingCommit.nextSibling) {
+              bodyEl.insertBefore(existingMerge, existingCommit.nextSibling);
+            } else {
+              bodyEl.appendChild(existingMerge);
+            }
           }
+          renderMergeSection(existingMerge, controller);
+        } else if (existingMerge) {
+          existingMerge.remove();
+          existingMerge = null;
         }
-        renderMergeSection(existingMerge, controller);
 
         // 配置面板（按需插到 body 顶部）
         var existingCfg = bodyEl.querySelector(".DGH_config");
@@ -469,20 +531,25 @@
         head.className = "DGH_repoHead";
 
         // v0.2.0 紧凑布局：titleRow 内嵌 push 按钮（右上角）
+        // v0.5.0：受 sections.perCardPush 开关控制——关闭时不创建 pushBtn（整张卡片不带推送入口）
+        var perCardPushOn = snap.sections && snap.sections.perCardPush === true;
         var toolAvail = snap.config && snap.config.toolAvailable;
-        var pushBtn = document.createElement("button");
-        pushBtn.className = "DGH_pushInline";
-        pushBtn.textContent = "⬆";
-        pushBtn.setAttribute("aria-label", "推送");
-        var pushBlocked = !toolAvail || isHidden;
-        pushBtn.disabled = pushBlocked;
-        pushBtn.title = isHidden
-          ? "已隐藏,不允许推送"
-          : (toolAvail ? "推送这个仓库（调 daily-push.cjs）" : "daily-push.cjs 不可用");
-        pushBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          controller.pushRepo(repo.path);
-        });
+        var pushBtn = null;
+        if (perCardPushOn) {
+          pushBtn = document.createElement("button");
+          pushBtn.className = "DGH_pushInline";
+          pushBtn.textContent = "⬆";
+          pushBtn.setAttribute("aria-label", "推送");
+          var pushBlocked = !toolAvail || isHidden;
+          pushBtn.disabled = pushBlocked;
+          pushBtn.title = isHidden
+            ? "已隐藏,不允许推送"
+            : (toolAvail ? "推送这个仓库（调 daily-push.cjs）" : "daily-push.cjs 不可用");
+          pushBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            controller.pushRepo(repo.path);
+          });
+        }
 
         var titleRow = document.createElement("div");
         titleRow.className = "DGH_repoTitle";
@@ -492,8 +559,8 @@
           // v0.1.7：选择模式 + 已隐藏：显示 "已隐藏" 标记
           (snap.selectionMode && isHidden ? '<span class="DGH_repoMark">已隐藏 ✓</span>' : '');
         head.appendChild(titleRow);
-        // push 按钮挂在 titleRow 末尾（与 name + branch 同行右）
-        titleRow.appendChild(pushBtn);
+        // push 按钮挂在 titleRow 末尾（与 name + branch 同行右）；v0.5.0：受 sections.perCardPush 控制
+        if (pushBtn) titleRow.appendChild(pushBtn);
 
         var pathEl = document.createElement("div");
         pathEl.className = "DGH_repoPath";
@@ -597,14 +664,23 @@
       var keyHandler = function (e) {
         if (!controller.getSnapshot().drawerOpen) return;
         if (e.key !== "Escape") return;
-        // Esc 优先级（v0.1.7）：
+        // Esc 优先级：
         //   1) 关闭配置面板
         //   2) 退出 selectionMode（隐藏选择模式）
-        //   3) 关闭抽屉
+        //   3) v0.5.0：关闭 options 下拉菜单（菜单打开时）
+        //   4) 关闭抽屉
         if (controller.configPanelOpen) { controller.closeConfigPanel(); return; }
         if (controller.selectionMode) { controller.setSelectionMode(false); return; }
+        if (controller.optionsOpen) { controller.closeOptions(); return; }
         controller.closeDrawer();
       };
+
+      // v0.5.0：点菜单外关闭 options 下拉菜单。toggleBtn 自身 click handler 已 stopPropagation，
+      // 所以 document click 拿不到它；其他位置点击 → 关闭。
+      var docClickHandler = function () {
+        if (controller.optionsOpen) controller.closeOptions();
+      };
+      document.addEventListener("click", docClickHandler);
       document.addEventListener("keydown", keyHandler);
 
       build();
@@ -618,6 +694,8 @@
         dispose: function () {
           unsubRender();
           document.removeEventListener("keydown", keyHandler);
+          // v0.5.0：清理 options 菜单的 document click 监听
+          document.removeEventListener("click", docClickHandler);
           if (container) container.innerHTML = "";
         },
       };

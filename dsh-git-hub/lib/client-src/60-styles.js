@@ -132,6 +132,15 @@
       // data-active=false → commit 区当前隐藏 → 按钮淡灰（语义：这是 off 状态）
       ".DGH_commitToggle[data-active=\"false\"]{opacity:.55;}" +
       ".DGH_commitToggle[data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);opacity:1;}" +
+      // v0.5.0：commit-toggle 升级为「显示选项」按钮：position:relative 让 .DGH_optionsMenu 绝对定位 reference 到按钮
+      ".DGH_commitToggle{position:relative;}" +
+      // v0.5.0：选项下拉菜单（浮层）
+      ".DGH_optionsMenu{position:absolute;top:calc(100% + 6px);right:0;min-width:224px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.22);padding:6px;z-index:200;display:flex;flex-direction:column;gap:2px;}" +
+      ".DGH_optionsMenuItem{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;color:var(--dsw-alias-label-primary);border-radius:6px;cursor:pointer;user-select:none;transition:background .12s;}" +
+      ".DGH_optionsMenuItem:hover{background:var(--dsw-specific-sidebar-nav-item-hover);}" +
+      ".DGH_optionsMenuCheck{flex:none;width:14px;height:14px;border:1.5px solid var(--dsw-alias-border-l2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;line-height:1;color:transparent;}" +
+      ".DGH_optionsMenuItem[data-on=\"true\"] .DGH_optionsMenuCheck{background:var(--dsw-alias-button-info-fill);border-color:var(--dsw-alias-button-info-fill);color:#fff;}" +
+      ".DGH_optionsMenuLabel{flex:1;min-width:0;}" +
       // FAB：top:130px = task-pool FAB(78~122)+ 8px 间距。两个 FAB 同时可见不重叠；
       // drawer 打开互斥协议保证两个 FAB 不会同时进入让位动画
       ".DGH_fab{position:fixed;top:130px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +

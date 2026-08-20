@@ -20,15 +20,18 @@
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
       this.hiddenPaths = new Set(doc.hiddenPaths);
-      // v0.4.0：commit 工具区可见性（持久化在 store；默认 false = 隐藏，理由：用户表示用不上 commit 功能）
-      this.commitSectionVisible = doc.commitSectionVisible === true; // 严格 true 才算开，避免 undefined 误开
+      // v0.5.0：sections 对象替代 v0.4.0 的 commitSectionVisible 字段
+      // defaultSections() 在 70-storage.js 定义（同 factory scope 可访问）
+      this.sections = (doc.sections && typeof doc.sections === "object") ? doc.sections : defaultSections();
+      // v0.5.0：options 下拉菜单开关（不持久化——纯 UI 临时态，跟 selectionMode 一致）
+      this.optionsOpen = false;
       this.drawerOpen = false;
     }
     Controller.prototype._persist = function () {
       this.store.save({
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
-        commitSectionVisible: this.commitSectionVisible,
+        sections: this.sections,
       });
     };
     Controller.prototype.subscribe = function (fn) {
@@ -56,9 +59,11 @@
         mergeRepos: this.mergeRepos,        // v0.3.0
         mergeBusy: this.mergeBusy,          // v0.3.0
         lastMergeResult: this.lastMergeResult, // v0.3.0
-        commitSectionVisible: this.commitSectionVisible, // v0.4.0：commit 工具区可见性
+        commitSectionVisible: this.sections.commit, // v0.5.0：保留旧字段名作为快照别名（v0.4.0 兼容；view 已切到 sections）
+        sections: this.sections,                     // v0.5.0：统一管理 4 个功能区可见性
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
+        optionsOpen: this.optionsOpen,               // v0.5.0：options 下拉菜单开关（不持久化）
         drawerOpen: this.drawerOpen,
       };
     };
@@ -115,13 +120,31 @@
       this.showHidden = false;
       this.notify();
     };
+    /** v0.5.0：toggle options 下拉菜单（不持久化，纯 UI 临时态） */
+    Controller.prototype.toggleOptions = function () {
+      this.optionsOpen = !this.optionsOpen;
+      this.notify();
+    };
+    /** v0.5.0：关闭 options 下拉菜单（用于 Esc / 点菜单外） */
+    Controller.prototype.closeOptions = function () {
+      if (!this.optionsOpen) return;
+      this.optionsOpen = false;
+      this.notify();
+    };
     Controller.prototype.setError = function (msg) {
       this.error = msg;
       this.notify();
     };
-    /** v0.4.0：切换抽屉内 commit 工具区可见性（持久化） */
-    Controller.prototype.toggleCommitSection = function () {
-      this.commitSectionVisible = !this.commitSectionVisible;
+    /** v0.5.0：切换指定 section 的可见性（持久化）。key ∈ {commit, merge, pushStatus, perCardPush} */
+    Controller.prototype.toggleSection = function (key) {
+      var allowed = ["commit", "merge", "pushStatus", "perCardPush"];
+      if (allowed.indexOf(key) < 0) return;
+      // 严格 true/false 切换；缺字段视为默认（false for commit；true for others）
+      var cur = this.sections[key];
+      var next;
+      if (key === "commit") next = cur !== true;
+      else next = cur !== true; // 与上面同义；语义：当前非 true 时设为 true，反之设为 false
+      this.sections[key] = next;
       this._persist();
       this.notify();
     };
