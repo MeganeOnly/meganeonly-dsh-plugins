@@ -49,3 +49,11 @@
       });
     }
 
+    /** HTML 转义：防止外部字符串注入。null/undefined → ""。 */
+    function escapeHtml(s) {
+      if (s == null) return "";
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+      });
+    }
+
