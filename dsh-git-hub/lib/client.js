@@ -568,7 +568,7 @@ window.__ModuleLoader__.load({
     /**
      * 全部推送：v0.1.7 重写为"循环调 pushRepo 跳过 hidden"
      *  - 原因：host half 的 /api/git-hub/push-all 是调 daily-push.cjs --all，
-     *    会扫描 F:\AllWorkSpace + E:\ 所有本地 .git 仓库（包括 hidden）；
+     *    会扫描本机多盘所有 .git 仓库（包括 hidden）；
      *    但 hidden 用户语义是"几乎等于不要碰"，不能被 daily-push 扫到推送
      *  - 实现：client 端过滤 hidden，只对 visible repos 逐个 spawn daily-push.cjs --repo
      *  - 状态条：依次启动，pollPushStatus 显示"全部推送运行中 X 个"
@@ -1405,9 +1405,9 @@ window.__ModuleLoader__.load({
         var currentHidden = Array.from(controller.hiddenPaths || []);
         panelEl.innerHTML =
           '<div class="DGH_configLabel">扫描根路径（每行一个）</div>' +
-          '<textarea class="DGH_configTextarea" data-role="roots" spellcheck="false" placeholder="例如：&#10;F:\\AllWorkSpace&#10;E:\\">' + escapeHtml(current.join("\n")) + '</textarea>' +
+          '<textarea class="DGH_configTextarea" data-role="roots" spellcheck="false" placeholder="例如：&#10;C:\\your-workspace&#10;D:\\secondary">' + escapeHtml(current.join("\n")) + '</textarea>' +
           '<div class="DGH_configLabel" style="margin-top:10px">已隐藏仓库（每行一个绝对路径，不在列表显示）</div>' +
-          '<textarea class="DGH_configTextarea" data-role="hidden" spellcheck="false" placeholder="例如：&#10;F:\\AllWorkSpace\\.dsh-plugins.archive&#10;E:\\dsh-skills">' + escapeHtml(currentHidden.join("\n")) + '</textarea>' +
+          '<textarea class="DGH_configTextarea" data-role="hidden" spellcheck="false" placeholder="例如：&#10;C:\\your-workspace\\.archive&#10;D:\\your-secondary">' + escapeHtml(currentHidden.join("\n")) + '</textarea>' +
           '<div class="DGH_configFooter">' +
             '<span class="DGH_configHint">保存后自动重新扫描</span>' +
             '<button class="DGH_saveBtn" data-action="save">保存</button>' +

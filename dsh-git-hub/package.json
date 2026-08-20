@@ -25,7 +25,8 @@
   "main": "lib/index.js",
   "scripts": {
     "build:client": "node lib/build-client.cjs",
-    "verify:client": "node lib/verify-client.cjs"
+    "verify:client": "node lib/verify-client.cjs",
+    "prepare": "node lib/build-client.cjs"
   },
   "exports": {
     ".": "./lib/index.js",
