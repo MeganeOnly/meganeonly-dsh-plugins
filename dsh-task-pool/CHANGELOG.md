@@ -4,6 +4,12 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 重构
+
+- **client bundle 拆分**（按 `docs/maintainability.md` 通用规范）：原 970 行 / 46.1 KB 单文件 `lib/client.js` 超过触发阈值（≥ 700 行 / 30 KB），拆为 12 个 source section（`lib/client-src/00-banner.js` 到 `Z9-loader-close.js`）。新增 `lib/build-client.cjs`（拼回 client.js）与 `lib/verify-client.cjs`（与 HEAD 字节级校验）脚本；`package.json` 加 `build:client` / `verify:client` / `prepare` 脚本。段首 marker 改为英文 short-name（与文件名 `name` 部分一致），原中文 marker 注释保留作为内部说明。
+
 ## [0.6.0] - 2026-08-19
 
 任务结构从 `{ title, description }` 双字段简化为单字段 `{ content }`。
