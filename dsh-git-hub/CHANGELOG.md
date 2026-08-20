@@ -25,6 +25,10 @@
 - **renderHeader 拆分**：内联 commit-toggle 按钮 → 「显示选项」按钮 + 抽出独立的 `renderOptionsMenu` 函数（菜单内容按需渲染）
 - **renderBody 受控扩展**：merge 区、pushStatus、perCardPush 三处新增 sections 守卫；pushStatus 在 render 函数内部检查（不开时彻底清空 + display:none），merge / perCardPush 在 renderBody 调用层守卫
 
+### 修复
+
+- **显示选项菜单 CSS 定位 bug**（v0.5.0 引入）：下拉菜单设 `position:absolute` 但 `position:relative` 加在了 `.DGH_commitToggle` 按钮上；菜单 DOM 实际是 `.DGH_header` 的子元素、不是按钮的子元素，所以 reference 链找不到按钮、向上 reference 到 `<body>`——菜单渲染了内容但视觉上跑到屏幕外，点了按钮看似无反应。Fix：把 `position:relative` 从按钮移到 `.DGH_header`（菜单的直接父容器）。
+
 ## [Unreleased]
 
 ### 新增

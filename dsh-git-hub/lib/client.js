@@ -160,8 +160,10 @@ window.__ModuleLoader__.load({
       // 抽屉
       "[data-dsh-github-drawer]{position:fixed;top:0;right:0;bottom:0;width:" + DRAWER_WIDTH + "px;max-width:90vw;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:13px;border-left:1px solid var(--dsw-alias-border-l1);box-shadow:0 2px 12px rgba(0,0,0,.12);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s ease;box-sizing:border-box;}" +
       "html[" + DRAWER_ATTR + "] [data-dsh-github-drawer]{transform:translateX(0);}" +
-      // header
-      ".DGH_header{display:flex;align-items:center;gap:6px;flex:none;padding:14px 14px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);}" +
+      // header（v0.5.0：加 position:relative 让 .DGH_optionsMenu 绝对定位 reference 到 header 下方——
+      // 之前误把 position:relative 加在 .DGH_commitToggle 上，但 menuEl 是 header 子元素不是按钮子元素，
+      // 导致菜单 reference 到 body 跑到屏幕外、点了按钮看似无反应）
+      ".DGH_header{position:relative;display:flex;align-items:center;gap:6px;flex:none;padding:14px 14px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);}" +
       ".DGH_title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);padding:0 4px;flex:none;}" +
       ".DGH_iconBtn{font:inherit;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid transparent;border-radius:8px;padding:5px 7px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;flex:none;}" +
       ".DGH_iconBtn:hover{background:var(--dsw-specific-sidebar-nav-item-hover);color:var(--dsw-alias-label-primary);}" +
@@ -289,9 +291,10 @@ window.__ModuleLoader__.load({
       // data-active=false → commit 区当前隐藏 → 按钮淡灰（语义：这是 off 状态）
       ".DGH_commitToggle[data-active=\"false\"]{opacity:.55;}" +
       ".DGH_commitToggle[data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);opacity:1;}" +
-      // v0.5.0：commit-toggle 升级为「显示选项」按钮：position:relative 让 .DGH_optionsMenu 绝对定位 reference 到按钮
-      ".DGH_commitToggle{position:relative;}" +
-      // v0.5.0：选项下拉菜单（浮层）
+      // v0.5.0：commit-toggle 升级为「显示选项」按钮（v0.5.1：去掉 position:relative——
+      // v0.5.0 误加在按钮上但 menuEl 是 .DGH_header 子元素不是按钮子元素，菜单 reference 不到按钮；
+      // fix 已把 position:relative 加到 .DGH_header）
+      // v0.5.0：选项下拉菜单（浮层，reference 到 .DGH_header）
       ".DGH_optionsMenu{position:absolute;top:calc(100% + 6px);right:0;min-width:224px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.22);padding:6px;z-index:200;display:flex;flex-direction:column;gap:2px;}" +
       ".DGH_optionsMenuItem{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;color:var(--dsw-alias-label-primary);border-radius:6px;cursor:pointer;user-select:none;transition:background .12s;}" +
       ".DGH_optionsMenuItem:hover{background:var(--dsw-specific-sidebar-nav-item-hover);}" +
