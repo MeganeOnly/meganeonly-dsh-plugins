@@ -23,6 +23,10 @@
   ],
   "type": "module",
   "main": "lib/index.js",
+  "scripts": {
+    "build:client": "node lib/build-client.cjs",
+    "verify:client": "node lib/verify-client.cjs"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",

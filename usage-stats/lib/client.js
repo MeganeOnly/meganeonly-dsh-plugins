@@ -4,8 +4,11 @@
  * 设置 → "使用统计"页。全部数据来自宿主半端 /api/usage-stats/summary
  * （跨会话聚合：token 用量 / 按日趋势 / 按模型 / 会话与工具排行）。
  * 纯展示 + 手动刷新，零外部依赖（react 经 require 取自 shell 模块表）。
- */
-window.__ModuleLoader__.load({
+ *
+ * v0.2.0 新增「显示设置」：页面右上角弹出复选框面板，可独立隐藏/展示
+ * 6 个数据块（顶部元信息、指标卡、近 30 天用量图、按模型分解表、
+ * 会话用量 Top、工具调用 Top），偏好持久化到 localStorage。
+ */window.__ModuleLoader__.load({
   id: "dsh-usage-stats",
   factory: (require) => {
     var module = { exports: {} };
@@ -15,10 +18,7 @@ window.__ModuleLoader__.load({
     var React = require("react");
     var inject = ["slots"];
 
-    var API = "/api/usage-stats/summary";
-
-    /* ---------- 格式化 ---------- */
-
+    var API = "/api/usage-stats/summary";// ===== formatters =====
     function fmtTokens(n) {
       if (n == null || !isFinite(n)) return "–";
       if (n < 1000) return String(n);
@@ -100,10 +100,8 @@ window.__ModuleLoader__.load({
         out.requests += b.requests || 0;
       }
       return out;
-    }
-
-    /* ---------- 样式 token（克制：单色 + 一个强调绿） ---------- */
-
+    }// ===== styles =====
+// 样式 token（克制：单色 + 一个强调绿）
     var C = {
       hairline: "rgba(128,128,128,0.18)",
       hairlineSoft: "rgba(128,128,128,0.10)",
@@ -164,10 +162,7 @@ window.__ModuleLoader__.load({
       panelCheck: { width: "13px", height: "13px", margin: 0, cursor: "pointer", accentColor: C.accent },
       panelToggleRow: { display: "flex", gap: "6px", marginBottom: "6px" },
       panelToggleBtn: { padding: "3px 9px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: C.text2, cursor: "pointer" }
-    };
-
-    /* ---------- 子组件 ---------- */
-
+    };// ===== components =====
     function Card(label, value, sub) {
       return React.createElement(
         "div",
@@ -245,10 +240,7 @@ window.__ModuleLoader__.load({
         ),
         React.createElement("tbody", null, rows)
       );
-    }
-
-    /* ---------- 页面 ---------- */
-
+    }// ===== config =====
     var RANGES = [
       { key: "all", label: "全部" },
       { key: "30", label: "近 30 日" },
@@ -329,8 +321,7 @@ window.__ModuleLoader__.load({
         out[k] = (k === key) ? !!val : visibility[k];
       }
       return out;
-    }
-
+    }// ===== visibility panel =====
     /**
      * 显示设置面板：列出 6 个数据块的复选项 + 全选/全不选快捷按钮。
      * 通过 [data-usage-stats-panel] 属性给外层 click-outside 监听器识别。
@@ -382,8 +373,7 @@ window.__ModuleLoader__.load({
           })
         )
       );
-    }
-
+    }// ===== page =====
     function UsageStatsPage() {
       var loading = React.useState(true);
       var data = React.useState(null);
@@ -710,8 +700,7 @@ window.__ModuleLoader__.load({
               );
             })
       );
-    }
-
+    }// ===== apply =====
     function apply(ctx) {
       ctx.slots.inject("settings.section", function () {
         return ctx.slots.register(
@@ -727,7 +716,6 @@ window.__ModuleLoader__.load({
     }
 
     exports.inject = inject;
-    exports.apply = apply;
-    return module.exports;
-  }
+    exports.apply = apply;return module.exports;
+  },
 });
