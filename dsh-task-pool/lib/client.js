@@ -1,16 +1,17 @@
 /**
  * dsh-task-pool — 浏览器半端（web client bundle，作者：MeganeOnly）
  *
- * v0.5.0：FAB 下移 + 卡片"发送到当前对话"功能（二次确认）。
- *   - FAB 从 top:24px 下移到 top:56px（避开 DSH 顶部元素重叠）；
- *   - 卡片就地展开面板新增"📨 发送到对话"按钮：第一次按进入 armed 态
- *     （按钮变橙色脉冲，文字"再点一次确认发送"），4 秒内再按一次才真正
- *     通过 sessions.driver.prompt 把任务标题+描述作为 user message 发到当前
- *     会话；超时或展开其它卡片自动撤销 armed 态；
- *   - 发送失败不抛错（console.error），不影响任务池；host half 仍为零副作用；
- *   - 视觉 token / FAB 让位 / 抽屉交互等沿用 v0.4.0。
+ * v0.6.0：任务结构从 { title, description } 简化为单字段 { content }。
+ *   - 不再有"标题+描述"两栏：inline 新建、卡片预览、就地展开面板
+ *     都只编辑/显示一段纯文本（多行 textarea，Enter 换行，Ctrl/⌘+Enter 保存）；
+ *   - 发送时直接把 content 作为 user message，不再拼接 title + description；
+ *   - 数据迁移：旧 schema {title, description} 自动合并成
+ *     content = title + (description ? "\n\n" + description : "")，
+ *     旧字段在保存时被剥离（仅保留新 schema 字段），无破坏性丢失；
+ *   - 视觉 token / FAB 让位 / 抽屉交互 / 发送二次确认 / 发送后删除全局开关
+ *     等其余行为沿用 v0.5.6。
  *
- * 持久化：localStorage（key dsh.taskPool.v1，schema v2 兼容 v1）。
+ * 持久化：localStorage（key dsh.taskPool.v1，schema v3 兼容 v2/v1）。
  * 唯一 token 消耗路径：用户主动发送任务到对话时（与 ui-task-board 的执行模式同款）。
  */
 window.__ModuleLoader__.load({
@@ -96,8 +97,7 @@ window.__ModuleLoader__.load({
       ".DTPD_handle:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-specific-sidebar-nav-item-hover);}" +
       ".DTPD_handle:active{cursor:grabbing;}" +
       ".DTPD_rowMain{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}" +
-      ".DTPD_rowTitle{font-size:13px;font-weight:500;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}" +
-      ".DTPD_rowDesc{font-size:12px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}" +
+      ".DTPD_rowContent{font-size:13px;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}" +
       ".DTPD_rowMeta{flex:none;font-size:12px;color:var(--dsw-alias-label-tertiary);align-self:center;}" +
       ".DTPD_rowChevron{flex:none;align-self:center;color:var(--dsw-alias-label-tertiary);font-size:10px;width:14px;height:14px;display:flex;align-items:center;justify-content:center;transition:transform .14s;}" +
       ".DTPD_row[data-expanded=\"true\"] .DTPD_rowChevron{transform:rotate(90deg);color:var(--dsw-alias-label-primary);}" +
@@ -109,10 +109,8 @@ window.__ModuleLoader__.load({
       // 卡片展开面板
       ".DTPD_panel{border-top:1px solid var(--dsw-alias-border-l2);padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--dsw-alias-bg-base);animation:DTPD_fadeIn .14s ease;}" +
       "@keyframes DTPD_fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}" +
-      ".DTPD_input,.DTPD_textarea{font:inherit;background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:8px 10px;outline:none;width:100%;box-sizing:border-box;}" +
-      ".DTPD_input:focus,.DTPD_textarea:focus{border-color:var(--dsw-alias-button-info-fill);}" +
-      ".DTPD_input{font-size:13px;font-weight:600;}" +
-      ".DTPD_textarea{font-size:13px;resize:vertical;min-height:90px;font-family:inherit;}" +
+      ".DTPD_textarea{font:inherit;background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:8px 10px;outline:none;width:100%;box-sizing:border-box;font-size:13px;resize:vertical;min-height:140px;font-family:inherit;line-height:1.5;}" +
+      ".DTPD_textarea:focus{border-color:var(--dsw-alias-button-info-fill);}" +
       ".DTPD_label{font-size:11px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.04em;}" +
       ".DTPD_meta{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.5;}" +
       ".DTPD_panelFooter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;}" +
@@ -156,8 +154,7 @@ window.__ModuleLoader__.load({
     function isTaskShape(v) {
       if (typeof v !== "object" || v === null) return false;
       if (typeof v.id !== "string" || v.id === "") return false;
-      if (typeof v.title !== "string") return false;
-      if (typeof v.description !== "string") return false;
+      if (typeof v.content !== "string") return false;
       if (typeof v.createdAt !== "number") return false;
       if (typeof v.updatedAt !== "number") return false;
       if (typeof v.order !== "number") return false;
@@ -178,8 +175,31 @@ window.__ModuleLoader__.load({
       }
       var tasks = [];
       for (var i = 0; i < parsed.tasks.length; i++) {
-        if (isTaskShape(parsed.tasks[i])) tasks.push(parsed.tasks[i]);
-        else console.warn("[dsh-task-pool] dropping invalid task row", parsed.tasks[i]);
+        // 旧数据迁移：title + description 合并成 content
+        if (isTaskShape(parsed.tasks[i])) {
+          tasks.push(parsed.tasks[i]);
+        } else {
+          var legacy = parsed.tasks[i];
+          if (typeof legacy === "object" && legacy !== null
+              && typeof legacy.id === "string" && legacy.id !== ""
+              && typeof legacy.title === "string"
+              && typeof legacy.createdAt === "number"
+              && typeof legacy.updatedAt === "number") {
+            var content = legacy.title;
+            if (typeof legacy.description === "string" && legacy.description) {
+              content = content + "\n\n" + legacy.description;
+            }
+            tasks.push({
+              id: legacy.id,
+              content: content,
+              createdAt: legacy.createdAt,
+              updatedAt: legacy.updatedAt,
+              order: typeof legacy.order === "number" ? legacy.order : legacy.createdAt
+            });
+          } else {
+            console.warn("[dsh-task-pool] dropping invalid task row", parsed.tasks[i]);
+          }
+        }
       }
       var pinned = typeof parsed.pinned === "boolean" ? parsed.pinned : false;
       var deleteAfterSend = typeof parsed.deleteAfterSend === "boolean" ? parsed.deleteAfterSend : true;
@@ -296,13 +316,12 @@ window.__ModuleLoader__.load({
       this.notify();
     };
     BoardController.prototype.createTask = function (input) {
-      var title = (input.title || "").trim();
-      if (!title) return undefined;
+      var content = (input.content || "").trim();
+      if (!content) return undefined;
       var now = Date.now();
       var task = {
         id: uuid(),
-        title: title,
-        description: (input.description || "").trim(),
+        content: content,
         createdAt: now,
         updatedAt: now,
         order: now
@@ -325,8 +344,7 @@ window.__ModuleLoader__.load({
         for (var k in t) if (Object.prototype.hasOwnProperty.call(t, k)) n[k] = t[k];
         for (var p in patch) if (Object.prototype.hasOwnProperty.call(patch, p)) n[p] = patch[p];
         n.updatedAt = now;
-        if (typeof n.title === "string") n.title = n.title.trim();
-        if (typeof n.description === "string") n.description = n.description.trim();
+        if (typeof n.content === "string") n.content = n.content.trim();
         return n;
       });
       if (changed) self.notify();
@@ -395,7 +413,7 @@ window.__ModuleLoader__.load({
         this.notify();
         return;
       }
-      var text = task.title + (task.description ? "\n\n" + task.description : "");
+      var text = task.content;
       var promise;
       try {
         promise = driver.prompt([{ type: "text", text: text }], "queue");
@@ -601,7 +619,7 @@ window.__ModuleLoader__.load({
         var snap = controller.getSnapshot();
         headerEl.innerHTML =
           '<span class="DTPD_newPlus" aria-hidden="true">+</span>' +
-          '<input class="DTPD_newInput" type="text" placeholder="新建任务…回车保存" autocomplete="off" spellcheck="false" />' +
+          '<input class="DTPD_newInput" type="text" placeholder="新建任务内容…回车保存" autocomplete="off" spellcheck="false" />' +
           // 全局"发送后删除"开关：放在 inline input 与 📌 之间
           '<label class="DTPD_toggle DTPD_toggleHeader" title="开关：所有任务发送成功后是否从池子里删除">' +
             '<input type="checkbox" data-action="deleteAfterSend" ' + (snap.deleteAfterSend ? "checked" : "") + ' />' +
@@ -621,7 +639,7 @@ window.__ModuleLoader__.load({
             e.preventDefault();
             var v = newInputEl.value;
             newInputEl.value = "";
-            controller.createTask({ title: v });
+            controller.createTask({ content: v });
           }
         });
         // 全局"发送后删除"开关：与 BoardController.deleteAfterSend 双向同步
@@ -678,16 +696,10 @@ window.__ModuleLoader__.load({
 
         var main = document.createElement("div");
         main.className = "DTPD_rowMain";
-        var titleEl = document.createElement("div");
-        titleEl.className = "DTPD_rowTitle";
-        titleEl.textContent = task.title;
-        main.appendChild(titleEl);
-        if (task.description) {
-          var desc = document.createElement("div");
-          desc.className = "DTPD_rowDesc";
-          desc.textContent = task.description;
-          main.appendChild(desc);
-        }
+        var contentEl = document.createElement("div");
+        contentEl.className = "DTPD_rowContent";
+        contentEl.textContent = task.content;
+        main.appendChild(contentEl);
         head.appendChild(main);
 
         var meta = document.createElement("span");
@@ -712,35 +724,21 @@ window.__ModuleLoader__.load({
         panel.className = "DTPD_panel";
         panel.dataset.role = "panel";
 
-        var titleLabel = document.createElement("div");
-        titleLabel.className = "DTPD_label";
-        titleLabel.textContent = "标题";
-        panel.appendChild(titleLabel);
-        var titleInput = document.createElement("input");
-        titleInput.type = "text";
-        titleInput.className = "DTPD_input";
-        titleInput.value = task.title;
-        titleInput.addEventListener("change", function () { controller.updateTask(task.id, { title: titleInput.value }); });
-        titleInput.addEventListener("keydown", function (e) {
-          if (e.key === "Enter") { e.preventDefault(); titleInput.blur(); }
+        var contentLabel = document.createElement("div");
+        contentLabel.className = "DTPD_label";
+        contentLabel.textContent = "内容";
+        panel.appendChild(contentLabel);
+        var contentInput = document.createElement("textarea");
+        contentInput.className = "DTPD_textarea";
+        contentInput.rows = 6;
+        contentInput.placeholder = "任务内容（Enter 换行，Ctrl/⌘+Enter 保存）";
+        contentInput.value = task.content;
+        contentInput.addEventListener("change", function () { controller.updateTask(task.id, { content: contentInput.value }); });
+        contentInput.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); contentInput.blur(); }
           if (e.key === "Escape") { e.preventDefault(); controller.collapseTask(); }
         });
-        panel.appendChild(titleInput);
-
-        var descLabel = document.createElement("div");
-        descLabel.className = "DTPD_label";
-        descLabel.textContent = "描述";
-        panel.appendChild(descLabel);
-        var descInput = document.createElement("textarea");
-        descInput.className = "DTPD_textarea";
-        descInput.rows = 4;
-        descInput.placeholder = "补充背景、范围、验收（可选）";
-        descInput.value = task.description;
-        descInput.addEventListener("change", function () { controller.updateTask(task.id, { description: descInput.value }); });
-        descInput.addEventListener("keydown", function (e) {
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); descInput.blur(); }
-        });
-        panel.appendChild(descInput);
+        panel.appendChild(contentInput);
 
         var meta = document.createElement("div");
         meta.className = "DTPD_meta";
@@ -795,9 +793,11 @@ window.__ModuleLoader__.load({
         if (isSendArmed) startSendCountdown(task.id, sendBtn);
 
         setTimeout(function () {
-          if (document.body.contains(titleInput)) {
-            titleInput.focus();
-            titleInput.select();
+          if (document.body.contains(contentInput)) {
+            contentInput.focus();
+            // 不 select，避免误删整段；只把光标移到末尾
+            var len = contentInput.value.length;
+            try { contentInput.setSelectionRange(len, len); } catch (_) { contentInput.focus(); }
           }
         }, 0);
 

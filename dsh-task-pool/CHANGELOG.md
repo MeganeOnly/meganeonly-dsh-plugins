@@ -4,6 +4,24 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-08-19
+
+任务结构从 `{ title, description }` 双字段简化为单字段 `{ content }`。
+
+### Changed
+
+- 任务卡片从"标题 + 描述预览"两行布局简化为单行内容预览。
+- 卡片就地展开面板从"标题 input + 描述 textarea"两栏简化为单段"内容" textarea（Enter 换行，Ctrl/⌘+Enter 保存）。
+- 抽屉头部 inline 新建输入框 placeholder 从"新建任务…"改为"新建任务内容…"。
+- 发送时直接把 `content` 作为 user message，不再拼接 title 与 description。
+
+### 数据迁移
+
+- 旧 schema `{ title, description, ... }` 在加载时自动迁移：
+  - `content = title + (description ? "\n\n" + description : "")`
+  - 迁移后的任务在下次保存时只保留新 schema 字段（剥离 `title` / `description`）
+- 旧任务的内容不会丢失；只是从两栏合并为一段。
+
 ## [0.5.6] - 2026-08-19
 
 作为独立 npm 包发布的初始版本，包含以下已有功能。
