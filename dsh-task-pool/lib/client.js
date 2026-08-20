@@ -755,7 +755,7 @@ window.__ModuleLoader__.load({
         sendBtn.type = "button";
         var isSendArmed = (confirmSendId === task.id);
         sendBtn.className = "DTPD_btn DTPD_btnPrimary" + (isSendArmed ? " DTPD_btnSendConfirm" : "");
-        sendBtn.textContent = isSendArmed ? "再点一次确认发送到对话（4）" : "📨 发送到当前对话";
+        sendBtn.textContent = isSendArmed ? "再点一次确认发送（4）" : "📨 发送到当前对话";
         sendBtn.addEventListener("click", function () { controller.requestSend(task.id); });
         footer.appendChild(sendBtn);
 
@@ -899,7 +899,7 @@ window.__ModuleLoader__.load({
             stopSendCountdown();
             return;
           }
-          sendBtn.textContent = "再点一次确认发送到对话（" + remaining + "）";
+          sendBtn.textContent = "再点一次确认发送（" + remaining + "）";
           remaining--;
         }
         tick(); // 立即显示 "（4）"
