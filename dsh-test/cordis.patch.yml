@@ -1,0 +1,6 @@
+# dsh-test bundle patch：向 web profile 的插件名册插入自身一行。
+# Host 半端暴露 GET /api/test/hello（最小可用端点）；
+# Client 半端在浏览器加载完成后向 <body> 注入一枚右下角徽标作为加载证明。
+- insert:
+    - id: dsh-test
+      name: dsh-test

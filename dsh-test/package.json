@@ -1,0 +1,48 @@
+{
+  "name": "dsh-test",
+  "version": "0.1.0",
+  "author": "MeganeOnly",
+  "description": "DSH 插件开发者用的最小管道健康检查器：装上后浏览器右下角出现一枚状态徽标——绿底表示 host 半端、client bundle、cordis 名册三层全跑通，红底表示哪一层断了；用于排查「插件失踪」问题时先确认管道本身是否健康，再排查自己的代码。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins.git",
+    "directory": "dsh-test"
+  },
+  "bugs": {
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/issues"
+  },
+  "homepage": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/tree/main/dsh-test#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "test",
+    "diagnostic",
+    "smoke-test",
+    "pipeline-check"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
