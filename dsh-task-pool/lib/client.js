@@ -23,6 +23,7 @@ window.__ModuleLoader__.load({
 
     var inject = ["sessions"]; // sessions 发送任务到当前会话
 
+    // ===== constants =====
     // ===== 常量 =====
     var STORAGE_KEY = "dsh.taskPool.v1";
     var DRAWER_ATTR = "data-dsh-taskpool-drawer-open";
@@ -33,6 +34,7 @@ window.__ModuleLoader__.load({
     var PANEL_NAME = "taskpool";
     var ACTIVATE_EVENT = "dsh-panel-activate";
 
+    // ===== utils =====
     // ===== 工具函数 =====
     function uuid() {
       var c = globalThis.crypto;
@@ -70,6 +72,7 @@ window.__ModuleLoader__.load({
         + " " + pad2(dt.getUTCHours()) + ":" + pad2(dt.getUTCMinutes());
     }
 
+    // ===== styles =====
     // ===== CSS =====
     var CSS = "" +
       // 抽屉容器
@@ -150,6 +153,7 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag);
     }
 
+    // ===== storage =====
     // ===== LocalStorageTaskStore =====
     function isTaskShape(v) {
       if (typeof v !== "object" || v === null) return false;
@@ -238,6 +242,7 @@ window.__ModuleLoader__.load({
       }
     };
 
+    // ===== controller =====
     // ===== BoardController（v0.5.0：新增 deps + confirmSend + sendTask） =====
     function BoardController(store, deps) {
       this.store = store;
@@ -469,6 +474,7 @@ window.__ModuleLoader__.load({
       this.notify();
     };
 
+    // ===== fab =====
     // ===== FAB 图标（精确居中） =====
     var FAB_ICON_CLOSED = '<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.25" y="3.25" width="9.5" height="9.5" rx="1.5"/><path d="M8 5.75v4.5M5.75 8h4.5"/></svg>';
     var FAB_ICON_OPEN = '<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>';
@@ -505,6 +511,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== drawer =====
     // ===== Right drawer mount =====
     function mountRightDrawer(controller) {
       var container, viewHandle;
@@ -595,6 +602,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== view =====
     // ===== Drawer view =====
     function renderDrawerView(container, controller) {
       var headerEl, bodyEl, listEl, newInputEl;
@@ -946,6 +954,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== apply =====
     // ===== apply =====
     function apply(ctx) {
       injectCSS();
