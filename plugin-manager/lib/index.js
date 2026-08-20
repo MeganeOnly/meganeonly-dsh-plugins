@@ -30,18 +30,40 @@ function isSystem(entryName) {
   return typeof entryName === 'string' && entryName.startsWith('@deepseek-ai/')
 }
 
-/** 读取包 package.json 的 author 字段（file: 硬链接与源码同步；失败返回 undefined）。 */
-async function readAuthor(ctx, entryName) {
-  if (typeof entryName !== 'string' || entryName === '' || entryName.startsWith('@')) return undefined
-  try {
-    const pkgPath = join(profileRoot(ctx), 'node_modules', entryName, 'package.json')
-    const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
-    if (typeof pkg.author === 'string') return pkg.author
-    if (pkg.author && typeof pkg.author.name === 'string') return pkg.author.name
-    return undefined
-  } catch {
-    return undefined
+/**
+ * 读取包 package.json 的 author 字段（file: 硬链接/junction 与源码同步；失败返回 undefined）。
+ *
+ * npm/pnpm 引入后，loader 的 graph row id 与包的 npm name 已不再同名：
+ *   - id  = "plugin-manager"          （cordis.patch.yml `- id: <x>`，DSH loader 按它建 junction 在 node_modules/<id>）
+ *   - name = "dsh-plugin-manager"     （package.json 的 name，含 dsh- 前缀，pnpm 装出 node_modules/<name>）
+ * 历史/并行安装下两份目录都可能存在，因此这里顺次尝试多个候选路径，任一可读就用。
+ */
+async function readAuthor(ctx, id, name) {
+  if (typeof id !== 'string' || id === '') return undefined
+  if (id.startsWith('@')) return undefined
+  const candidates = []
+  const seen = new Set()
+  const tryAdd = (p) => { if (!seen.has(p)) { seen.add(p); candidates.push(p) } }
+  tryAdd(join(profileRoot(ctx), 'node_modules', id, 'package.json'))
+  if (typeof name === 'string' && name !== '' && name !== id) {
+    tryAdd(join(profileRoot(ctx), 'node_modules', name, 'package.json'))
   }
+  // 兼容：id 或 name 任一不带 dsh- 前缀时，再尝试 dsh-<x>
+  if (!id.startsWith('dsh-')) tryAdd(join(profileRoot(ctx), 'node_modules', 'dsh-' + id, 'package.json'))
+  if (typeof name === 'string' && name !== '' && !name.startsWith('dsh-')) {
+    tryAdd(join(profileRoot(ctx), 'node_modules', 'dsh-' + name, 'package.json'))
+  }
+  for (const pkgPath of candidates) {
+    try {
+      const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
+      if (typeof pkg.author === 'string') return pkg.author
+      if (pkg.author && typeof pkg.author.name === 'string') return pkg.author.name
+      return undefined
+    } catch {
+      // 候选路径都试一遍
+    }
+  }
+  return undefined
 }
 
 /** 解析 profile 根目录（loader 的 baseUrl 即 profile 目录）。 */
@@ -66,7 +88,7 @@ async function listEntries(ctx) {
     entries.push({
       id: entry.options.id,
       name,
-      author: await readAuthor(ctx, name),
+      author: await readAuthor(ctx, entry.options.id, name),
       enabled: !entry.disabled,
       phase: entry.fiber === void 0 ? null : String(entry.fiber.state),
       system: isSystem(name),

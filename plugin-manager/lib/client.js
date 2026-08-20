@@ -112,6 +112,7 @@ window.__ModuleLoader__.load({
         var metaBits = [];
         if (e.author) metaBits.push("作者：" + e.author);
         if (e.phase) metaBits.push(e.phase);
+        var displayName = (typeof e.name === "string" && e.name !== "") ? e.name : e.id;
         var rowStyle = mine ? Object.assign({}, row, { borderLeft: "3px solid rgba(74,222,128,0.8)", background: "rgba(74,222,128,0.08)", borderRadius: "6px", paddingLeft: "10px" }) : row;
         var nameStyle = mine ? { fontWeight: 700, color: "#4ade80", opacity: 1 } : null;
         return React.createElement(
@@ -122,15 +123,14 @@ window.__ModuleLoader__.load({
             { style: { flex: 1, minWidth: 0 } },
             React.createElement(
               "div",
-              { style: mine ? mineTitle : null },
-              e.id,
+              { style: mine ? mineTitle : null, title: "id: " + String(e.id) },
+              displayName,
               mine ? React.createElement("span", { style: mineBadge }, "我的") : null
             ),
             React.createElement(
               "div",
               { style: dim },
-              React.createElement("span", { style: nameStyle }, String(e.name)),
-              metaBits.length > 0 ? " · " + metaBits.join(" · ") : ""
+              metaBits.length > 0 ? metaBits.join(" · ") : ""
             )
           ),
           canToggle
