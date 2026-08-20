@@ -1,5 +1,5 @@
     // ===== constants =====
-        var VERSION = "0.7.4";
+        var VERSION = "0.7.5";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

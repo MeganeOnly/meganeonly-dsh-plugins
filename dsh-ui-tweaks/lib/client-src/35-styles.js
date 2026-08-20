@@ -68,16 +68,21 @@
      *    `var(--dsw-alias-bg-component-disabled, #cbd5e1)`。
      *  - input 不再用 :disabled 样式（v0.5.1 起永远不 disabled）。
      *  - 移除 .DTPD_actionsRow / .DTPD_btn 样式（按钮已去掉）。
+     *
+     * v0.7.5：description 从 `<p>` 收进 `title` 属性后，row 默认不再渲染描述——
+     * 给 `.DTPD_item` 加 `cursor:help` 提示可悬停看说明；同时删除
+     * `.DTPD_itemDesc` 规则（不再被任何 JSX 引用）。
      */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
       ".DTPD_section h2{margin:0;font-size:18px;font-weight:600}\n" +
       ".DTPD_intro{color:var(--dsw-alias-label-tertiary);margin:0 0 4px;font-size:13px}\n" +
       ".DTPD_list{flex-direction:column;gap:10px;margin:0;padding:0;list-style:none;display:flex}\n" +
-      ".DTPD_item{box-sizing:border-box;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:8px;padding:14px 16px;display:flex}\n" +
+      // v0.7.5：cursor:help 提示"悬停可看 description"——description 移到 <li title=...>
+      ".DTPD_item{cursor:help;box-sizing:border-box;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:8px;padding:14px 16px;display:flex}\n" +
       ".DTPD_itemHead{flex-direction:row;justify-content:space-between;align-items:center;gap:12px;display:flex}\n" +
       ".DTPD_itemName{margin:0;font-size:14px;font-weight:500;line-height:22px}\n" +
-      ".DTPD_itemDesc{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}\n" +
+      // v0.7.5：.DTPD_itemDesc 规则移除——description 改用 HTML title，不渲染 <p>
       ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:36px;height:22px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
       ".DTPD_switch:checked{background:var(--dsw-alias-state-business-primary,#2563eb)}\n" +
       ".DTPD_switch::after{content:\"\";position:absolute;top:1px;left:1px;width:18px;height:18px;background:var(--dsw-alias-bg-layer-1,#fff);border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.18)}\n" +

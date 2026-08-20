@@ -149,15 +149,41 @@
         // 给它打 data-dsh-ui-tweaks-hidden-tab="trajectory" 标记 → CSS 命中隐藏。
         // 配套副作用：如果当前 view 正是轨迹（aria-selected="true"），点击"对话"/
         // "Chat" 标签自动切回对话页——避免用户卡在轨迹视图出不来。
+        //
+        // v0.7.5：tab 按钮外的"Inspect" 入口也封掉——DSH 在每个工具调用
+        // （edit / pwsh / read / grep / glob / bash / write 等）的 row 右上
+        // 渲染一个 `<button class="*_inspectButton">`（CSS Module hash class，
+        // 当前 hash=`o3BgMG` / `CY-8Ka`），点击后调 `inspectCall(callId)` →
+        // `actions.setView("trajectory")`——本质也是进轨迹视图的入口。
+        // 用户开 hide-trajectory-tab 的目的是"所有轨迹入口都不见"，所以
+        // 这条 tweak 同时干掉两类入口：
+        //   1) 顶部 tablist 的"轨迹"/"Trajectory"按钮（v0.7.0 起，JS 标记 +
+        //      CSS attribute selector 命中）
+        //   2) 每个工具行内的"Inspect"按钮（v0.7.5 起，CSS substring 命中
+        //      `[class*="_inspectButton"]`，不依赖 hash——DSH 升级换 hash 也
+        //      不需要改这里）
+        // 工具行 Inspect 按钮 hover 时 `opacity:1` 的过渡（transition:opacity
+        // .1s）会在 hide-trajectory-tab 关掉时正常 fade in——这里 `display:none
+        // !important` 直接消失，没有 fade 闪烁窗口。
         id: "hide-trajectory-tab",
         name: "隐藏对话中的\"轨迹\"标签",
-        description: "对话顶部多了一个\"轨迹\"标签——展示模型/工具调用的事件账本（开发者视角）。非开发者用不上，看着也容易困惑。开启后完全隐藏这个标签，如果当前正停在轨迹视图会自动切回对话页。",
+        description: "对话顶部多了一个\"轨迹\"标签——展示模型/工具调用的事件账本（开发者视角）。同时把每个工具调用行（edit / pwsh / read / grep 等）右上角的\"Inspect\"按钮也关掉——点击它也会进入轨迹视图。非开发者用不上，看着也容易困惑。开启后完全隐藏这些入口；如果当前正停在轨迹视图会自动切回对话页。",
         configKeys: { enabled: "hideTrajectoryTab", value: "hideTrajectoryTab" },
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.hideTrajectoryTab) return null;
-          return "/* === hide-trajectory-tab v0.7.0 : JS-side MutationObserver 给 \"轨迹\"/\"Trajectory\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"trajectory\"，CSS 命中隐藏 === */\n" +
-            "[data-dsh-ui-tweaks-hidden-tab=\"trajectory\"]{display:none!important}";
+          return "/* === hide-trajectory-tab v0.7.5 : 顶部 tablist 的 \"轨迹\"/\"Trajectory\" 按钮 + 每个工具行的 \"Inspect\" 按钮 === */\n" +
+            // 顶部 tablist 的"轨迹"/"Trajectory" 按钮——JS observer 标记 + CSS attribute selector 命中。
+            // 纯 CSS 没法匹配"按钮文本是 轨迹"—CSS 没有 :text() 选择器；JS observer 巡检
+            // [role="tablist"] 找文本匹配按钮打标记，CSS 命中隐藏。
+            "[data-dsh-ui-tweaks-hidden-tab=\"trajectory\"]{display:none!important}\n" +
+            // v0.7.5 新增：每个工具调用 row 内的"Inspect"按钮——
+            // DSH 源码 `dsh-client-ui-tool/lib/client.js` 中 ToolRow / BashRow
+            // 渲染 `<button class="*_inspectButton">`，点击后调
+            // `inspectCall(callId)` → `actions.setView("trajectory")` ——也是
+            // 进入轨迹视图的入口。substring match `_inspectButton` 不依赖 hash，
+            // DSH 升级换 hash 仍然命中。
+            "[class*=\"_inspectButton\"]{display:none!important}";
         }
       },
       {

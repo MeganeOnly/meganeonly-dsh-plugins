@@ -12,6 +12,19 @@
 
 ### 修复
 
+- **`hide-trajectory-tab` 扩展：同时隐藏每个工具调用 row 内的 "Inspect" 按钮**（v0.7.5）：
+  - 根因：DSH 在每个工具调用（`edit` / `pwsh` / `read` / `grep` / `glob` / `bash` / `write` 等）的 row 内渲染一个 `<button class="*_inspectButton">`（CSS Module hash class，当前 hash=`o3BgMG` / `CY-8Ka`）。点击后调 `inspectCall(callId)` → `actions.setView("trajectory")`——本质也是进轨迹视图的入口。`hide-trajectory-tab` 原本只隐藏顶部 tablist 的"轨迹"按钮，工具行 Inspect 按钮仍可见——用户反馈"应该一起关掉"。
+  - 修法：CSS 加 `[class*="_inspectButton"]{display:none!important}`。substring match 不依赖 hash，DSH 升级换 hash 仍然命中。
+  - 配合原有的 `[data-dsh-ui-tweaks-hidden-tab="trajectory"]`，"所有进入轨迹视图的入口"全部关闭，没有 80ms observer 节流的闪烁窗口（与 v0.7.3 修 `hide-sidebar-tooltip` HoverCard "闪一下" 的思路一致——CSS 在 mount 时立即生效）。
+
+### 优化
+
+- **Tweak row description 收进 HTML `title` 属性**（v0.7.5）：
+  - 旧实现：每条 tweak 在 row 里始终渲染一段 1-3 行的描述文字（最长 60+ 字），6 条 tweak 在设置页铺满 200+ 像素高——但实际只有"刚开插件 / 想不起来某条做什么"时才需要看描述。
+  - 新实现：description 默认不渲染，鼠标悬停在 row 上时弹出浏览器原生 tooltip（HTML `title` 属性）——所见即所得、无额外 CSS、无 JS state。`.DTPD_item` 加 `cursor:help` 提示可悬停。旧 `.DTPD_itemDesc` CSS 规则移除。
+
+## [0.7.1] - 2026-08-19
+
 - **`hide-sidebar-tooltip` HoverCard 修复链**（v0.7.2 → v0.7.3 → v0.7.4）：
   - **v0.7.2 起**：补充 HoverCard 二次修复（v0.7.1 已加 JS observer 标记）
   - **v0.7.3 CSS 主防线**：直接命中 CSS Module hash 类（`_hoverContent` / `_hoverTitle` / `_hoverTime` / `_hoverStatus` / `_hoverPath`），mount 时立即隐藏消除"闪一下"

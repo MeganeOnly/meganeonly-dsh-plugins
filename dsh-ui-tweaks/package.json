@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.7.1：hide-sidebar-tooltip 二次修复——侧栏悬浮提示实际是 DSH 自己的 HoverCard 组件（@deepseek-ai/dsh-client-ui-primitives/lib/types/HoverCard.js），而非 Radix Tooltip。HoverCard 在每条 session / workspace 行 hover 500ms 后 portal 一个 div 到 document.body，内容是 SessionHoverContent / WorkspaceHoverContent（CSS Module hash 类名 YDXeBa_hoverContent / _hoverTitle / _hoverTime / _hoverStatus / _hoverPath）。HoverCard 的 card div 本身没有 className（HoverCard.module.css 是空 stub），role 只在 copyable 时才有，CSS 选择器难命中。修法：JS MutationObserver 巡检 body 直接子 div，找到含 hover 相关 hash 类的打 data-dsh-ui-tweaks-hidden-hover-card 标记；CSS 命中隐藏。加上 [role=tooltip]，Tooltip + HoverCard 一并覆盖）。v0.7.0：新增 hide-trajectory-tab。v0.6.1：hide-sidebar-tooltip selector 修复。状态由 client half 用 localStorage 自管。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab 五条 tweak。",
+  "description": "DSH 外观设计微调合集（v0.7.5：1) hide-trajectory-tab 扩展——同时隐藏每个工具调用 row 内的 Inspect 按钮（DSH 源码 dsh-client-ui-tool 渲染 <button class=\"*_inspectButton\">，点击进轨迹视图），CSS 用 [class*=_inspectButton] substring 命中，不依赖 DSH 升级 hash；2) Tweak row 描述文字从始终渲染的 <p> 收进 HTML title 属性——鼠标悬停时弹出浏览器原生 tooltip，row 默认加 cursor:help 提示可悬看。旧 .DTPD_itemDesc 规则移除。状态由 client half 用 localStorage 自管。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab 六条 tweak。",
   "license": "MIT",
   "repository": {
     "type": "git",

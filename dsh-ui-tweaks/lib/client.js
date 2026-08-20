@@ -1,6 +1,21 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.7.5：
+ *   1) hide-trajectory-tab 扩展：同时干掉每个工具调用 row 内的 "Inspect"
+ *      按钮——DSH 源码 `dsh-client-ui-tool/lib/client.js` 渲染
+ *      `<button class="*_inspectButton">`（当前 hash=`o3BgMG` / `CY-8Ka`），
+ *      点击后调 `inspectCall(callId)` → `actions.setView("trajectory")`——
+ *      本质也是进轨迹视图的入口。CSS 用 `[class*="_inspectButton"]` 命中
+ *      （substring match，不依赖 hash——DSH 升级换 hash 仍然命中）。配合
+ *      原有 `[data-dsh-ui-tweaks-hidden-tab="trajectory"]` 把"所有进入
+ *      轨迹视图的入口"全部关闭，没有 80ms observer 节流闪烁窗口。
+ *   2) Tweak row description 收进 HTML `title` 属性。旧实现每条 tweak
+ *      始终渲染一段 1-3 行的描述文字（最长 60+ 字），6 条 tweak 在设置页
+ *      铺满 200+ 像素高。新实现：description 默认不渲染，鼠标悬停在 row
+ *      上时弹出浏览器原生 tooltip——CSS 仅加 `cursor:help` 一个属性。
+ *      旧 `.DTPD_itemDesc` 规则移除。
+ *
  * v0.7.4：hide-sidebar-tooltip 四次修复——v0.7.3 修了"闪一下"但留下"窄黑框"。
  *   根因：DSH Tooltip 组件是 `<span role="tooltip">` 没背景，纯文字；但 HoverCard
  *   组件的 **card div**（`createPortal(card, document.body)` 的产物）有独立 CSS 类
@@ -129,7 +144,7 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
-        var VERSION = "0.7.4";
+        var VERSION = "0.7.5";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -304,15 +319,41 @@ window.__ModuleLoader__.load({
         // 给它打 data-dsh-ui-tweaks-hidden-tab="trajectory" 标记 → CSS 命中隐藏。
         // 配套副作用：如果当前 view 正是轨迹（aria-selected="true"），点击"对话"/
         // "Chat" 标签自动切回对话页——避免用户卡在轨迹视图出不来。
+        //
+        // v0.7.5：tab 按钮外的"Inspect" 入口也封掉——DSH 在每个工具调用
+        // （edit / pwsh / read / grep / glob / bash / write 等）的 row 右上
+        // 渲染一个 `<button class="*_inspectButton">`（CSS Module hash class，
+        // 当前 hash=`o3BgMG` / `CY-8Ka`），点击后调 `inspectCall(callId)` →
+        // `actions.setView("trajectory")`——本质也是进轨迹视图的入口。
+        // 用户开 hide-trajectory-tab 的目的是"所有轨迹入口都不见"，所以
+        // 这条 tweak 同时干掉两类入口：
+        //   1) 顶部 tablist 的"轨迹"/"Trajectory"按钮（v0.7.0 起，JS 标记 +
+        //      CSS attribute selector 命中）
+        //   2) 每个工具行内的"Inspect"按钮（v0.7.5 起，CSS substring 命中
+        //      `[class*="_inspectButton"]`，不依赖 hash——DSH 升级换 hash 也
+        //      不需要改这里）
+        // 工具行 Inspect 按钮 hover 时 `opacity:1` 的过渡（transition:opacity
+        // .1s）会在 hide-trajectory-tab 关掉时正常 fade in——这里 `display:none
+        // !important` 直接消失，没有 fade 闪烁窗口。
         id: "hide-trajectory-tab",
         name: "隐藏对话中的\"轨迹\"标签",
-        description: "对话顶部多了一个\"轨迹\"标签——展示模型/工具调用的事件账本（开发者视角）。非开发者用不上，看着也容易困惑。开启后完全隐藏这个标签，如果当前正停在轨迹视图会自动切回对话页。",
+        description: "对话顶部多了一个\"轨迹\"标签——展示模型/工具调用的事件账本（开发者视角）。同时把每个工具调用行（edit / pwsh / read / grep 等）右上角的\"Inspect\"按钮也关掉——点击它也会进入轨迹视图。非开发者用不上，看着也容易困惑。开启后完全隐藏这些入口；如果当前正停在轨迹视图会自动切回对话页。",
         configKeys: { enabled: "hideTrajectoryTab", value: "hideTrajectoryTab" },
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.hideTrajectoryTab) return null;
-          return "/* === hide-trajectory-tab v0.7.0 : JS-side MutationObserver 给 \"轨迹\"/\"Trajectory\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"trajectory\"，CSS 命中隐藏 === */\n" +
-            "[data-dsh-ui-tweaks-hidden-tab=\"trajectory\"]{display:none!important}";
+          return "/* === hide-trajectory-tab v0.7.5 : 顶部 tablist 的 \"轨迹\"/\"Trajectory\" 按钮 + 每个工具行的 \"Inspect\" 按钮 === */\n" +
+            // 顶部 tablist 的"轨迹"/"Trajectory" 按钮——JS observer 标记 + CSS attribute selector 命中。
+            // 纯 CSS 没法匹配"按钮文本是 轨迹"—CSS 没有 :text() 选择器；JS observer 巡检
+            // [role="tablist"] 找文本匹配按钮打标记，CSS 命中隐藏。
+            "[data-dsh-ui-tweaks-hidden-tab=\"trajectory\"]{display:none!important}\n" +
+            // v0.7.5 新增：每个工具调用 row 内的"Inspect"按钮——
+            // DSH 源码 `dsh-client-ui-tool/lib/client.js` 中 ToolRow / BashRow
+            // 渲染 `<button class="*_inspectButton">`，点击后调
+            // `inspectCall(callId)` → `actions.setView("trajectory")` ——也是
+            // 进入轨迹视图的入口。substring match `_inspectButton` 不依赖 hash，
+            // DSH 升级换 hash 仍然命中。
+            "[class*=\"_inspectButton\"]{display:none!important}";
         }
       },
       {
@@ -467,16 +508,21 @@ window.__ModuleLoader__.load({
      *    `var(--dsw-alias-bg-component-disabled, #cbd5e1)`。
      *  - input 不再用 :disabled 样式（v0.5.1 起永远不 disabled）。
      *  - 移除 .DTPD_actionsRow / .DTPD_btn 样式（按钮已去掉）。
+     *
+     * v0.7.5：description 从 `<p>` 收进 `title` 属性后，row 默认不再渲染描述——
+     * 给 `.DTPD_item` 加 `cursor:help` 提示可悬停看说明；同时删除
+     * `.DTPD_itemDesc` 规则（不再被任何 JSX 引用）。
      */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
       ".DTPD_section h2{margin:0;font-size:18px;font-weight:600}\n" +
       ".DTPD_intro{color:var(--dsw-alias-label-tertiary);margin:0 0 4px;font-size:13px}\n" +
       ".DTPD_list{flex-direction:column;gap:10px;margin:0;padding:0;list-style:none;display:flex}\n" +
-      ".DTPD_item{box-sizing:border-box;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:8px;padding:14px 16px;display:flex}\n" +
+      // v0.7.5：cursor:help 提示"悬停可看 description"——description 移到 <li title=...>
+      ".DTPD_item{cursor:help;box-sizing:border-box;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:8px;padding:14px 16px;display:flex}\n" +
       ".DTPD_itemHead{flex-direction:row;justify-content:space-between;align-items:center;gap:12px;display:flex}\n" +
       ".DTPD_itemName{margin:0;font-size:14px;font-weight:500;line-height:22px}\n" +
-      ".DTPD_itemDesc{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}\n" +
+      // v0.7.5：.DTPD_itemDesc 规则移除——description 改用 HTML title，不渲染 <p>
       ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:36px;height:22px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
       ".DTPD_switch:checked{background:var(--dsw-alias-state-business-primary,#2563eb)}\n" +
       ".DTPD_switch::after{content:\"\";position:absolute;top:1px;left:1px;width:18px;height:18px;background:var(--dsw-alias-bg-layer-1,#fff);border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.18)}\n" +
@@ -1420,7 +1466,8 @@ window.__ModuleLoader__.load({
     // ====================================================================
 
     /**
-     * 单条 tweak 的 row：标题 + 描述 + 开关 + 可选数字输入。
+     * 单条 tweak 的 row：标题 + 开关 + 可选数字输入。description 隐藏在
+     * `title` 属性里——鼠标悬停时由浏览器原生 tooltip 显示。
      *
      * 设计选择（v0.5.1）：
      *  - 开关**永远不 disabled**——用户必须能拨动它（v0.4.0 / v0.5.0 默认 enabled=false，
@@ -1428,7 +1475,14 @@ window.__ModuleLoader__.load({
      *    看不见开关时就被锁住，反人类）
      *  - number input 也**永远不 disabled**——可以先调像素再开开关
      *  - number input 用受控 value={value} + onChange 每键更新 parent state，
-     *    没有 draft/useEffect 链。简化、消除受控 input 边界 race condition。
+     *    没有 draft/useEffect 链。简化、消除受控输入框 边界 race condition。
+     *
+     * v0.7.5：description 从始终渲染的 `<p>` 收进 HTML `title` 属性。
+     *   旧实现：每条 tweak 始终渲染一段 1-3 行的描述文字（最长 60+ 字），6 条 tweak
+     *   在设置页铺满 200+ 像素高——但实际只有"刚开插件 / 想不起来某条做什么"时
+     *   才需要看描述。新实现：description 默认不渲染，鼠标悬停在 row 上（或键盘
+     *   focus）时弹出浏览器原生 tooltip（HTML `title` 属性）——所见即所得、无
+     *   额外 CSS、无 JS state。CSS 同步加 `cursor:help` 提示可悬停。
      */
     function TweakRow(props) {
       var t = props.tweak;
@@ -1473,8 +1527,7 @@ window.__ModuleLoader__.load({
               onChange: onToggle
             })
           ]
-        }),
-        jsxRuntime.jsx("p", { className: "DTPD_itemDesc", children: t.description })
+        })
       ];
 
       if (hasValueInput) {
@@ -1504,11 +1557,11 @@ window.__ModuleLoader__.load({
       return jsxRuntime.jsx("li", {
         className: "DTPD_item",
         "data-tweak-id": t.id,
+        // v0.7.5：description 改 HTML title（浏览器原生 tooltip）—悬停时显示，无需额外 CSS/JS
+        title: t.description,
         children: children
       });
-    }
-
-    // ===== react-section =====
+    }    // ===== react-section =====
     /** 顶级 section 组件。自包含——内部 useState 用 loadState() 做 lazy init。 */
     function UiTweaksSection() {
       var stateState = react.useState(loadState);

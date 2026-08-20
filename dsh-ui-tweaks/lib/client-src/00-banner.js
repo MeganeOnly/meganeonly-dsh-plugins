@@ -1,6 +1,21 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.7.5：
+ *   1) hide-trajectory-tab 扩展：同时干掉每个工具调用 row 内的 "Inspect"
+ *      按钮——DSH 源码 `dsh-client-ui-tool/lib/client.js` 渲染
+ *      `<button class="*_inspectButton">`（当前 hash=`o3BgMG` / `CY-8Ka`），
+ *      点击后调 `inspectCall(callId)` → `actions.setView("trajectory")`——
+ *      本质也是进轨迹视图的入口。CSS 用 `[class*="_inspectButton"]` 命中
+ *      （substring match，不依赖 hash——DSH 升级换 hash 仍然命中）。配合
+ *      原有 `[data-dsh-ui-tweaks-hidden-tab="trajectory"]` 把"所有进入
+ *      轨迹视图的入口"全部关闭，没有 80ms observer 节流闪烁窗口。
+ *   2) Tweak row description 收进 HTML `title` 属性。旧实现每条 tweak
+ *      始终渲染一段 1-3 行的描述文字（最长 60+ 字），6 条 tweak 在设置页
+ *      铺满 200+ 像素高。新实现：description 默认不渲染，鼠标悬停在 row
+ *      上时弹出浏览器原生 tooltip——CSS 仅加 `cursor:help` 一个属性。
+ *      旧 `.DTPD_itemDesc` 规则移除。
+ *
  * v0.7.4：hide-sidebar-tooltip 四次修复——v0.7.3 修了"闪一下"但留下"窄黑框"。
  *   根因：DSH Tooltip 组件是 `<span role="tooltip">` 没背景，纯文字；但 HoverCard
  *   组件的 **card div**（`createPortal(card, document.body)` 的产物）有独立 CSS 类
