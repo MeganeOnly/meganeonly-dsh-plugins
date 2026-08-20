@@ -128,30 +128,32 @@ window.__ModuleLoader__.load({
 
     var inject = ["slots"];
 
-    var VERSION = "0.7.4";
-    var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
-    var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
-    var STORAGE_KEY = "dsh-ui-tweaks/state";
-    var DEBUG_HTML_ATTR = "data-dsh-ui-tweaks-shift-debug";
-    var SHIM_PANE_ATTR = "data-pane";
-    var SHIM_PANE_VALUE = "conversation";
-    var SHELL_FRAME_ATTR = "data-pane-shell";
-    var SHELL_FRAME_VALUE = "frame";
-    var SHELL_SIDEBAR_ATTR_VALUE = "sidebar";
-    var SHELL_DETAILS_ATTR_VALUE = "details";
-    var STATE_EVENT = "dsh-ui-tweaks-state-change";
-    var DEBUG_API_KEY = "__dshUiTweaks";
-    var SHIM_RESOLVED_FLAG = "__dshUiTweaks_shimResolved";
-    var SIMPLE_STATUS_ID = "dsh-ui-tweaks-status-row";
-    var SIMPLE_STATUS_CLASS = "dsh-ui-tweaks-status";
-    var SIMPLE_TURN_STATUS_SEL = '[class*="turnStatus"]';
-    var SIMPLE_POLL_MS = 250;
-    // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
-    var SHIFT_TARGET_ATTR = "data-dsh-ui-tweaks-shift-target";
-    var SHIFT_TARGET_CHATFLOW = "chatflow";
-    var SHIFT_TARGET_INPUT = "input";
-    var SHIFT_TARGET_COLUMN = "column";  // 兜底：探测失败时标记列容器
+    // ===== constants =====
+        var VERSION = "0.7.4";
+        var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
+        var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
+        var STORAGE_KEY = "dsh-ui-tweaks/state";
+        var DEBUG_HTML_ATTR = "data-dsh-ui-tweaks-shift-debug";
+        var SHIM_PANE_ATTR = "data-pane";
+        var SHIM_PANE_VALUE = "conversation";
+        var SHELL_FRAME_ATTR = "data-pane-shell";
+        var SHELL_FRAME_VALUE = "frame";
+        var SHELL_SIDEBAR_ATTR_VALUE = "sidebar";
+        var SHELL_DETAILS_ATTR_VALUE = "details";
+        var STATE_EVENT = "dsh-ui-tweaks-state-change";
+        var DEBUG_API_KEY = "__dshUiTweaks";
+        var SHIM_RESOLVED_FLAG = "__dshUiTweaks_shimResolved";
+        var SIMPLE_STATUS_ID = "dsh-ui-tweaks-status-row";
+        var SIMPLE_STATUS_CLASS = "dsh-ui-tweaks-status";
+        var SIMPLE_TURN_STATUS_SEL = '[class*="turnStatus"]';
+        var SIMPLE_POLL_MS = 250;
+        // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
+        var SHIFT_TARGET_ATTR = "data-dsh-ui-tweaks-shift-target";
+        var SHIFT_TARGET_CHATFLOW = "chatflow";
+        var SHIFT_TARGET_INPUT = "input";
+        var SHIFT_TARGET_COLUMN = "column";  // 兜底：探测失败时标记列容器
 
+    // ===== tweaks =====
     /**
      * 集中维护的 UI 微调清单。每条 tweak：
      *   - id：稳定标识（注入 CSS 注释 + React key）
@@ -251,7 +253,7 @@ window.__ModuleLoader__.load({
         //      border-radius:12px; background:#2C2C2E; box-shadow:lv3`。
         //   隐藏了 _hoverContent 内容，但 card div 本身（背景色 #2C2C2E）还在。
         //   修法：用 CSS `:has()` 找"含 _hoverContent 后代的 body 直接子 div"
-        //   ——就是 card div。`:has()` 在 Chromium 105+ 可用（DSH Electron）。
+        //   ——就是 card div。`:has()` 在 Chromium 105+ 可用，DSH Electron 是现代 Chromium。
         //   同时用更具体的 card class 模式（`_card_<hovercard module hash>`）
         //   做双保险。CSS 在 mount 时立即生效——彻底消除"闪"+"窄框"。
         id: "hide-sidebar-tooltip",
@@ -263,9 +265,9 @@ window.__ModuleLoader__.load({
           if (!state.hideSidebarTooltip) return null;
           return "/* === hide-sidebar-tooltip v0.7.4 : DSH Tooltip + HoverCard (含 card div 本体) — 四层 selector === */\n" +
             // L1: DSH Tooltip 组件（@deepseek-ai/dsh-client-ui-primitives 的 Tooltip.js）
-            //     渲染 <span role=\"tooltip\"> 作为锚点的兄弟节点 inline 渲染——
+            //     渲染 <span role="tooltip"> 作为锚点的兄弟节点 inline 渲染——
             //     不 portal 到 body；className 是 undefined（CSS module stub 是空对象）。
-            //     全 app 里 role=\"tooltip\" 只在 Tooltip 组件里出现——全局干掉无副作用。
+            //     全 app 里 role="tooltip" 只在 Tooltip 组件里出现——全局干掉无副作用。
             "[role=\"tooltip\"]{display:none!important}\n" +
             // L2: HoverCard **内容** CSS module hash 类（DSH workspace 包，当前 hash 是 YDXeBa_）。
             //     隐藏 SessionHoverContent / WorkspaceHoverContent 内部元素——
@@ -340,6 +342,7 @@ window.__ModuleLoader__.load({
       }
     ];
 
+    // ===== storage =====
     // ====================================================================
     // localStorage 持久化（按 dsh-persistent-plugin-authoring skill §三）
     // ====================================================================
@@ -394,6 +397,7 @@ window.__ModuleLoader__.load({
       } catch (e) { /* 静默 */ }
     }
 
+    // ===== styles =====
     // ====================================================================
     // CSS 注入
     // ====================================================================
@@ -491,6 +495,7 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag);
     }
 
+    // ===== shim =====
     // ====================================================================
     // Self-shim：自己种 data-pane="conversation" 属性
     // 4 层 selector 策略，按可信度递减
@@ -603,6 +608,7 @@ window.__ModuleLoader__.load({
       return observer;
     }
 
+    // ===== chatflow-marks =====
     // ====================================================================
     // v0.5.3 + v0.5.5：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
     // --------------------------------------------------------------------
@@ -847,6 +853,7 @@ window.__ModuleLoader__.load({
       return chatflowMarksObserver;
     }
 
+    // ===== debug =====
     // ====================================================================
     // 调试高亮：toggle <html> 属性 + 给命中元素写 data-shift-px
     // ====================================================================
@@ -897,6 +904,7 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // ===== simple-mode =====
     // ====================================================================
     // 简洁模式：状态行 DOM controller（从原 dsh-simple-mode/lib/client.js 移植）
     // ====================================================================
@@ -1070,6 +1078,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== tab-hider =====
     // ====================================================================
     // v0.7.0 + v0.7.2：通用 tab hider 工厂（hide-trajectory-tab + hide-chat-tab 副作用）
     // --------------------------------------------------------------------
@@ -1205,6 +1214,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== hover-card-hider =====
     // ====================================================================
     // v0.6.2：侧栏 HoverCard 隐藏 controller（hide-sidebar-tooltip 副作用）
     // --------------------------------------------------------------------
@@ -1336,6 +1346,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== debug-api =====
     // ====================================================================
     // 诊断 API（暴露 window.__dshUiTweaks）
     // ====================================================================
@@ -1403,6 +1414,7 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== react-tweak-row =====
     // ====================================================================
     // React 组件
     // ====================================================================
@@ -1496,6 +1508,7 @@ window.__ModuleLoader__.load({
       });
     }
 
+    // ===== react-section =====
     /** 顶级 section 组件。自包含——内部 useState 用 loadState() 做 lazy init。 */
     function UiTweaksSection() {
       var stateState = react.useState(loadState);
@@ -1534,6 +1547,7 @@ window.__ModuleLoader__.load({
       });
     }
 
+    // ===== apply =====
     // ====================================================================
     // apply（loader 调一次，DSH 启动时执行）
     // ====================================================================
