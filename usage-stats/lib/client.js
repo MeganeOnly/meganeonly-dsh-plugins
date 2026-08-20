@@ -148,7 +148,22 @@ window.__ModuleLoader__.load({
       errBox: { padding: "8px 12px", borderRadius: "5px", background: C.errSoft, border: "1px solid rgba(176,42,55,0.25)", color: C.err, fontSize: "12px", marginBottom: "12px" },
       // 图表
       chartBar: { flex: "1 1 0", minWidth: "6px", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", cursor: "default" },
-      chartAxis: { flex: "1 1 0", minWidth: "6px", textAlign: "center", fontSize: "10px", color: C.text3, fontVariantNumeric: "tabular-nums" }
+      chartAxis: { flex: "1 1 0", minWidth: "6px", textAlign: "center", fontSize: "10px", color: C.text3, fontVariantNumeric: "tabular-nums" },
+      // 显示设置面板
+      panelWrap: { position: "relative" },
+      panel: {
+        position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+        width: "260px", padding: "12px 14px", borderRadius: "6px",
+        border: "1px solid " + C.hairline,
+        background: "var(--ds-bg-elevated, #ffffff)",
+        boxShadow: "0 6px 24px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)"
+      },
+      panelTitle: { fontSize: "12px", fontWeight: 600, marginBottom: "8px", color: C.text2, letterSpacing: "0.02em" },
+      panelSep: { height: "1px", background: C.hairlineSoft, margin: "10px 0 8px" },
+      panelRow: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", fontSize: "12px", cursor: "pointer", userSelect: "none" },
+      panelCheck: { width: "13px", height: "13px", margin: 0, cursor: "pointer", accentColor: C.accent },
+      panelToggleRow: { display: "flex", gap: "6px", marginBottom: "6px" },
+      panelToggleBtn: { padding: "3px 9px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: C.text2, cursor: "pointer" }
     };
 
     /* ---------- 子组件 ---------- */
@@ -241,15 +256,147 @@ window.__ModuleLoader__.load({
       { key: "1", label: "今日" }
     ];
 
+    /* ---------- 显示设置：可隐藏/展示各数据块，偏好持久化 ---------- */
+
+    // 6 个数据块的可见性开关（key → 中文标签）。新增 section 时在此追加并配合 UsageStatsPageBody 渲染。
+    var VISIBLE_KEYS = ["meta", "cards", "chart", "byModel", "topSessions", "tools"];
+    var VISIBLE_LABELS = {
+      meta: "顶部元信息（数据源 / 解码 / 生成耗时）",
+      cards: "指标卡（6 张：会话 / 请求 / 未命中 / 输出 / 命中 / 速度）",
+      chart: "近 30 天用量柱状图",
+      byModel: "按模型分解表",
+      topSessions: "会话用量 Top",
+      tools: "工具调用 Top"
+    };
+    var STORAGE_VISIBLE_KEY = "dsh-usage-stats/visible-v1";
+
+    function defaultVisible() {
+      var out = {};
+      for (var i = 0; i < VISIBLE_KEYS.length; i++) out[VISIBLE_KEYS[i]] = true;
+      return out;
+    }
+
+    // localStorage 降级探测：QuotaExceededError / SecurityError → 偏好不持久化但功能仍可用
+    var STORAGE_OK = (function () {
+      try {
+        if (typeof localStorage === "undefined") return false;
+        localStorage.setItem("__dsh_usage_stats_probe__", "1");
+        localStorage.removeItem("__dsh_usage_stats_probe__");
+        return true;
+      } catch (e) {
+        console.warn("[usage-stats] localStorage 不可用，显示设置无法跨刷新保留:", e && e.message);
+        return false;
+      }
+    })();
+
+    function loadVisible() {
+      if (!STORAGE_OK) return defaultVisible();
+      try {
+        var raw = localStorage.getItem(STORAGE_VISIBLE_KEY);
+        if (raw == null) return defaultVisible();
+        var parsed = JSON.parse(raw);
+        if (parsed == null || typeof parsed !== "object") return defaultVisible();
+        var out = defaultVisible();
+        for (var i = 0; i < VISIBLE_KEYS.length; i++) {
+          var k = VISIBLE_KEYS[i];
+          if (typeof parsed[k] === "boolean") out[k] = parsed[k];
+        }
+        return out;
+      } catch (e) {
+        return defaultVisible();
+      }
+    }
+
+    function saveVisible(v) {
+      if (!STORAGE_OK) return;
+      try {
+        localStorage.setItem(STORAGE_VISIBLE_KEY, JSON.stringify(v));
+      } catch (e) {
+        console.warn("[usage-stats] 保存显示偏好失败:", e && e.message);
+      }
+    }
+
+    function setAllVisible(val) {
+      var out = {};
+      for (var i = 0; i < VISIBLE_KEYS.length; i++) out[VISIBLE_KEYS[i]] = !!val;
+      return out;
+    }
+
+    function toggleOne(visibility, key, val) {
+      var out = {};
+      for (var i = 0; i < VISIBLE_KEYS.length; i++) {
+        var k = VISIBLE_KEYS[i];
+        out[k] = (k === key) ? !!val : visibility[k];
+      }
+      return out;
+    }
+
+    /**
+     * 显示设置面板：列出 6 个数据块的复选项 + 全选/全不选快捷按钮。
+     * 通过 [data-usage-stats-panel] 属性给外层 click-outside 监听器识别。
+     */
+    function VisibilityPanel(visibility, setVisibility) {
+      var checkedCount = 0;
+      for (var i = 0; i < VISIBLE_KEYS.length; i++) if (visibility[VISIBLE_KEYS[i]]) checkedCount++;
+      var allOn = checkedCount === VISIBLE_KEYS.length;
+      var allOff = checkedCount === 0;
+      return React.createElement(
+        "div",
+        { "data-usage-stats-panel": "1", style: s.panel, onClick: function (e) { e.stopPropagation(); } },
+        React.createElement("div", { style: s.panelTitle }, "显示设置"),
+        React.createElement(
+          "div",
+          { style: s.panelToggleRow },
+          React.createElement(
+            "button",
+            { style: s.panelToggleBtn, disabled: allOn, onClick: function () { setVisibility(setAllVisible(true)); } },
+            "全选"
+          ),
+          React.createElement(
+            "button",
+            { style: s.panelToggleBtn, disabled: allOff, onClick: function () { setVisibility(setAllVisible(false)); } },
+            "全不选"
+          ),
+          React.createElement(
+            "span",
+            { style: { marginLeft: "auto", fontSize: "11px", color: C.text3 } },
+            checkedCount + " / " + VISIBLE_KEYS.length
+          )
+        ),
+        React.createElement("div", { style: s.panelSep }),
+        React.createElement(
+          "div",
+          null,
+          VISIBLE_KEYS.map(function (k) {
+            return React.createElement(
+              "label",
+              { key: k, style: s.panelRow },
+              React.createElement("input", {
+                type: "checkbox",
+                style: s.panelCheck,
+                checked: visibility[k],
+                onChange: function (e) { setVisibility(toggleOne(visibility, k, e.target.checked)); }
+              }),
+              React.createElement("span", null, VISIBLE_LABELS[k])
+            );
+          })
+        )
+      );
+    }
+
     function UsageStatsPage() {
       var loading = React.useState(true);
       var data = React.useState(null);
       var error = React.useState(null);
       var rangeState = React.useState("all");
+      var visibilityState = React.useState(loadVisible());
+      var panelOpenState = React.useState(false);
       var setLoading = loading[1];
       var setData = data[1];
       var setError = error[1];
       var setRange = rangeState[1];
+      var setVisibility = visibilityState[1];
+      var setPanelOpen = panelOpenState[1];
 
       var load = React.useCallback(function (force) {
         setLoading(true);
@@ -268,6 +415,26 @@ window.__ModuleLoader__.load({
       }, []);
 
       React.useEffect(function () { load(false); }, [load]);
+
+      // 显示偏好变更后写回 localStorage（首次 mount 的初始值也会触发一次，无害）
+      React.useEffect(function () {
+        saveVisible(visibilityState[0]);
+      }, [visibilityState[0]]);
+
+      // 弹出层打开时挂全局 mousedown，点 panel 外部或按钮外部则关闭。
+      // 用 data-usage-stats-panel / data-usage-stats-panel-btn 标记避坑（DSH DOM 结构不稳）
+      React.useEffect(function () {
+        if (!panelOpenState[0]) return undefined;
+        function onDocDown(e) {
+          var t = e.target;
+          if (!t || typeof t.closest !== "function") return;
+          if (t.closest("[data-usage-stats-panel]")) return;
+          if (t.closest("[data-usage-stats-panel-btn]")) return;
+          setPanelOpen(false);
+        }
+        document.addEventListener("mousedown", onDocDown);
+        return function () { document.removeEventListener("mousedown", onDocDown); };
+      }, [panelOpenState[0]]);
 
       var d = data[0];
       if (loading[0] && d == null) {
@@ -288,7 +455,7 @@ window.__ModuleLoader__.load({
       }
       if (d == null) return React.createElement("h2", { style: s.pageTitle }, "使用统计");
       try {
-        return UsageStatsPageBody(d, function (force) { load(force); }, rangeState[0], setRange);
+        return UsageStatsPageBody(d, function (force) { load(force); }, rangeState[0], setRange, visibilityState[0], setVisibility, panelOpenState[0], setPanelOpen);
       } catch (e) {
         return React.createElement(
           "div",
@@ -300,7 +467,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function UsageStatsPageBody(d, reload, range, setRange) {
+    function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen) {
       // 时间窗口
       var winN = range === "all" ? null : parseInt(range, 10);
       var fromIdx = winN == null ? 0 : Math.max(0, d.byDay.length - winN);
@@ -313,7 +480,7 @@ window.__ModuleLoader__.load({
       var rangeTotals = winN == null ? d.totals : sumDays(winDays);
       var rangeLabel = winN == null ? "全程" : (winN === 1 ? "今日" : "近 " + winN + " 日");
 
-      // 顶部：标题 + 范围 tab + 操作
+      // 顶部：标题 + 范围 tab + 操作（含"显示"按钮 + 弹出层）
       var header = React.createElement(
         "div",
         { style: { display: "flex", alignItems: "baseline", gap: "16px", flexWrap: "wrap" } },
@@ -332,14 +499,29 @@ window.__ModuleLoader__.load({
         ),
         React.createElement(
           "div",
-          { style: { marginLeft: "auto", display: "flex", gap: "6px" } },
+          { style: { marginLeft: "auto", display: "flex", gap: "6px", alignItems: "center" } },
+          // 显示设置按钮 + 弹出层（包一层 wrap 让 panel 相对按钮定位）
+          React.createElement(
+            "div",
+            { style: s.panelWrap, "data-usage-stats-panel-btn": "1" },
+            React.createElement(
+              "button",
+              {
+                style: panelOpen ? s.btnPrimary : s.btn,
+                onClick: function () { setPanelOpen(!panelOpen); },
+                title: "选择要展示的数据块"
+              },
+              panelOpen ? "显示 ✓" : "显示"
+            ),
+            panelOpen ? VisibilityPanel(visibility, setVisibility) : null
+          ),
           React.createElement("button", { style: s.btn, onClick: function () { reload(false); } }, "刷新"),
           React.createElement("button", { style: s.btn, onClick: function () { reload(true); }, title: "忽略缓存，强制重新解码全部会话" }, "强制重算")
         )
       );
 
       // 元信息：上下文 + 数据源
-      var meta = React.createElement(
+      var metaNode = React.createElement(
         "div",
         { style: Object.assign({}, s.meta, { marginTop: "8px" }) },
         "数据源 ", React.createElement("span", { style: { fontFamily: "var(--ds-font-family-code, monospace)" } }, d.home),
@@ -349,7 +531,7 @@ window.__ModuleLoader__.load({
 
       // 指标卡（6 张）：会话 / 请求 / 未命中 / 输出 / 命中 / 速度
       var t = rangeTotals;
-      var cards = React.createElement(
+      var cardsNode = React.createElement(
         "div",
         { style: { display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "16px" } },
         Card("会话", String(d.sessionCount), d.turns + " 轮对话（全程）"),
@@ -383,16 +565,17 @@ window.__ModuleLoader__.load({
       });
 
       // 会话表
-      var sessionRows = d.topSessions.map(function (s) {
+      // 注：回调形参避免用 `s`，以免遮蔽外层样式对象 `var s`
+      var sessionRows = d.topSessions.map(function (sess) {
         return React.createElement(
           "tr",
-          { key: s.id },
-          React.createElement("td", { style: Object.assign({}, s.tdName, { maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis" }), title: s.title + "　" + (s.cwd || "") }, s.title),
-          React.createElement("td", { style: Object.assign({}, s.td, { maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", color: C.text2 }), title: s.cwd || "" }, s.cwd ? String(s.cwd).split(/[\\/]/).filter(Boolean).pop() : "–"),
-          React.createElement("td", { style: Object.assign({}, s.td, s.num, { color: C.text2 }) }, fmtDate(s.createdAt)),
-          React.createElement("td", { style: Object.assign({}, s.td, s.num) }, String(s.requests)),
-          React.createElement("td", { style: Object.assign({}, s.td, s.num) }, fmtTokens(s.outputTokens)),
-          React.createElement("td", { style: Object.assign({}, s.td, s.num, { fontWeight: 600 }) }, fmtTokens(s.tokens))
+          { key: sess.id },
+          React.createElement("td", { style: Object.assign({}, s.tdName, { maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis" }), title: sess.title + "　" + (sess.cwd || "") }, sess.title),
+          React.createElement("td", { style: Object.assign({}, s.td, { maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", color: C.text2 }), title: sess.cwd || "" }, sess.cwd ? String(sess.cwd).split(/[\\/]/).filter(Boolean).pop() : "–"),
+          React.createElement("td", { style: Object.assign({}, s.td, s.num, { color: C.text2 }) }, fmtDate(sess.createdAt)),
+          React.createElement("td", { style: Object.assign({}, s.td, s.num) }, String(sess.requests)),
+          React.createElement("td", { style: Object.assign({}, s.td, s.num) }, fmtTokens(sess.outputTokens)),
+          React.createElement("td", { style: Object.assign({}, s.td, s.num, { fontWeight: 600 }) }, fmtTokens(sess.tokens))
         );
       });
 
@@ -412,67 +595,120 @@ window.__ModuleLoader__.load({
       var chartTitle = winN == null ? "近 30 天用量" : (winN === 1 ? "今日用量" : "近 " + winN + " 日用量");
       var chartHint = winN == null ? "图表固定 30 天，切换范围看模型表" : null;
 
+      // 各 section 按 visibility 过滤后顺序拼接，第一个不加 hr（紧跟 header/errorBox）
+      var sectionNodes = [];
+      if (visibility.meta) sectionNodes.push({ key: "meta", node: metaNode });
+      if (visibility.cards) sectionNodes.push({ key: "cards", node: cardsNode });
+      if (visibility.chart) {
+        sectionNodes.push({
+          key: "chart",
+          node: React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "div",
+              { style: { display: "flex", alignItems: "baseline" } },
+              React.createElement("h3", { style: s.sectionTitle }, chartTitle),
+              chartHint ? React.createElement("span", { style: s.sectionHint }, "· ", chartHint) : null
+            ),
+            DayChart(winN == null ? d.byDay : winDays)
+          )
+        });
+      }
+      if (visibility.byModel) {
+        sectionNodes.push({
+          key: "byModel",
+          node: React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "div",
+              { style: { display: "flex", alignItems: "baseline" } },
+              React.createElement("h3", { style: s.sectionTitle }, "按模型"),
+              React.createElement("span", { style: s.sectionHint }, "· ", rangeLabel, " · 比值列：未命中 : 命中 : 输出（归一到未命中=1）")
+            ),
+            Table(
+              [
+                { label: "模型" },
+                { label: "比值", num: true },
+                { label: "请求", num: true },
+                { label: "未命中", num: true },
+                { label: "输出", num: true },
+                { label: "推理", num: true },
+                { label: "命中", num: true },
+                { label: "会话", num: true }
+              ],
+              modelRows
+            )
+          )
+        });
+      }
+      if (visibility.topSessions) {
+        sectionNodes.push({
+          key: "topSessions",
+          node: React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "h3",
+              { style: s.sectionTitle },
+              "会话用量 Top " + d.topSessions.length,
+              React.createElement("span", { style: s.sectionHint }, "· 全程")
+            ),
+            Table(
+              [
+                { label: "标题" },
+                { label: "目录" },
+                { label: "日期", num: true },
+                { label: "请求", num: true },
+                { label: "输出", num: true },
+                { label: "总量", num: true }
+              ],
+              sessionRows
+            )
+          )
+        });
+      }
+      if (visibility.tools) {
+        sectionNodes.push({
+          key: "tools",
+          node: React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "h3",
+              { style: s.sectionTitle },
+              "工具调用 Top " + d.tools.length,
+              React.createElement("span", { style: s.sectionHint }, "· 全程")
+            ),
+            Table(
+              [
+                { label: "工具" },
+                { label: "次数", num: true },
+                { label: "总耗时", num: true },
+                { label: "平均", num: true }
+              ],
+              toolRows
+            )
+          )
+        });
+      }
+
       return React.createElement(
         "div",
         { style: { maxWidth: "1080px" } },
         header,
-        meta,
         errorBox,
-        cards,
-        React.createElement("hr", { style: s.hr }),
-        React.createElement(
-          "div",
-          { style: { display: "flex", alignItems: "baseline" } },
-          React.createElement("h3", { style: s.sectionTitle }, chartTitle),
-          chartHint ? React.createElement("span", { style: s.sectionHint }, "· ", chartHint) : null
-        ),
-        DayChart(winN == null ? d.byDay : winDays),
-        React.createElement("hr", { style: s.hr }),
-        React.createElement(
-          "div",
-          { style: { display: "flex", alignItems: "baseline" } },
-          React.createElement("h3", { style: s.sectionTitle }, "按模型"),
-          React.createElement("span", { style: s.sectionHint }, "· ", rangeLabel, " · 比值列：未命中 : 命中 : 输出（归一到未命中=1）")
-        ),
-        Table(
-          [
-            { label: "模型" },
-            { label: "比值", num: true },
-            { label: "请求", num: true },
-            { label: "未命中", num: true },
-            { label: "输出", num: true },
-            { label: "推理", num: true },
-            { label: "命中", num: true },
-            { label: "会话", num: true }
-          ],
-          modelRows
-        ),
-        React.createElement("hr", { style: s.hr }),
-        React.createElement("h3", { style: s.sectionTitle }, "会话用量 Top " + d.topSessions.length),
-        React.createElement("span", { style: s.sectionHint }, "· 全程"),
-        Table(
-          [
-            { label: "标题" },
-            { label: "目录" },
-            { label: "日期", num: true },
-            { label: "请求", num: true },
-            { label: "输出", num: true },
-            { label: "总量", num: true }
-          ],
-          sessionRows
-        ),
-        React.createElement("hr", { style: s.hr }),
-        React.createElement("h3", { style: s.sectionTitle }, "工具调用 Top " + d.tools.length),
-        React.createElement("span", { style: s.sectionHint }, "· 全程"),
-        Table(
-          [
-            { label: "工具" },
-            { label: "次数", num: true },
-            { label: "总耗时", num: true },
-            { label: "平均", num: true }
-          ],
-          toolRows
-        )
+        sectionNodes.length === 0
+          ? React.createElement("div", { style: Object.assign({}, s.meta, { marginTop: "20px" }) }, "已隐藏全部数据块，点右上角「显示」重新选择。")
+          : sectionNodes.map(function (sec, i) {
+              return React.createElement(
+                "div",
+                { key: sec.key },
+                i > 0 ? React.createElement("hr", { style: s.hr }) : null,
+                sec.node
+              );
+            })
       );
     }
 
