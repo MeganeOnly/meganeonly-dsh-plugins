@@ -31,6 +31,15 @@
 
 ## [Unreleased]
 
+### 维护
+
+- **B0-view.js 二级拆分**：v0.5.0 之后，原 `B0-view.js` 单文件 639 行 / 38 KB，超出 50-500 行软目标一倍以上，AI 局部改多次因全文件过大误伤同变量引用。进一步收敛：
+  - `buildRepoCard(repo, snap, controller)` 抽出到 `B5-repo-card.js`（131 行，独立成文件，无 `renderDrawerView` 闭包依赖）
+  - `renderCommitSection` + `renderMergeSection` 抽出到 `B7-sections.js`（185 行，commit / merge-pull 工具区集中）
+  - `escapeHtml` 从 `renderDrawerView` 内部上移到 `30-utils.js` 工厂体层级（与 `apiFetch` / `showToast` 同作用域，更便于跨 section 共享）
+  - `B0-view.js` 收敛到 336 行，回到 50-500 行目标
+  - bundle 字节由 103288 → 104088（+800 字节，来自 JSDoc 注释 + 新文件首行 marker；语义零变化）。`docs/maintainability.md` 同步更新 section 索引
+
 ### 新增
 
 - **commit 工具区可见性开关**：抽屉 header 在 refresh 按钮旁新增 git-commit-style toggle（左右两圆点 + 直线的小图标）。点击 = 切换「抽屉顶部 commit 区是否显示」，状态持久化到 `localStorage`（沿用既有 schema 演进不升 key 的约定，新字段 `commitSectionVisible: boolean`，缺字段默认 `false`，隐式迁移 v2 → v3）。
