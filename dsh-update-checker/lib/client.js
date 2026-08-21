@@ -63,6 +63,14 @@ window.__ModuleLoader__.load({
       ".duc-dim{color:var(--dsw-alias-label-tertiary,#9ca3af)}",
       ".duc-restart{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:8px;background:#dcfce7;border:1px solid #86efac;color:#166534;font-weight:600}",
       ".duc-output{white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dsw-alias-label-secondary,#6b7280);background:var(--dsw-alias-surface-1,#f9fafb);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:6px;padding:8px;margin-top:8px;max-height:160px;overflow:auto}",
+      ".duc-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(2px)}",
+      ".duc-overlay-card{background:#fff;color:#0f172a;border-radius:12px;padding:22px 28px;box-shadow:0 12px 40px rgba(0,0,0,.35);max-width:420px;text-align:center;font-size:14px;line-height:1.6}",
+      ".duc-overlay-spinner{width:36px;height:36px;border-radius:50%;border:3px solid #cbd5e1;border-top-color:#2563eb;margin:0 auto 14px;animation:duc-spin 1s linear infinite}",
+      "@keyframes duc-spin{to{transform:rotate(360deg)}}",
+      ".duc-overlay-title{font-size:16px;font-weight:700;margin-bottom:6px}",
+      ".duc-overlay-warn{color:#b45309;font-weight:600;margin-top:8px}",
+      ".duc-shim-warn{margin-top:8px;padding:8px 12px;border-radius:6px;background:#fef3c7;border:1px solid #fcd34d;color:#92400e;font-size:12px}",
+      ".duc-shim-recovered{margin-top:8px;padding:8px 12px;border-radius:6px;background:#dcfce7;border:1px solid #86efac;color:#166534;font-size:12px}",
     ].join("");
 
     function injectCss() {
@@ -74,6 +82,34 @@ window.__ModuleLoader__.load({
     }
 
     // ---------- 组件 ----------
+    // 升级中遮罩：防止用户在 npm 全局安装被打断期间误关闭 DSH / 浏览器
+    function UpdatingOverlay() {
+      return React.createElement(
+        "div",
+        { className: "duc-overlay" },
+        React.createElement(
+          "div",
+          { className: "duc-overlay-card" },
+          React.createElement("div", { className: "duc-overlay-spinner" }),
+          React.createElement(
+            "div",
+            { className: "duc-overlay-title" },
+            "升级进行中"
+          ),
+          React.createElement(
+            "div",
+            null,
+            "正在更新 DeepSeek Harness 本体，请勿关闭 DSH 或浏览器。"
+          ),
+          React.createElement(
+            "div",
+            { className: "duc-overlay-warn" },
+            "升级过程中关闭可能损坏 dsh 命令，需手动 npm install -g 修复。"
+          )
+        )
+      );
+    }
+
     function UpdatePage() {
       var state = React.useState({
         current: null,
@@ -83,6 +119,8 @@ window.__ModuleLoader__.load({
         updating: false,
         lastCheckError: null,
         updateResult: null,
+        shimSnapshot: null,
+        shimRecovery: null,
       });
       var s = state[0];
       var setS = state[1];
@@ -105,6 +143,8 @@ window.__ModuleLoader__.load({
           updating: d.updating,
           lastCheckError: d.lastCheckError || null,
           updateResult: d.updateResult,
+          shimSnapshot: d.shimSnapshot || null,
+          shimRecovery: d.shimRecovery || null,
         });
       }
 
@@ -262,6 +302,25 @@ window.__ModuleLoader__.load({
                         { className: "duc-note duc-note-ok" },
                         s.updateResult.message
                       ),
+                      (function () {
+                        var rec = s.updateResult.shimRecovery;
+                        if (!rec) return null;
+                        if (rec.recovered) {
+                          return React.createElement(
+                            "div",
+                            { className: "duc-shim-recovered" },
+                            rec.message || "dsh 命令已被自动恢复"
+                          );
+                        }
+                        if (!rec.existsAfter) {
+                          return React.createElement(
+                            "div",
+                            { className: "duc-shim-warn" },
+                            rec.message || "dsh 命令升级后丢失，请手动修复"
+                          );
+                        }
+                        return null;
+                      })(),
                       React.createElement(
                         "div",
                         { className: "duc-restart" },
@@ -287,7 +346,8 @@ window.__ModuleLoader__.load({
           "div",
           { className: "duc-dim", style: { marginTop: "10px" } },
           "仅检查 DeepSeek Harness 本体（@deepseek-ai/dsh）。升级需执行 npm 全局安装，完成后请重启 DSH。"
-        )
+        ),
+        s.updating ? React.createElement(UpdatingOverlay, null) : null
       );
     }
 

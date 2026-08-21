@@ -17,6 +17,8 @@
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { createHash } from 'node:crypto'
+import { access, readFile } from 'node:fs/promises'
 
 const execFileAsync = promisify(execFile)
 
@@ -32,6 +34,14 @@ const API_UPDATE = '/api/dsh-update/update'
 const CHECK_TIMEOUT_MS = 20000
 const UPDATE_TIMEOUT_MS = 180000
 const MAX_OUTPUT_BYTES = 512 * 1024
+// 升级前快照 + 升级后校验 dsh 命令 shim。Windows 上 npm 全局安装的
+// "删旧包 → 解压新包 → 生成新 shim" 三步之间存在窗口期，中途被打断
+// （断网 / 关窗口 / DSH 进程被杀）会出现"包在 node_modules 里但
+// dsh.cmd 不存在"的半完成状态。升级失败时自动重试 npm install -g
+// 最多 MAX_RETRY_ATTEMPTS 次，连同主调用合计 1 + N 次。
+const SHIM_TIMEOUT_MS = 5000
+const MAX_RETRY_ATTEMPTS = 2
+const SHIM_BASENAME = process.platform === 'win32' ? 'dsh.cmd' : 'dsh'
 
 /**
  * 解析 semver：返回 [major, minor, patch, prerelease] 四元组。
@@ -95,6 +105,139 @@ function json(res, status, body) {
   res.end(JSON.stringify(body))
 }
 
+/**
+ * 在本机 PATH 上查找 dsh shim 的绝对路径（Windows 找 dsh.cmd；POSIX 找 dsh）。
+ * 用 where (Windows) / which (POSIX) 查 PATH 中第一个匹配项。
+ * 找不到返回 null（命令本身不在 PATH 里）。
+ */
+async function findShimPath() {
+  const cmd = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    const { stdout } = await execFileAsync(cmd, [SHIM_BASENAME], {
+      timeout: SHIM_TIMEOUT_MS,
+      windowsHide: true,
+      shell: process.platform === 'win32', // Windows 上 where 是 .cmd shim
+    })
+    const first = String(stdout || '').split(/\r?\n/).map((s) => s.trim()).find(Boolean)
+    return first || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 读取文件内容并计算 sha256（截短到 32 hex 字符，足够做变更检测）。
+ * 文件不存在或不可读返回 null。
+ */
+async function sha256OfFile(p) {
+  try {
+    const buf = await readFile(p)
+    return createHash('sha256').update(buf).digest('hex').slice(0, 32)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 升级前快照 dsh shim 状态：路径 + 文件是否可访问 + 内容 hash。
+ * 找不到 shim 路径（命令不在 PATH）时 exists=false、hash=null，仍返回 path=null 占位。
+ */
+async function snapshotShim() {
+  const path = await findShimPath()
+  let exists = false
+  if (path) {
+    try {
+      await access(path)
+      exists = true
+    } catch {
+      exists = false
+    }
+  }
+  const hash = exists ? await sha256OfFile(path) : null
+  return { path, exists, hash, capturedAt: Date.now() }
+}
+
+/**
+ * 升级后校验 shim：若升级前存在但升级后丢失（典型的"npm 全局安装被打断"），
+ * 自动重跑 npm install -g 最多 MAX_RETRY_ATTEMPTS 次，连同主调用合计 1 + N 次。
+ * 升级前不存在视为"用户本就未装 dsh"，不做自动恢复。
+ *
+ * 返回值供前端分级提示：
+ *   - { recovered: false, existsAfter: true,  attempts: 0, message: '完整' }
+ *   - { recovered: true,  existsAfter: true,  attempts: N, message: '已自动恢复' }
+ *   - { recovered: false, existsAfter: false, attempts: N, message: '失败需手动修复' }
+ */
+async function verifyAndRecoverShim(before) {
+  const maxAttempts = 1 + MAX_RETRY_ATTEMPTS
+  const after = await snapshotShim()
+
+  // 升级前就不存在：跳过自动恢复（不属于本插件能修复的范围）
+  if (!before.exists) {
+    return {
+      existsAfter: after.exists,
+      recovered: false,
+      attempts: 0,
+      finalPath: after.path,
+      message: '升级前 dsh shim 不存在，未做自动恢复校验',
+    }
+  }
+  // 升级后还在：正常
+  if (after.exists) {
+    return {
+      existsAfter: true,
+      recovered: false,
+      attempts: 0,
+      finalPath: after.path,
+      message: '升级后 dsh shim 完整',
+    }
+  }
+  // 升级前存在、升级后丢失：触发自动重试
+  const logs = []
+  for (let attempt = 2; attempt <= maxAttempts; attempt += 1) {
+    logs.push(
+      `[shim-recovery] 第 ${attempt}/${maxAttempts} 次：dsh shim 丢失，重跑 npm install -g ${PKG}@latest`,
+    )
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        'npm',
+        ['install', '-g', `${PKG}@latest`],
+        {
+          timeout: UPDATE_TIMEOUT_MS,
+          windowsHide: true,
+          maxBuffer: MAX_OUTPUT_BYTES,
+          shell: process.platform === 'win32',
+          env: { ...process.env, npm_config_update_notifier: 'false' },
+        },
+      )
+      if (stdout) logs.push(String(stdout).trim())
+      if (stderr) logs.push(String(stderr).trim())
+    } catch (err) {
+      logs.push(
+        `[shim-recovery] npm 重试失败：${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+    const recheck = await snapshotShim()
+    if (recheck.exists) {
+      return {
+        existsAfter: true,
+        recovered: true,
+        attempts: attempt - 1,
+        finalPath: recheck.path,
+        message: `dsh shim 升级中曾被中断，已自动重试 ${attempt - 1} 次恢复`,
+        log: logs.join('\n'),
+      }
+    }
+  }
+  return {
+    existsAfter: false,
+    recovered: false,
+    attempts: MAX_RETRY_ATTEMPTS,
+    finalPath: after.path,
+    message: `dsh shim 升级后丢失，自动重试 ${MAX_RETRY_ATTEMPTS} 次仍无法恢复，请手动执行 npm install -g ${PKG} 修复`,
+    log: logs.join('\n'),
+  }
+}
+
 /** 读取请求 JSON body（带大小上限），失败返回 undefined。 */
 function readJsonBody(req) {
   return new Promise((resolve) => {
@@ -131,6 +274,8 @@ export function apply(ctx) {
     lastCheckAt: null,
     lastCheckError: null,
     updateResult: null, // { ok, message, output }
+    shimSnapshot: null, // 升级前 dsh shim 快照：{ path, exists, hash, capturedAt }
+    shimRecovery: null, // 升级后校验/恢复结果：{ existsAfter, recovered, attempts, finalPath, message, log? }
   }
   let busy = Promise.resolve()
 
@@ -174,6 +319,11 @@ export function apply(ctx) {
   }
 
   async function doUpdate() {
+    // 升级前快照：用于升级后校验 dsh shim 是否被 npm 全局安装的"中间态"打断
+    const before = await snapshotShim()
+    state.shimSnapshot = before
+
+    // 主调用：npm install -g @deepseek-ai/dsh@latest（失败抛错，由 handler 转 updateResult.ok=false）
     const { stdout, stderr } = await execFileAsync(
       'npm',
       ['install', '-g', `${PKG}@latest`],
@@ -185,14 +335,23 @@ export function apply(ctx) {
         env: { ...process.env, npm_config_update_notifier: 'false' },
       }
     )
+    const mainOutput =
+      String(stdout || '').trim() + (stderr ? '\n' + String(stderr).trim() : '')
+
+    // 升级后校验 shim；丢失时自动重试
+    const recovery = await verifyAndRecoverShim(before)
+    state.shimRecovery = recovery
+
     // 升级成功后磁盘上的版本已变化，但运行中的进程仍是旧代码
     const fresh = await readLocalVersion()
     state.current = fresh ?? state.current
     state.hasUpdate = false
     return {
       ok: true,
-      installed: fresh ?? state.current,
-      output: String(stdout || '').trim() + (stderr ? '\n' + String(stderr).trim() : ''),
+      installed: state.current,
+      output: mainOutput,
+      shimSnapshot: before,
+      shimRecovery: recovery,
     }
   }
 
@@ -207,6 +366,8 @@ export function apply(ctx) {
       lastCheckAt: state.lastCheckAt,
       lastCheckError: state.lastCheckError,
       updateResult: state.updateResult,
+      shimSnapshot: state.shimSnapshot,
+      shimRecovery: state.shimRecovery,
     }
   }
 
@@ -270,7 +431,16 @@ export function apply(ctx) {
       const task = busy.then(async () => {
         try {
           const result = await doUpdate()
-          state.updateResult = { ok: true, message: `已升级到 ${result.installed}`, output: result.output }
+          const rec = result.shimRecovery
+          let message = `已升级到 ${result.installed}`
+          if (rec) {
+            if (rec.recovered) {
+              message += `（${rec.message}）`
+            } else if (!rec.existsAfter) {
+              message += `；${rec.message}`
+            }
+          }
+          state.updateResult = { ok: true, message, output: result.output, shimRecovery: rec }
         } catch (error) {
           state.updateResult = {
             ok: false,
