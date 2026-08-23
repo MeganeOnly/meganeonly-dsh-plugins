@@ -210,6 +210,48 @@
           return "/* === hide-chat-tab v0.7.2 : JS-side MutationObserver 给 \"对话\"/\"Chat\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"chat\"，CSS 命中隐藏 === */\n" +
             "[data-dsh-ui-tweaks-hidden-tab=\"chat\"]{display:none!important}";
         }
+      },
+      {
+        // v0.8.0 新增。用户反馈：长会话里想回看自己最早发的消息，得一屏屏往上翻。
+        // 这个 tweak 在对话区右下角（输入框上方）挂一个「回到最早消息」悬浮按钮，
+        // 点击把当前会话最早一条 user 消息（[data-chat-flow-kind="user"] 第一行）
+        // 滚到滚动区顶部。纯 JS DOM 探测（[data-conversation-scroll] 滚动容器 +
+        // [data-composer-seat] 输入框），不依赖 DSH CSS module hash。
+        // 按钮的挂载 / 显隐 / 点击滚动由 68-first-message-jump.js 的
+        // createFirstMessageJumpController 负责；本 buildCSS 只输出按钮的静态样式
+        // （right/bottom 定位由 JS 每次显隐时内联设置）。
+        id: "first-message-jump",
+        name: "回到最早消息按钮",
+        description: "对话区右下角（输入框上方）加一个「回到最早消息」悬浮按钮——点击把当前会话最早一条我发的消息滚到顶部，不用一屏屏往上翻。只在最早消息不在当前视口内时出现，右侧抽屉打开时自动隐藏。",
+        configKeys: { enabled: "firstMessageJump", value: "firstMessageJump" },
+        defaults: { enabled: true, value: true },
+        buildCSS: function (state) {
+          if (!state.firstMessageJump) return null;
+          return "/* === first-message-jump v0.8.0 : 回到最早消息按钮（样式对齐 DSH 自带「回到底部」按钮）=== */\n" +
+            "[data-dsh-ui-tweaks-jump]{" +
+              "position:fixed;" +
+              "right:20px;" +
+              "bottom:180px;" +  // 兜底初值；每次显隐时 JS 重设 right/bottom
+              "width:34px;height:34px;" +
+              "border-radius:100px;" +
+              "border:1px solid var(--dsw-alias-border-l2,#d0d5dd);" +
+              "color:var(--dsw-alias-label-primary,#111827);" +
+              "background:var(--dsw-alias-button-floating-fill,#ffffff);" +
+              "box-shadow:var(--dsw-shadow-lv2,0 2px 8px rgba(0,0,0,.12));" +
+              "cursor:pointer;" +
+              "display:flex;align-items:center;justify-content:center;" +
+              "z-index:90;" +
+              "padding:0;margin:0;" +
+              "opacity:0;" +
+              "pointer-events:none;" +
+              "transform:translateY(6px);" +
+              "transition:opacity .18s ease,transform .18s ease,background .12s ease;" +
+            "}\n" +
+            "[data-dsh-ui-tweaks-jump]:hover{" +
+              "background:var(--dsw-alias-button-floating-hover,#f1f3f5);" +
+            "}\n" +
+            "[data-dsh-ui-tweaks-jump][data-visible]{opacity:1;pointer-events:auto;transform:translateY(0);}";
+        }
       }
     ];
 

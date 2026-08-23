@@ -4,7 +4,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 
 ## 功能
 
-当前包含六条微调：
+当前包含七条微调：
 
 | id | 名称 | 说明 |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 | `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 隐藏侧栏会话/工作区条目在悬停时弹出的浮层（同时覆盖 Tooltip 与 HoverCard 两种实现）。 |
 | `hide-trajectory-tab` | 隐藏"轨迹"标签 | 隐藏对话顶部的轨迹标签页；若当前正停留在轨迹视图，自动切回对话视图。 |
 | `hide-chat-tab` | 隐藏"对话"标签 | 隐藏对话顶部的"对话"标签页（默认 view 的标签，纯视觉噪音）；和 `hide-trajectory-tab` 一起开启 → 两个标签都消失。 |
+| `first-message-jump` | 回到最早消息按钮 | 对话区右下角（输入框上方）的「回到最早消息」悬浮按钮——点击把当前会话最早一条我发的消息滚到顶部，不用一屏屏往上翻；只在最早消息不在当前视口内时出现。 |
 
 每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
 

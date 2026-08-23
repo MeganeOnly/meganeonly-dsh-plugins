@@ -13,7 +13,7 @@ dsh-ui-tweaks 的 `lib/client-src/` 现行结构（v0.7.4 拆解）：
 | `00-banner.js`        | 顶部 JSDoc 注释块（version 历程 + 架构说明）                                |
 | `10-loader-open.js`   | `__ModuleLoader__.load({...})` 开头 + `var inject = ["slots"]`             |
 | `20-constants.js`     | 常量（`VERSION` / `MAIN_CSS_TAG_ID` / `STORAGE_KEY` / `SHIM_PANE_*` / `SHIFT_TARGET_*` / `SIMPLE_*` / `STATE_EVENT` / `DEBUG_API_KEY`） |
-| `25-tweaks.js`        | `TWEAKS` 数组：5 条 tweak（`conversation-shift` / `conversation-shift-debug` / `simple-mode` / `hide-sidebar-tooltip` / `hide-trajectory-tab` / `hide-chat-tab`）的 `buildCSS` |
+| `25-tweaks.js`        | `TWEAKS` 数组：7 条 tweak（`conversation-shift` / `conversation-shift-debug` / `simple-mode` / `hide-sidebar-tooltip` / `hide-trajectory-tab` / `hide-chat-tab` / `first-message-jump`）的 `buildCSS` |
 | `30-storage.js`       | `localStorage` 持久化：`storage` 探测 + `defaultState` / `loadState` / `saveState` |
 | `35-styles.js`        | `buildCSS` / `buildDebugHighlightCSS` / `injectCSS` + `SECTION_CSS` 静态样式 + `injectSectionCSS` |
 | `40-shim.js`          | self-shim 4 层 selector：`discoverFrameTriptych` / `findConversationPane` / `stampIfMissing` / `applyShellShim` / `startShellShimObserver` |
@@ -22,6 +22,7 @@ dsh-ui-tweaks 的 `lib/client-src/` 现行结构（v0.7.4 拆解）：
 | `55-simple-mode.js`   | 简洁模式状态行：`simpleActivityText` / `simplePickToolNameFromDom` / `simpleIsRunningFromDom` / `createSimpleModeStatusController` |
 | `60-tab-hider.js`     | v0.7.0 + v0.7.2 通用 tab hider 工厂：`TRAJECTORY_TAB_LABELS` / `CHAT_TAB_LABELS` / `findTabButtonByLabels` / `createTabHider(opts)` |
 | `65-hover-card-hider.js` | v0.6.2 侧栏 HoverCard 隐藏：`HOVER_CARD_CLASS_HINTS` / `isHoverCardRoot` / `createSidebarHoverCardHider`（DSH 升级 hash 变了改 HINTS 即可） |
+| `68-first-message-jump.js` | v0.8.0「回到最早消息」按钮：`createFirstMessageJumpController`——对话区右下角悬浮按钮，点击把最早一条 user 消息滚到滚动区顶部（探测 `[data-conversation-scroll]` / `[data-chat-flow-kind="user"]` / `[data-composer-seat]`） |
 | `70-debug-api.js`     | `createDebugAPI` —— 暴露 `window.__dshUiTweaks.{VERSION, getState, getInjectedCSS, getMatchedElements, debug, setState, reshim}` |
 | `75-react-tweak-row.js` | `TweakRow` React 组件：单条 tweak 的 row（标题 + 描述 + 开关 + 可选数字输入） |
 | `80-react-section.js` | `UiTweaksSection` 顶级 React 组件：自包含 `useState(loadState)` + `useEffect` 持久化 + dispatch 状态事件 |

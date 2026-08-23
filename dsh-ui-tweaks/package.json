@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.7.5",
+  "version": "0.8.0",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.7.5：1) hide-trajectory-tab 扩展——同时隐藏每个工具调用 row 内的 Inspect 按钮（DSH 源码 dsh-client-ui-tool 渲染 <button class=\"*_inspectButton\">，点击进轨迹视图），CSS 用 [class*=_inspectButton] substring 命中，不依赖 DSH 升级 hash；2) Tweak row 描述文字从始终渲染的 <p> 收进 HTML title 属性——鼠标悬停时弹出浏览器原生 tooltip，row 默认加 cursor:help 提示可悬看。旧 .DTPD_itemDesc 规则移除。状态由 client half 用 localStorage 自管。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab 六条 tweak。",
+  "description": "DSH 外观设计微调合集（v0.8.0：新增 first-message-jump「回到最早消息」tweak——对话区右下角（输入框上方）悬浮按钮，点击把当前会话最早一条 user 消息滚到滚动区顶部，长会话里快速回看最初发的需求；纯 JS DOM 探测不依赖 DSH CSS hash，只在最早消息不在视口内时显示，右侧抽屉打开时自动隐藏。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump 七条 tweak。v0.7.5 详见 CHANGELOG。状态由 client half 用 localStorage 自管。",
   "license": "MIT",
   "repository": {
     "type": "git",

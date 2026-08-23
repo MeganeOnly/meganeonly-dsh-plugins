@@ -7,7 +7,7 @@
  *
  * 界面：设置 → “插件管理”页。功能：
  *   - 搜索框：按插件 id / 名称 / 作者过滤（不区分大小写）；
- *   - 分组：启用中 / 暂停中（非系统插件）与系统插件 三组，组标题可点击收起/展开；
+ *   - 分组：启用中 / 暂停中（非系统插件）、预设组件（.mjs）与系统插件 四组，组标题可点击收起/展开；
  *   - 作者为 MeganeOnly 的插件（本人所写）名字高亮加粗、整行描边并带“我的”标记；
  *   - 每行一个启/停按钮，写入后提示“重启 DSH 后生效”。
  */
@@ -23,11 +23,20 @@ window.__ModuleLoader__.load({
 
     var API = "/api/plugin-manager";
     var MINE_AUTHOR = "MeganeOnly";
+    // dsh-manager-hub 的 settings.section id：本插件检测到它存在时自动隐藏自己的设置页条目，
+    // 缺席时自动恢复（响应式），避免设置页同时出现 4 个管理入口。
+    var HUB_SECTION_ID = "manager-hub";
 
     function matches(e, q) {
       if (!q) return true;
       var hay = String(e.id) + " " + String(e.name) + " " + String(e.author || "");
       return hay.toLowerCase().indexOf(q.toLowerCase()) !== -1;
+    }
+
+    /** 判定是否预设组件行（name 为 ./.mjs 相对路径，来自 agent 预设组合）。 */
+    function isPresetMjs(e) {
+      if (e && e.presetMjs === true) return true;
+      return typeof e.name === "string" && e.name.indexOf("./") === 0 && e.name.slice(-4) === ".mjs";
     }
 
     function PluginManagerPage() {
@@ -36,7 +45,7 @@ window.__ModuleLoader__.load({
       var error = React.useState(null);
       var notice = React.useState(null);
       var query = React.useState("");
-      var open = React.useState({ enabled: true, paused: true, system: true });
+      var open = React.useState({ enabled: true, paused: true, system: true, preset: true });
       var setLoading = loading[1];
       var setEntries = entries[1];
       var setError = error[1];
@@ -99,16 +108,20 @@ window.__ModuleLoader__.load({
       var countPill = { marginLeft: "2px", fontSize: "11px", fontWeight: 400, color: "rgba(128,128,128,0.9)", background: "rgba(128,128,128,0.15)", borderRadius: "9px", padding: "0 7px", lineHeight: "16px" };
       var mineTitle = { fontWeight: 700, color: "#4ade80" };
       var mineBadge = { marginLeft: "8px", fontSize: "11px", fontWeight: 700, padding: "1px 8px", borderRadius: "10px", background: "#4ade80", color: "#052e16", verticalAlign: "1px" };
+      var presetBadge = { marginLeft: "8px", fontSize: "11px", fontWeight: 700, padding: "1px 8px", borderRadius: "10px", background: "rgba(125,211,252,0.25)", color: "#0c4a6e", verticalAlign: "1px" };
 
       var all = entries[0];
       var q = query[0];
       var userRows = all.filter(function (e) { return !e.system && matches(e, q); });
-      var enabledRows = userRows.filter(function (e) { return e.enabled; });
-      var pausedRows = userRows.filter(function (e) { return !e.enabled; });
+      var presetRows = userRows.filter(function (e) { return isPresetMjs(e); });
+      var regRows = userRows.filter(function (e) { return !isPresetMjs(e); });
+      var enabledRows = regRows.filter(function (e) { return e.enabled; });
+      var pausedRows = regRows.filter(function (e) { return !e.enabled; });
       var sysRows = all.filter(function (e) { return e.system && matches(e, q); });
 
       var renderRow = function (e, canToggle, index) {
         var mine = e.author === MINE_AUTHOR;
+        var preset = isPresetMjs(e);
         var metaBits = [];
         if (e.author) metaBits.push("作者：" + e.author);
         if (e.phase) metaBits.push(e.phase);
@@ -125,6 +138,7 @@ window.__ModuleLoader__.load({
               "div",
               { style: mine ? mineTitle : null, title: "id: " + String(e.id) },
               displayName,
+              preset ? React.createElement("span", { style: presetBadge }, "预设") : null,
               mine ? React.createElement("span", { style: mineBadge }, "我的") : null
             ),
             React.createElement(
@@ -135,11 +149,11 @@ window.__ModuleLoader__.load({
           ),
           canToggle
             ? React.createElement("button", { style: btn, onClick: function () { toggle(e); } }, e.enabled ? "暂停" : "启用")
-            : React.createElement("span", { style: dim }, "不可在此启停")
+            : React.createElement("span", { style: dim }, preset ? "随会话预设加载，不可在此启停" : "不可在此启停")
         );
       };
 
-      var renderSection = function (key, title, rows, canToggle) {
+      var renderSection = function (key, title, rows, canToggle, note) {
         if (rows.length === 0) return null;
         var expanded = open[0][key];
         return React.createElement(
@@ -153,12 +167,17 @@ window.__ModuleLoader__.load({
             React.createElement("span", { style: countPill }, String(rows.length))
           ),
           expanded
-            ? React.createElement("div", null, rows.map(function (e, i) { return renderRow(e, canToggle, i); }))
+            ? React.createElement(
+                "div",
+                null,
+                note ? React.createElement("div", { key: key + "-note", style: dim }, note) : null,
+                rows.map(function (e, i) { return renderRow(e, canToggle, i); })
+              )
             : null
         );
       };
 
-      var hasAny = enabledRows.length + pausedRows.length + sysRows.length > 0;
+      var hasAny = enabledRows.length + pausedRows.length + presetRows.length + sysRows.length > 0;
 
       return React.createElement(
         "div",
@@ -180,6 +199,7 @@ window.__ModuleLoader__.load({
               }),
               renderSection("enabled", "启用中", enabledRows, true),
               renderSection("paused", "暂停中", pausedRows, true),
+              renderSection("preset", "预设组件（.mjs）", presetRows, false, "这些是当前会话所选预设（如梁神模式）的组合组件，随预设自动加载/卸载，不能在这里启停。"),
               renderSection("system", "系统插件（不可在此启停）", sysRows, false),
               !hasAny ? React.createElement("div", { style: dim }, "无匹配插件") : null,
               React.createElement("div", { style: { marginTop: "12px" } },
@@ -189,17 +209,49 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      ctx.slots.inject("settings.section", function () {
-        return ctx.slots.register(
-          {
-            name: "settings.section",
-            id: "plugin-manager",
-            order: 30,
-            label: function () { return "插件管理"; }
-          },
-          PluginManagerPage
-        );
-      });
+      var controller = null;
+      var disposed = false;
+      var unsub = null;
+      var lastHub = null;
+
+      function hasHub() {
+        var entries = [];
+        try { entries = ctx.slots.entries("settings.section"); } catch (e) { return false; }
+        for (var i = 0; i < entries.length; i++) {
+          var o = entries[i].options;
+          if (o && o.id === HUB_SECTION_ID) return true;
+        }
+        return false;
+      }
+
+      function sync() {
+        if (disposed) return;
+        var hub = hasHub();
+        if (hub === lastHub) return;
+        lastHub = hub;
+        if (controller !== null) { controller(); controller = null; }
+        controller = ctx.slots.inject("settings.section", function () {
+          if (lastHub) return function () {};
+          return ctx.slots.register(
+            {
+              name: "settings.section",
+              id: "plugin-manager",
+              order: 30,
+              label: function () { return "插件管理"; }
+            },
+            PluginManagerPage
+          );
+        });
+      }
+
+      try { unsub = ctx.slots.subscribe("settings.section", sync); } catch (e) { unsub = null; }
+      sync();
+
+      return function () {
+        disposed = true;
+        if (unsub) unsub();
+        if (controller !== null) controller();
+      };
     }
 
     exports.inject = inject;

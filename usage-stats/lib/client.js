@@ -18,7 +18,7 @@
     var React = require("react");
     var inject = ["slots"];
 
-    var API = "/api/usage-stats/summary";// ===== formatters =====
+    var API = "/api/usage-stats/summary";    // ===== formatters =====
     function fmtTokens(n) {
       if (n == null || !isFinite(n)) return "–";
       if (n < 1000) return String(n);
@@ -100,7 +100,7 @@
         out.requests += b.requests || 0;
       }
       return out;
-    }// ===== styles =====
+    }    // ===== styles =====
 // 样式 token（克制：单色 + 一个强调绿）
     var C = {
       hairline: "rgba(128,128,128,0.18)",
@@ -162,7 +162,7 @@
       panelCheck: { width: "13px", height: "13px", margin: 0, cursor: "pointer", accentColor: C.accent },
       panelToggleRow: { display: "flex", gap: "6px", marginBottom: "6px" },
       panelToggleBtn: { padding: "3px 9px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: C.text2, cursor: "pointer" }
-    };// ===== components =====
+    };    // ===== components =====
     function Card(label, value, sub) {
       return React.createElement(
         "div",
@@ -240,7 +240,7 @@
         ),
         React.createElement("tbody", null, rows)
       );
-    }// ===== config =====
+    }    // ===== config =====
     var RANGES = [
       { key: "all", label: "全部" },
       { key: "30", label: "近 30 日" },
@@ -321,7 +321,7 @@
         out[k] = (k === key) ? !!val : visibility[k];
       }
       return out;
-    }// ===== visibility panel =====
+    }    // ===== visibility panel =====
     /**
      * 显示设置面板：列出 6 个数据块的复选项 + 全选/全不选快捷按钮。
      * 通过 [data-usage-stats-panel] 属性给外层 click-outside 监听器识别。
@@ -373,7 +373,7 @@
           })
         )
       );
-    }// ===== page =====
+    }    // ===== page =====
     function UsageStatsPage() {
       var loading = React.useState(true);
       var data = React.useState(null);
@@ -700,7 +700,7 @@
               );
             })
       );
-    }// ===== apply =====
+    }    // ===== apply =====
     function apply(ctx) {
       ctx.slots.inject("settings.section", function () {
         return ctx.slots.register(

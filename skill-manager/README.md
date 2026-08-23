@@ -9,6 +9,8 @@ DeepSeek Harness (DSH) web profile 的常驻插件：在设置页集中查看与
 - **即时生效**：变更后主动使缓存失效，无需重启 DSH。
 - **扫描范围**：用户级 skill 目录（`DSH_HOME/skills`、`~/.agents/skills`）以及最近会话的项目根目录。
 
+> 与 [dsh-manager-hub](../dsh-manager-hub) 的关系：本插件的设置页条目在 hub（id=`manager-hub`）在场时自动隐藏，由 hub 的"Skill"tab 聚合展示；停用 hub 后本页自动恢复为兜底入口。宿主 API（`/api/skill-manager/*`）始终独立运行。
+
 ## 安装
 
 插件既可以从本仓库子目录安装，也可以作为独立 npm 包安装。

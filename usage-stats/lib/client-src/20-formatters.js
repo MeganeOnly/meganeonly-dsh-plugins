@@ -1,4 +1,4 @@
-// ===== formatters =====
+    // ===== formatters =====
     function fmtTokens(n) {
       if (n == null || !isFinite(n)) return "–";
       if (n < 1000) return String(n);

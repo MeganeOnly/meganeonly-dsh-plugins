@@ -1,4 +1,4 @@
-// ===== visibility panel =====
+    // ===== visibility panel =====
     /**
      * 显示设置面板：列出 6 个数据块的复选项 + 全选/全不选快捷按钮。
      * 通过 [data-usage-stats-panel] 属性给外层 click-outside 监听器识别。

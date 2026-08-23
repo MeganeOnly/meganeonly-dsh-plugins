@@ -12,6 +12,9 @@
  *   - 停用：追加/写入 `- id: <x>` + `disabled: true`
  *   - 启用：删除对应条目中的 disabled（纯覆盖条目整体移除）
  * 使用 yaml 的 parseDocument 保留原文件注释；临时文件 + rename 原子写。
+ *
+ * 路由守卫：注册前检测 ctx.webServer.exact / prefixes，路由已被其他插件占用时
+ * 跳过本插件注册（打警告），避免 duplicate exact route 导致 DSH 启动崩溃。
  */
 import { readFile, writeFile, rename } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -28,6 +31,15 @@ const PATCH_FILENAME = 'cordis.patch.yml'
 /** 判定是否系统内部插件（@deepseek-ai 官方包，不在管理器里启停，避免破坏基础能力）。 */
 function isSystem(entryName) {
   return typeof entryName === 'string' && entryName.startsWith('@deepseek-ai/')
+}
+
+/**
+ * 判定是否预设组件行：agent 预设组合（如梁神模式）里的相对路径 .mjs 文件行
+ * （name 形如 "./tool-bootstrap.mjs"）。它们随当前会话所选预设自动加载/卸载，
+ * 不归属 profile 的 cordis.patch.yml，因此不能在这里启停。
+ */
+function isPresetMjs(entryName) {
+  return typeof entryName === 'string' && entryName.startsWith('./') && entryName.endsWith('.mjs')
 }
 
 /**
@@ -92,6 +104,7 @@ async function listEntries(ctx) {
       enabled: !entry.disabled,
       phase: entry.fiber === void 0 ? null : String(entry.fiber.state),
       system: isSystem(name),
+      presetMjs: isPresetMjs(name),
     })
   }
   entries.sort((a, b) => {
@@ -114,6 +127,9 @@ async function setEnabled(ctx, targetId, enabled) {
   // 系统插件拒改
   const row = (await listEntries(ctx)).find((e) => e.id === targetId)
   if (row !== undefined && row.system) throw new Error(`system-plugin: ${targetId} 属于系统内部插件，请在插件管理器之外处理`)
+  // 预设组件拒改：行来自 agent 预设组合（name 为 ./.mjs 相对路径），id 定向覆盖写进
+  // cordis.patch.yml 也够不到它们，直接拒绝以免误导（提示重启其实不生效）。
+  if (row !== undefined && row.presetMjs) throw new Error(`preset-mjs: ${targetId} 是预设组件（.mjs），随当前会话预设自动加载，不能在这里启停`)
   if (row !== undefined && row.enabled === enabled) return { ok: true, id: targetId, enabled, unchanged: true }
 
   const path = patchPathOf(ctx)
@@ -214,7 +230,17 @@ export function apply(ctx) {
     },
   ]
   ctx.effect(() => {
-    const disposers = routes.map((route) => ctx.webServer.register(route))
+    const disposers = []
+    for (const route of routes) {
+      const table = route.kind === 'exact' ? ctx.webServer.exact : ctx.webServer.prefixes
+      // 路由被其他插件（如 @linxin666/dsh-client-ui-plugin-manager）先占用时：
+      // 跳过本插件注册，避免 duplicate exact route 导致 DSH 启动崩溃
+      if (table.has(route.path)) {
+        ctx.logger.warn(`plugin-manager: 路由 ${route.path} 已被其他插件注册，跳过本插件注册，避免 duplicate route 启动崩溃`)
+        continue
+      }
+      disposers.push(ctx.webServer.register(route))
+    }
     return () => {
       for (const dispose of disposers) dispose()
     }

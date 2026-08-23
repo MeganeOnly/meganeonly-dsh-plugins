@@ -1,6 +1,15 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.8.0：新增 first-message-jump「回到最早消息」tweak——对话区右下角
+ *   （输入框上方）挂一个悬浮按钮，点击把当前会话最早一条 user 消息
+ *   （[data-chat-flow-kind="user"] 第一行）滚到滚动区顶部，长会话里快速
+ *   回看最初发的需求。纯 JS DOM 探测（[data-conversation-scroll] 滚动容器
+ *   + [data-composer-seat] 输入框），不依赖 DSH CSS module hash；按钮
+ *   挂载 / 显隐 / 定位 / 点击滚动由新增的 68-first-message-jump.js
+ *   createFirstMessageJumpController 负责。只在最早消息不在当前视口内时
+ *   显示，右侧抽屉打开时自动隐藏；视觉对齐 DSH 自带「回到底部」按钮。
+ *
  * v0.7.5：
  *   1) hide-trajectory-tab 扩展：同时干掉每个工具调用 row 内的 "Inspect"
  *      按钮——DSH 源码 `dsh-client-ui-tool/lib/client.js` 渲染

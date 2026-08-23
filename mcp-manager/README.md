@@ -9,6 +9,8 @@ DeepSeek Harness (DSH) web profile 的常驻插件：在设置页集中查看与
 - **摘要信息**：显示端点与凭据摘要。`Authorization` 等请求头值与环境变量值只在宿主进程内读取，发送到浏览器前一律打码，凭据明文不出宿主。
 - **一键启停**：写入 web profile 的 `cordis.patch.yml`（保留原有注释，采用临时文件 + 重命名的原子写）。
 
+> 与 [dsh-manager-hub](../dsh-manager-hub) 的关系：本插件的设置页条目在 hub（id=`manager-hub`）在场时自动隐藏，由 hub 的"MCP"tab 聚合展示；停用 hub 后本页自动恢复为兜底入口。宿主 API（`/api/mcp-manager/*`）始终独立运行。
+
 ## 安装
 
 插件既可以从本仓库子目录安装，也可以作为独立 npm 包安装。

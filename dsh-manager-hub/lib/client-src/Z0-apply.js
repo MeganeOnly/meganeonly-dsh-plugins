@@ -4,14 +4,15 @@
         return ctx.slots.register(
           {
             name: "settings.section",
-            id: "usage-stats",
-            order: 40,
-            label: function () { return "使用统计"; }
+            id: "manager-hub",
+            order: 30,
+            label: function () { return "管理"; }
           },
-          UsageStatsPage
+          ManagerHubPage
         );
       });
     }
 
-    exports.inject = inject;
     exports.apply = apply;
+    exports.inject = inject;
+    exports.name = "dsh-manager-hub";

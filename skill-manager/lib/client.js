@@ -25,6 +25,9 @@ window.__ModuleLoader__.load({
 
     var API = "/api/skill-manager";
     var MINE_AUTHOR = "MeganeOnly";
+    // dsh-manager-hub 的 settings.section id：本插件检测到它存在时自动隐藏自己的设置页条目，
+    // 缺席时自动恢复（响应式），避免设置页同时出现 4 个管理入口。
+    var HUB_SECTION_ID = "manager-hub";
 
     var SOURCE_LABELS = {
       "project-dsh": "项目 · .dsh/skills",
@@ -263,17 +266,49 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      ctx.slots.inject("settings.section", function () {
-        return ctx.slots.register(
-          {
-            name: "settings.section",
-            id: "skill-manager",
-            order: 31,
-            label: function () { return "Skill 管理"; }
-          },
-          SkillManagerPage
-        );
-      });
+      var controller = null;
+      var disposed = false;
+      var unsub = null;
+      var lastHub = null;
+
+      function hasHub() {
+        var entries = [];
+        try { entries = ctx.slots.entries("settings.section"); } catch (e) { return false; }
+        for (var i = 0; i < entries.length; i++) {
+          var o = entries[i].options;
+          if (o && o.id === HUB_SECTION_ID) return true;
+        }
+        return false;
+      }
+
+      function sync() {
+        if (disposed) return;
+        var hub = hasHub();
+        if (hub === lastHub) return;
+        lastHub = hub;
+        if (controller !== null) { controller(); controller = null; }
+        controller = ctx.slots.inject("settings.section", function () {
+          if (lastHub) return function () {};
+          return ctx.slots.register(
+            {
+              name: "settings.section",
+              id: "skill-manager",
+              order: 31,
+              label: function () { return "Skill 管理"; }
+            },
+            SkillManagerPage
+          );
+        });
+      }
+
+      try { unsub = ctx.slots.subscribe("settings.section", sync); } catch (e) { unsub = null; }
+      sync();
+
+      return function () {
+        disposed = true;
+        if (unsub) unsub();
+        if (controller !== null) controller();
+      };
     }
 
     exports.inject = inject;

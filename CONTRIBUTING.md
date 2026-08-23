@@ -4,7 +4,7 @@
 
 ## 安装（在你自己的机器上）
 
-每个插件是独立 npm 包，按 [`README.md`](./README.md) §安装 步骤：
+每个插件是独立 npm 包，安装步骤见 [`README.md`](./README.md) §快速开始：
 
 1. 把插件目录放到本机任意位置，例如 `<your-dsh-plugins-dir>/<plugin-name>`
 2. 编辑你的 web profile 的 `package.json`：

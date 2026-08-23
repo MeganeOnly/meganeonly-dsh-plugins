@@ -69,6 +69,17 @@
       var hoverCardHider = createSidebarHoverCardHider();
       if (initialState.hideSidebarTooltip) hoverCardHider.start();
 
+      // 6d) v0.8.0：「回到最早消息」按钮 controller（first-message-jump tweak）
+      var firstMessageJump = createFirstMessageJumpController();
+      if (initialState.firstMessageJump) firstMessageJump.start();
+
+      // 6e) v0.8.0：把按钮诊断挂到 window.__dshUiTweaks.firstMessageJump()
+      if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
+        window[DEBUG_API_KEY].firstMessageJump = function () {
+          return firstMessageJump.getState();
+        };
+      }
+
       // 7) 监听 UI 状态变化
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
@@ -100,6 +111,12 @@
           if (!hoverCardHider.running) hoverCardHider.start();
         } else {
           if (hoverCardHider.running) hoverCardHider.stop();
+        }
+        // v0.8.0：first-message-jump 按钮跟随开关
+        if (detail.firstMessageJump) {
+          if (!firstMessageJump.running) firstMessageJump.start();
+        } else {
+          if (firstMessageJump.running) firstMessageJump.stop();
         }
       }
       if (typeof window !== "undefined" && window.addEventListener) {

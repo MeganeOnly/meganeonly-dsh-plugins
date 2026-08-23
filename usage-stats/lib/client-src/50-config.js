@@ -1,4 +1,4 @@
-// ===== config =====
+    // ===== config =====
     var RANGES = [
       { key: "all", label: "全部" },
       { key: "30", label: "近 30 日" },
