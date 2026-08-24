@@ -52,7 +52,9 @@ function isPresetMjs(entryName) {
  */
 async function readAuthor(ctx, id, name) {
   if (typeof id !== 'string' || id === '') return undefined
-  if (id.startsWith('@')) return undefined
+  // 注：scoped npm 包（id 形如 @scope/pkg）的真实路径正是 node_modules/@scope/pkg/package.json，
+  // 下方 candidates 构造里 `join(profileRoot, 'node_modules', id, 'package.json')` 已经覆盖，
+  // 故此处不再对 '@' 前缀做早返回——保持与其它 id 一致的路径解析流程。
   const candidates = []
   const seen = new Set()
   const tryAdd = (p) => { if (!seen.has(p)) { seen.add(p); candidates.push(p) } }
