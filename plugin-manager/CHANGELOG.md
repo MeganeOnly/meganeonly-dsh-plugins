@@ -13,10 +13,12 @@
 ### 变更
 
 - 设置页条目改为响应式：当 dsh-manager-hub 的"管理"入口（id=`manager-hub`）存在时自动隐藏本页，缺席时自动恢复（兜底），避免设置页同时出现多个管理入口。
+- npm scope 风格 id（`@scope/name`）的展示优化：标题旁新增灰色 `@scope` 徽标（等宽字体）传达 publisher 信息；当插件 `name` 字段缺失但 id 是 scoped 时，仅取包名作为标题（不再把 `@scope/name` 整段作为标题），避免和徽标重复显得笨重；副标题"作者：xxx"行在 scope 与 author 名称一致时跳过以避免冗余。
 
 ### 修复
 
 - 路由守卫：注册 `/api/plugin-manager/*` 前检测路由是否已被其他插件占用（如 `@linxin666/dsh-client-ui-plugin-manager`），占用则跳过注册并打警告，避免 duplicate exact route 导致 DSH 启动崩溃。
+- scoped npm id（`@scope/name`）的作者解析此前因早返回始终为空，现已放开：候选路径 `node_modules/<id>/package.json`（即 `node_modules/@scope/name/package.json`）直接生效，可正常读取这些插件的 `author` 字段。
 
 ## [0.2.0] - 2026-08-19
 

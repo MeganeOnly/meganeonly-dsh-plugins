@@ -39,6 +39,17 @@ window.__ModuleLoader__.load({
       return typeof e.name === "string" && e.name.indexOf("./") === 0 && e.name.slice(-4) === ".mjs";
     }
 
+    /** 解析 npm scope 风格 id（@scope/name）→ {scope, name}；非该格式返回 null。 */
+    function parseScopeId(s) {
+      if (typeof s !== "string" || s.charAt(0) !== "@") return null;
+      var slash = s.indexOf("/");
+      if (slash < 2) return null;
+      var scope = s.substring(1, slash);
+      var pkgName = s.substring(slash + 1);
+      if (scope === "" || pkgName === "") return null;
+      return { scope: scope, name: pkgName };
+    }
+
     function PluginManagerPage() {
       var loading = React.useState(true);
       var entries = React.useState([]);
@@ -109,6 +120,8 @@ window.__ModuleLoader__.load({
       var mineTitle = { fontWeight: 700, color: "#4ade80" };
       var mineBadge = { marginLeft: "8px", fontSize: "11px", fontWeight: 700, padding: "1px 8px", borderRadius: "10px", background: "#4ade80", color: "#052e16", verticalAlign: "1px" };
       var presetBadge = { marginLeft: "8px", fontSize: "11px", fontWeight: 700, padding: "1px 8px", borderRadius: "10px", background: "rgba(125,211,252,0.25)", color: "#0c4a6e", verticalAlign: "1px" };
+      // publisher 徽标（npm scope @scope 部分）。中灰底，无强色，避免抢戏于插件名；暗色主题下也保持可读。
+      var scopeBadge = { marginLeft: "8px", fontSize: "11px", fontWeight: 500, padding: "1px 8px", borderRadius: "10px", background: "rgba(128,128,128,0.18)", color: "rgba(128,128,128,1)", verticalAlign: "1px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" };
 
       var all = entries[0];
       var q = query[0];
@@ -122,10 +135,17 @@ window.__ModuleLoader__.load({
       var renderRow = function (e, canToggle, index) {
         var mine = e.author === MINE_AUTHOR;
         var preset = isPresetMjs(e);
+        var parsedScope = parseScopeId(e.id);
         var metaBits = [];
-        if (e.author) metaBits.push("作者：" + e.author);
+        // 作者行：scoped id 的 publisher 已经在标题徽标里展示了，副标题里就不再重复；
+        // 但若 package.json 里另有真正的作者署名（非 scope 名），仍以"作者：xxx"展示以保留信息。
+        if (e.author && !(parsedScope && e.author === parsedScope.scope)) metaBits.push("作者：" + e.author);
         if (e.phase) metaBits.push(e.phase);
-        var displayName = (typeof e.name === "string" && e.name !== "") ? e.name : e.id;
+        // 优先用 name；name 为空但 id 是 scoped 时，仅取包名作为标题，避免把 @scope 当标题。
+        var displayName;
+        if (typeof e.name === "string" && e.name !== "") displayName = e.name;
+        else if (parsedScope) displayName = parsedScope.name;
+        else displayName = e.id;
         var rowStyle = mine ? Object.assign({}, row, { borderLeft: "3px solid rgba(74,222,128,0.8)", background: "rgba(74,222,128,0.08)", borderRadius: "6px", paddingLeft: "10px" }) : row;
         var nameStyle = mine ? { fontWeight: 700, color: "#4ade80", opacity: 1 } : null;
         return React.createElement(
@@ -138,6 +158,8 @@ window.__ModuleLoader__.load({
               "div",
               { style: mine ? mineTitle : null, title: "id: " + String(e.id) },
               displayName,
+              // scoped id 一律在标题旁展示 @scope 徽标（无论 name 是否提供——徽标传达的是 publisher/作者信息）
+              parsedScope ? React.createElement("span", { style: scopeBadge }, "@" + parsedScope.scope) : null,
               preset ? React.createElement("span", { style: presetBadge }, "预设") : null,
               mine ? React.createElement("span", { style: mineBadge }, "我的") : null
             ),
