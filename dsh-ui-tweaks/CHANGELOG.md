@@ -6,7 +6,41 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **`first-message-jump` Shift+点击跳过 compaction 块直达当前会话第一条**（v0.9.2）：v0.9.1 的 `jumpFindFirstUserRow` 返回 DOM 顺序的第一条 user 行——若对话顶部有 compact 摘要块（`data-chat-flow-kind="compaction"` / `"manual-compaction"`），里面的旧 user 行会被算成"第一条"，Shift+点击实际落到的是 compact 块下方的某条 user 行（不是当前会话起点）。新增 `jumpIsRowInCompaction(row)` 沿父链检查 `data-chat-flow-kind="compaction"` / `"manual-compaction"` / `"context"` 容器，跳过其中的 user 行。新增 `jumpFindFirstRealUserRow(port)` 作为 Shift+点击的目标；`jumpFindFirstUserRow` 保留作为内部锚点（v0.9.1 行为）。
+
+- **`first-message-jump` 短会话（2 条 user 行）底部 TodoList / 进度卡片出现时按钮不显示**（v0.9.2）：v0.9.1 用 `target !== null` 判断可见性——`topVisible === firstRow` 时（短会话底部 + firstRow 还在视口顶部 + 用户以为自己在底部）`target=null` → 按钮直接不显示（用户反馈"老问题"）。放宽为 `rows.length >= 2`：只要有 2 条以上 user 行按钮就显示（即使已在顶部 user 行），Shift+点击仍能到最顶。
+
+### 新增（v0.9.1）
+
+- **`first-message-jump` step-by-step 上数第二条卡住 bug 修复**（v0.9.1）：v0.9.0 用 `lastVisible`（视口内最底部可见 user 行）作为锚点——当 rows[1] 已在视口顶部但 rows[2..N] 仍可见时，`lastVisible` 始终是 rows[N] → `target` 始终是 rows[N-1] → 点击不前进 → 死循环（按钮永不隐藏、永远到不了 rows[0]）。改用 `topVisible`（视口内最顶部可见 user 行）作为锚点后：`topVisible = rows[1]` 时 `target = rows[0]`，点击滚到 rows[0] 后 `topVisible = rows[0]` → `target = null` → 按钮正确隐藏。
+
 ### 新增
+
+- **`first-message-jump` Shift+单击 = 一键回到最早**（v0.9.1）：单击仍是 step-by-step 上一条；按住 Shift 再单击 = 一键到最早一条 user 行（恢复 v0.8.0 的「一键回到最早」语义，但用 Shift 修饰与 step-by-step 共存）。title 属性增加 `（Shift+点击 = 回到最早）` 提示。
+
+- **`first-message-jump` 原生「回到底部」按钮同步改为「单击下一条 / Shift+单击 一键到底」**（v0.9.1）：两个按钮都用「单击 step / Shift+单击 极限」的对称模式。
+  - 原生按钮单击：从 v0.9.0 / v0.8.0 的"一键到底"改为"下一条 user 行"（`topVisible → next`）
+  - 原生按钮 Shift+单击：一键到底（DSH 原生 click handler 正常跑就行）
+  - 实现：capture-phase document click listener（`jumpOnNativeClick`），命中 `aria-label="回到底部"` / `"Back to bottom"` 时按 `shiftKey` 分发——`shiftKey=true` 不 preventDefault（让 DSH 原生 handler 跑），`shiftKey=false` preventDefault + stopImmediatePropagation 后调 `jumpToNext()`
+
+- **`first-message-jump` 诊断增强**（v0.9.1）：`getState()` 返回字段增加 `topVisibleUserRow` / `nextUserRow` / `nativeHooked`；旧锚点 `lastVisibleUserRow` 保留作对照（便于调试 v0.9.0 死循环场景）
+
+### 新增（v0.9.0）
+
+- **`first-message-jump` 单向上导航**（v0.9.0）：按钮 = "上一条我发的消息"——点击跳到当前视口内最底部可见 user 消息的上一条（DOM 顺序），连续点击可一路向上导航直到最早一条 user 消息（此时按钮自动隐藏）。
+  - 视口内**无** user 行（用户在对话上方空白区 / 刚开页面）→ 点击跳到最后一条作为入口
+  - 视口内最底部可见 user 行 = firstRow → target = null → 按钮自动隐藏（已无路可上）
+  - 仅一条 user 行 → 跳过去后按钮隐藏（firstRow === lastVisible）
+  - 按钮 DOM / 位置 / 尺寸 / 样式 / ID / `[data-dsh-ui-tweaks-jump]` CSS 选择器全部不变，**保持按钮的整洁**
+  - SVG 固定 ▲ 朝上，aria-label / title 固定为 `上一条我发的消息`（不再 mode 翻面）
+  - localStorage key `firstMessageJump` 不动，老用户开关状态保留；tweak id `first-message-jump` 保留向后兼容；tweak name 改为 `上一条我发的消息按钮`
+  - 常量精简：删 `JUMP_MODE_FIRST` / `JUMP_MODE_LAST` / `JUMP_LABEL_FIRST` / `JUMP_LABEL_LAST` / `JUMP_SVG_LAST` / `JUMP_NEAR_TOP_PX`；`JUMP_SVG_FIRST` 改名为 `JUMP_SVG_UP`；`JUMP_LABEL_FIRST` 合并为 `JUMP_LABEL`
+  - 新增 `jumpAllUserRows`（静态数组封装，避免 NodeList live 引发的迭代错位）/ `jumpFindLastVisibleUserRow`（与 viewport rect 真相交判定）/ `jumpFindPrevUserRow`（统一计算 target）；`jumpShouldShow` / `jumpComputeState` 删除，判定完全交给 `target = jumpFindPrevUserRow()` 是否为 null
+  - `jumpToFirst` 改名为 `jumpToPrev`；`jumpApplyMode` 删除（不再需要 mode 翻面）；`getState()` 诊断快照返回 `{ totalUserRows, firstUserRow, lastUserRow, lastVisibleUserRow, targetRow, scrollTop, visible, drawerOpen, ... }`
+
+### 新增（v0.8.0）
 
 - **`first-message-jump`**（回到最早消息按钮）：对话区右下角（输入框上方）新增「回到最早消息」悬浮按钮——点击把当前会话最早一条 user 消息（`[data-chat-flow-kind="user"]` 第一行）滚到滚动区顶部，长会话里快速回看最初发的需求，不用一屏屏往上翻。纯 JS DOM 探测（`[data-conversation-scroll]` 滚动容器 + `[data-composer-seat]` 输入框），不依赖 DSH CSS module hash；只在最早消息不在当前视口内时显示，右侧抽屉打开时自动隐藏；视觉对齐 DSH 自带「回到底部」按钮。新增 `createFirstMessageJumpController`（`lib/client-src/68-first-message-jump.js`），诊断可从 `window.__dshUiTweaks.firstMessageJump()` 查看。
 

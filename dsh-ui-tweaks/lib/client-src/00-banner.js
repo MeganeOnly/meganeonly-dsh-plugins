@@ -1,14 +1,48 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.2：`first-message-jump` compaction 跳过 + 可见性放宽：
+ *   - Shift+点击现在跳过 compact 摘要里的旧 user 行，直接到当前会话的第
+ *     一条 user 消息（v0.9.1 落到 compaction 块下方的某条 user 行——
+ *     bug）。新增 `jumpIsRowInCompaction(row)` 沿父链检查
+ *     `data-chat-flow-kind="compaction"` / `"manual-compaction"` /
+ *     `"context"` 容器，跳过其中的 user 行。
+ *   - 可见性从 `target !== null` 放宽为 `rows.length >= 2`：短会话（2 条
+ *     user 行）底部 TodoList / 进度卡片出现时也能看到按钮作为提示
+ *     （v0.9.1 顶到底部 user 行 `topVisible === firstRow` → target=null
+ *     → 按钮直接隐藏——用户反馈"老问题"）。
+ *
+ * v0.9.1：`first-message-jump` step-by-step 修复 + Shift+点击一键回到最早
+ *   （双按钮对称）：
+ *   - 锚点从 lastVisible（v0.9.0）改为 topVisible（v0.9.1），修复"上数第二条
+ *     卡住"bug——v0.9.0 的 lastVisible 在短消息 + 滚到 rows[1] 时，因为下方
+ *     rows[2..N] 仍可见 → lastVisible 始终是 rows[N] → target 始终是
+ *     rows[N-1] → 死循环（按钮永不隐藏、永远到不了 rows[0]）。
+ *   - 我的按钮：单击 = 上一条；**Shift+单击 = 一键回到最早**（恢复 v0.8.0
+ *     的"一键回到最早"语义，但用 Shift 修饰与 step-by-step 共存）
+ *   - 原生「回到底部」按钮：单击 = 下一条；**Shift+单击 = 一键到底**——
+ *     v0.9.0 / v0.8.0 原生单击"一键到底"的语义现在需要 Shift 修饰；
+ *     实现靠 capture-phase document click listener + shiftKey 分发
+ *
+ * v0.9.0：`first-message-jump` 改为单向上导航——按钮 = "上一条我发的消息"：
+ *   点击 = 跳到当前视口内最底部可见 user 消息的上一条；连续点击可一路
+ *   向上导航直到最早一条（按钮自动隐藏）。视口内无 user 行（用户在对话
+ *   上方空白区）→ 点击跳到最后一条作为入口。按钮 DOM / 位置 / 尺寸 / 样式
+ *   / ID / CSS 选择器全部不变；SVG 固定 ▲ 朝上，aria-label / title 固定为
+ *   "上一条我发的消息"。localStorage key `firstMessageJump` 不动，老用户
+ *   开关状态保留；tweak id `first-message-jump` 保留向后兼容，name 改
+ *   `上一条我发的消息按钮`。
+ *
  * v0.8.0：新增 first-message-jump「回到最早消息」tweak——对话区右下角
  *   （输入框上方）挂一个悬浮按钮，点击把当前会话最早一条 user 消息
  *   （[data-chat-flow-kind="user"] 第一行）滚到滚动区顶部，长会话里快速
  *   回看最初发的需求。纯 JS DOM 探测（[data-conversation-scroll] 滚动容器
- *   + [data-composer-seat] 输入框），不依赖 DSH CSS module hash；按钮
+ *   + [data-composer-seat]` 输入框），不依赖 DSH CSS module hash；按钮
  *   挂载 / 显隐 / 定位 / 点击滚动由新增的 68-first-message-jump.js
- *   createFirstMessageJumpController 负责。只在最早消息不在当前视口内时
- *   显示，右侧抽屉打开时自动隐藏；视觉对齐 DSH 自带「回到底部」按钮。
+ *   createFirstMessageJumpController 负责（纯 finder/scanner 函数在
+ *   68a-first-message-jump-utils.js——30 KB 阈值维护动作，行为无变化）。
+ *   只在最早消息不在当前视口内时显示，右侧抽屉打开时自动隐藏；视觉对齐
+ *   DSH 自带「回到底部」按钮。
  *
  * v0.7.5：
  *   1) hide-trajectory-tab 扩展：同时干掉每个工具调用 row 内的 "Inspect"

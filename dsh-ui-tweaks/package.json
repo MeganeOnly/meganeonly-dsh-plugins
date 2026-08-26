@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.8.0",
+  "version": "0.9.2",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.8.0：新增 first-message-jump「回到最早消息」tweak——对话区右下角（输入框上方）悬浮按钮，点击把当前会话最早一条 user 消息滚到滚动区顶部，长会话里快速回看最初发的需求；纯 JS DOM 探测不依赖 DSH CSS hash，只在最早消息不在视口内时显示，右侧抽屉打开时自动隐藏。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump 七条 tweak。v0.7.5 详见 CHANGELOG。状态由 client half 用 localStorage 自管。",
+  "description": "DSH 外观设计微调合集（v0.9.2：first-message-jump compaction 跳过 + 可见性放宽——Shift+点击现在跳过 compact 摘要里的旧 user 行直达当前会话第一条；可见性从 target!==null 放宽为 rows.length>=2（短会话底部 TodoList 卡片出现时也能看到按钮作为提示）。v0.9.1 是双按钮对称（单击 step / Shift+点击 极限）+ 锚点从 lastVisible 改为 topVisible 修复「上数第二条卡住」bug；v0.9.0 之前是 step-by-step 上一条单向上导航；v0.8.0 是一键回到最早。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump 七条 tweak。状态由 client half 用 localStorage 自管。",
   "license": "MIT",
   "repository": {
     "type": "git",

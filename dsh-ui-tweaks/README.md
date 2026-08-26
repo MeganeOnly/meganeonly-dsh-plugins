@@ -14,11 +14,20 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 | `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 隐藏侧栏会话/工作区条目在悬停时弹出的浮层（同时覆盖 Tooltip 与 HoverCard 两种实现）。 |
 | `hide-trajectory-tab` | 隐藏"轨迹"标签 | 隐藏对话顶部的轨迹标签页；若当前正停留在轨迹视图，自动切回对话视图。 |
 | `hide-chat-tab` | 隐藏"对话"标签 | 隐藏对话顶部的"对话"标签页（默认 view 的标签，纯视觉噪音）；和 `hide-trajectory-tab` 一起开启 → 两个标签都消失。 |
-| `first-message-jump` | 回到最早消息按钮 | 对话区右下角（输入框上方）的「回到最早消息」悬浮按钮——点击把当前会话最早一条我发的消息滚到顶部，不用一屏屏往上翻；只在最早消息不在当前视口内时出现。 |
+| `first-message-jump` | 上一条我发的消息按钮（Shift+点击 = 回到最早） | 对话区右下角（输入框上方）的悬浮按钮——单击跳到当前视口内最顶部可见 user 消息的上一条，连续单击可一路向上直到最早一条 user 消息（已是最早一条时按钮自动隐藏）。**Shift+单击 = 一键回到最早一条 user 行**（恢复 v0.8.0 的「回到最早」语义）。 |
 
 每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
 
 设置页每行附带"诊断"按钮，可输出当前状态、生成的 CSS 与命中元素；栏目顶部提供"复制状态到剪贴板"。运行时还暴露 `window.__dshUiTweaks` 调试接口（`getState` / `getInjectedCSS` / `getMatchedElements` / `debug` / `setState` / `reshim`）。
+
+### `first-message-jump` 启用后的额外副作用（v0.9.1 起）
+
+开启 `first-message-jump` 后，DSH 自带的「回到底部」悬浮按钮也会被一起改造为「单击 / Shift+单击」的对称模式：
+
+- **单击「回到底部」按钮**（原本一键到底）→ 现在改为向下走一条 user 行（`topVisible → next`）。连续单击可一路向下走到对话末尾。
+- **Shift+单击「回到底部」按钮** → 一键到底（DSH 原生 handler 正常跑，恢复原本的"一键到底"语义）。
+
+两个按钮都用「单击 step 一条 / Shift+单击 极限」的对称模式——我的按钮专注向上，原生按钮专注向下，行为镜像。若不想要这个副作用，关掉 `first-message-jump` 即可，原生按钮会退化为原本的"单击一键到底"。
 
 ## 安装
 

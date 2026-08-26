@@ -1,14 +1,48 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.2：`first-message-jump` compaction 跳过 + 可见性放宽：
+ *   - Shift+点击现在跳过 compact 摘要里的旧 user 行，直接到当前会话的第
+ *     一条 user 消息（v0.9.1 落到 compaction 块下方的某条 user 行——
+ *     bug）。新增 `jumpIsRowInCompaction(row)` 沿父链检查
+ *     `data-chat-flow-kind="compaction"` / `"manual-compaction"` /
+ *     `"context"` 容器，跳过其中的 user 行。
+ *   - 可见性从 `target !== null` 放宽为 `rows.length >= 2`：短会话（2 条
+ *     user 行）底部 TodoList / 进度卡片出现时也能看到按钮作为提示
+ *     （v0.9.1 顶到底部 user 行 `topVisible === firstRow` → target=null
+ *     → 按钮直接隐藏——用户反馈"老问题"）。
+ *
+ * v0.9.1：`first-message-jump` step-by-step 修复 + Shift+点击一键回到最早
+ *   （双按钮对称）：
+ *   - 锚点从 lastVisible（v0.9.0）改为 topVisible（v0.9.1），修复"上数第二条
+ *     卡住"bug——v0.9.0 的 lastVisible 在短消息 + 滚到 rows[1] 时，因为下方
+ *     rows[2..N] 仍可见 → lastVisible 始终是 rows[N] → target 始终是
+ *     rows[N-1] → 死循环（按钮永不隐藏、永远到不了 rows[0]）。
+ *   - 我的按钮：单击 = 上一条；**Shift+单击 = 一键回到最早**（恢复 v0.8.0
+ *     的"一键回到最早"语义，但用 Shift 修饰与 step-by-step 共存）
+ *   - 原生「回到底部」按钮：单击 = 下一条；**Shift+单击 = 一键到底**——
+ *     v0.9.0 / v0.8.0 原生单击"一键到底"的语义现在需要 Shift 修饰；
+ *     实现靠 capture-phase document click listener + shiftKey 分发
+ *
+ * v0.9.0：`first-message-jump` 改为单向上导航——按钮 = "上一条我发的消息"：
+ *   点击 = 跳到当前视口内最底部可见 user 消息的上一条；连续点击可一路
+ *   向上导航直到最早一条（按钮自动隐藏）。视口内无 user 行（用户在对话
+ *   上方空白区）→ 点击跳到最后一条作为入口。按钮 DOM / 位置 / 尺寸 / 样式
+ *   / ID / CSS 选择器全部不变；SVG 固定 ▲ 朝上，aria-label / title 固定为
+ *   "上一条我发的消息"。localStorage key `firstMessageJump` 不动，老用户
+ *   开关状态保留；tweak id `first-message-jump` 保留向后兼容，name 改
+ *   `上一条我发的消息按钮`。
+ *
  * v0.8.0：新增 first-message-jump「回到最早消息」tweak——对话区右下角
  *   （输入框上方）挂一个悬浮按钮，点击把当前会话最早一条 user 消息
  *   （[data-chat-flow-kind="user"] 第一行）滚到滚动区顶部，长会话里快速
  *   回看最初发的需求。纯 JS DOM 探测（[data-conversation-scroll] 滚动容器
- *   + [data-composer-seat] 输入框），不依赖 DSH CSS module hash；按钮
+ *   + [data-composer-seat]` 输入框），不依赖 DSH CSS module hash；按钮
  *   挂载 / 显隐 / 定位 / 点击滚动由新增的 68-first-message-jump.js
- *   createFirstMessageJumpController 负责。只在最早消息不在当前视口内时
- *   显示，右侧抽屉打开时自动隐藏；视觉对齐 DSH 自带「回到底部」按钮。
+ *   createFirstMessageJumpController 负责（纯 finder/scanner 函数在
+ *   68a-first-message-jump-utils.js——30 KB 阈值维护动作，行为无变化）。
+ *   只在最早消息不在当前视口内时显示，右侧抽屉打开时自动隐藏；视觉对齐
+ *   DSH 自带「回到底部」按钮。
  *
  * v0.7.5：
  *   1) hide-trajectory-tab 扩展：同时干掉每个工具调用 row 内的 "Inspect"
@@ -153,7 +187,7 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
-        var VERSION = "0.8.0";
+        var VERSION = "0.9.2";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -176,18 +210,24 @@ window.__ModuleLoader__.load({
         var SHIFT_TARGET_CHATFLOW = "chatflow";
         var SHIFT_TARGET_INPUT = "input";
         var SHIFT_TARGET_COLUMN = "column";  // 兜底：探测失败时标记列容器
-        // v0.8.0：「回到最早消息」按钮（first-message-jump tweak）
+        // v0.8.0：「回到最早消息」按钮（first-message-jump tweak）→ v0.9.0 改为「上一条」导航
         var JUMP_BTN_ID = "dsh-ui-tweaks-jump-btn";
         var JUMP_SCROLL_SEL = "[data-conversation-scroll]";   // DSH 会话滚动容器（scrollBody）
         var JUMP_USER_ROW_SEL = '[data-chat-flow-kind="user"]'; // 用户消息行（ChatNodeSeat）
         var JUMP_COMPOSER_SEL = "[data-composer-seat]";        // 输入框 seat（sticky bottom）
         var JUMP_DRAWER_ATTR = "data-dsh-any-side-drawer-open"; // 右侧抽屉互斥统一 attr
-        var JUMP_NEAR_TOP_PX = 200;  // 最早 user 行顶部距视口顶部超过此值才显示按钮
-        var JUMP_TOP_PADDING = 12;   // 跳转后最早 user 行顶部与视口顶部的留白
+        var JUMP_TOP_PADDING = 12;   // 跳转后目标 user 行顶部与视口顶部的留白
         // 按钮底缘距输入框顶部的总高度：58 = 16（DSH toBottom slot bottom）+ 34（DSH 自带
         // "回到底部"按钮高）+ 8 间隙——窄会话列下也不会与 DSH 自带按钮重叠
         var JUMP_COMPOSER_CLEARANCE = 58;  // 兜底：底缘距输入框顶 = 16 slot + 34 原生按钮高 + 8 间隙
         var JUMP_NATIVE_GAP = 8;          // 主路径：按钮底缘悬在原生「回到底部」按钮顶部的间距
+        // v0.9.2：可见性放宽（rows.length >= 2）+ Shift+点击跳过 compaction 块直达"当前会话第一条"
+        var JUMP_LABEL = "上一条我发的消息";  // aria-label（单一语义，与 v0.9.0 / v0.9.1 同）
+        // v0.9.1：title 加 Shift 修饰提示——浏览器原生 tooltip 悬停时显示；
+        // aria-label 不加，避免屏幕阅读器读出"shift+点击"这种修饰
+        var JUMP_BUTTON_TITLE = "上一条我发的消息（Shift+点击 = 回到最早）";  // title 属性（v0.9.1 新增）
+        // SVG 上箭头（与 v0.8.0 同一 path：▲ 朝上表示"上一条"）
+        var JUMP_SVG_UP = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5L8 6l4.5 4.5"/></svg>';
 
     // ===== tweaks =====
     /**
@@ -403,22 +443,37 @@ window.__ModuleLoader__.load({
         }
       },
       {
-        // v0.8.0 新增。用户反馈：长会话里想回看自己最早发的消息，得一屏屏往上翻。
-        // 这个 tweak 在对话区右下角（输入框上方）挂一个「回到最早消息」悬浮按钮，
-        // 点击把当前会话最早一条 user 消息（[data-chat-flow-kind="user"] 第一行）
-        // 滚到滚动区顶部。纯 JS DOM 探测（[data-conversation-scroll] 滚动容器 +
-        // [data-composer-seat] 输入框），不依赖 DSH CSS module hash。
-        // 按钮的挂载 / 显隐 / 点击滚动由 68-first-message-jump.js 的
-        // createFirstMessageJumpController 负责；本 buildCSS 只输出按钮的静态样式
-        // （right/bottom 定位由 JS 每次显隐时内联设置）。
+        // v0.8.0 新增「回到最早消息」（v0.8.0 单击直达）。
+        // v0.9.0 改为「上一条」单向上导航（v0.9.0 用 lastVisible 作锚点，
+        //   短消息场景下"上数第二条"卡死——见 jumpFindPrevUserRow 注释）。
+        // v0.9.1：上数第二条 bug 修复（lastVisible → topVisible）+ Shift+点击
+        //   一键回到最早 + 原生「回到底部」按钮同步改为单击下一条 / Shift+点击
+        //   一键到底。
+        // v0.9.2：可见性放宽（rows.length >= 2 即显示，短会话也可见）+ Shift+
+        //   点击跳过 compaction 块直达"当前会话第一条"（不再落到 compact
+        //   摘要里的旧 user 行）。
+        // 按钮形态 / 位置 / 尺寸 / ID / CSS 选择器 / 内部 path 全不变；
+        // aria-label 保持单一语义「上一条我发的消息」；title 加 Shift 修饰
+        // 提示供悬停时查看。
+        // 按钮的挂载 / 显隐 / 定位 / 点击滚动 / 原生按钮 capture-phase 钩子
+        // 由 68-first-message-jump.js 的 createFirstMessageJumpController 负责；
+        // 纯 finder/scanner 函数（jumpFindScrollport / jumpAllUserRows /
+        // jumpFindPrevUserRow 等）在 68a-first-message-jump-utils.js——主
+        // 文件 vs 工具文件拆分是 maintainability.md 30 KB 阈值的维护动作，
+        // 行为无变化（client-src/ 按文件名升序整段拼接进 bundle，函数名
+        // 共享工厂函数 scope）。
+        // 本 buildCSS 只输出按钮的静态样式（right/bottom 定位由 JS 每次显隐时
+        // 内联设置）。
+        // tweak id / localStorage key（firstMessageJump）保留向后兼容，老用户
+        // 开关状态不丢。
         id: "first-message-jump",
-        name: "回到最早消息按钮",
-        description: "对话区右下角（输入框上方）加一个「回到最早消息」悬浮按钮——点击把当前会话最早一条我发的消息滚到顶部，不用一屏屏往上翻。只在最早消息不在当前视口内时出现，右侧抽屉打开时自动隐藏。",
+        name: "上一条我发的消息按钮（Shift+点击 = 回到最早）",
+        description: "对话区右下角悬浮按钮——单击跳到当前视口内最顶部可见 user 消息的上一条，连续单击可一路向上直到最早一条（按钮始终可见作为提示——v0.9.2 起 rows.length>=2 即显示）。Shift+单击 = 跳过 compact 摘要里的旧 user 行，直接到当前会话的第一条 user 消息（v0.9.2 起跳过 compaction / context 容器）。对称地，DSH 自带「回到底部」按钮的单击行为也被改为：单击 = 下一条 user 行，Shift+单击 = 一键到底——两个按钮都用「单击 step / Shift+单击 极限」的对称模式。",
         configKeys: { enabled: "firstMessageJump", value: "firstMessageJump" },
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.firstMessageJump) return null;
-          return "/* === first-message-jump v0.8.0 : 回到最早消息按钮（样式对齐 DSH 自带「回到底部」按钮）=== */\n" +
+          return "/* === first-message-jump v0.9.2 : 上一条我发的消息按钮（单击上一条 / Shift+单击跳过 compaction 块直达当前会话第一条；样式对齐 DSH 自带「回到底部」按钮）=== */\n" +
             "[data-dsh-ui-tweaks-jump]{" +
               "position:fixed;" +
               "right:20px;" +
@@ -1455,21 +1510,66 @@ window.__ModuleLoader__.load({
       };
     }
 
-    // ===== first-message-jump =====
+// ===== first-message-jump =====
     // ====================================================================
-    // v0.8.0「回到最早消息」按钮 controller：
-    // 在对话区右下角（输入框上方）挂一个悬浮按钮，点击把当前会话最早一条
-    // user 消息（[data-chat-flow-kind="user"] 第一行）滚到滚动区顶部。
+    // v0.9.1：上数第二条卡住 bug 修复 + Shift+点击一键极限（双按钮对称）：
+    //   - 用 topVisible（视口内最顶部可见 user 行）替代 lastVisible 作
+    //     为锚点；v0.9.0 的 lastVisible 锚点在短消息 + 滚到 rows[1] 时
+    //     会因为下方 rows[2..N] 仍可见 → lastVisible 始终是 rows[N]
+    //     → target 始终是 rows[N-1] → 死循环（按钮永不隐藏、永远到
+    //     不了 rows[0]）。topVisible = rows[1] 时 target = rows[0]，
+    //     点击后 topVisible = rows[0] → target = null → 按钮正确隐藏。
+    //   - 单击我的按钮 = 上一条 user 行（topVisible.previous）
+    //   - **Shift+单击**我的按钮 = 一键到 rows[0]（恢复 v0.8.0 的
+    //     "一键回到最早"语义，但用 Shift 修饰，与 step-by-step 共存）
+    //   - 单击原生「回到底部」按钮 = 下一条 user 行（topVisible.next）——
+    //     行为从 v0.9.0 / v0.8.0 的"一键到底"改为"下一条"
+    //   - **Shift+单击**原生「回到底部」按钮 = 一键到 rows[N]（原本的
+    //     "一键到底"语义现在需要 Shift 修饰；DSH 原生 click handler
+    //     不被 preventDefault，让它正常跑就行）
+    //
+    // v0.9.0：「上一条我发的消息」按钮 controller（单向上导航）——
+    // 对话区右下角（输入框上方）挂一个悬浮按钮，**点击 = 跳到当前视口内
+    // 最底部可见的 user 消息的上一条**。连续点击可一路向上导航，最终到
+    // 达最早一条 user 消息（即 v0.8.0 的"回到最早"终点）。
+    // 实现用 lastVisible（视口内最底部可见 user 行）作为锚点——在短
+    // 消息场景下有"上数第二条卡住"bug，v0.9.1 改用 topVisible 修复。
+    //
+    // v0.8.0：原"回到最早消息"按钮——点击一次直达最早一条 user 行。
+    //
+    // 按钮外观：单 SVG ▲（朝上）+ aria-label "上一条我发的消息" +
+    // title "上一条我发的消息（Shift+点击 = 回到最早）"。DOM / 位置 /
+    // 尺寸 / 样式 / ID / CSS 选择器 [data-dsh-ui-tweaks-jump] 全部
+    // 不变；localStorage key `firstMessageJump` 不动，老用户开关状态
+    // 保留。
     //
     // DOM 契约（DSH 当前版本，均为稳定 attribute，不随 CSS module hash 变化）：
     //   - 滚动容器：[data-conversation-scroll]（ConversationRoot.scrollBody）
     //   - 用户消息行：[data-chat-flow-kind="user"]（ChatNodeSeat 的 kind 标记）
     //   - 输入框 seat：[data-composer-seat]（sticky bottom，随输入高度变化）
+    //   - 原生「回到底部」按钮：aria-label "回到底部" / "Back to bottom"
     // 按钮样式由 25-tweaks.js 的 buildCSS 输出；本 controller 只负责挂载 /
-    // 显隐 / 定位 / 点击滚动，与 tweak 开关同生命周期。
+    // 显隐 / 定位 / 点击滚动，与 tweak 开关同生命周期。原生「回到底部」
+    // 按钮的钩子（capture-phase document click listener）也在本文件——
+    // 负责拦截 click 事件并按 Shift 状态分发到"下一条"或"放行原生"。
+    //
+    // 文件拆分（v0.9.x → v0.9.2）：纯 finder / scanner 函数（不依赖
+    // 闭包状态，全部以 port 作参数）抽到 68a-first-message-jump-utils.js
+    // ——主文件从 645 行 / 31.2 KB 降到 ~430 行 / ~21 KB，回到
+    // maintainability.md 30 KB 阈值下。函数名共享工厂函数 scope（client-src/
+    // 按文件名升序整段拼接），不需要 require/import。共享常量 (JUMP_*_SEL
+    // / JUMP_DRAWER_ATTR) 仍由 20-constants.js 单点定义。
     // ====================================================================
 
     function createFirstMessageJumpController() {
+      // 纯 finder/scanner 函数（jumpFindScrollport / jumpAllUserRows /
+      // jumpFindFirstUserRow / jumpFindLastUserRow / jumpIsRowInCompaction /
+      // jumpFindFirstRealUserRow / jumpFindLastVisibleUserRow /
+      // jumpFindTopVisibleUserRow / jumpFindPrevUserRow /
+      // jumpFindNextUserRow / jumpIsDrawerOpen / jumpDrawerWidth）由
+      // 68a-first-message-jump-utils.js 提供——本文件仅保留依赖闭包状态
+      // 的控制器逻辑（定位 / 显隐 / 点击 / 生命周期 / 诊断）。
+
       var button = null;
       var scrollport = null;
       var boundScrollTarget = null;
@@ -1482,43 +1582,7 @@ window.__ModuleLoader__.load({
       var jumpLastNative = null;  // 上次见过的原生「回到底部」按钮 rect（原生缺席时复用，避免跳动）
       var jumpLastPadR = null;    // 上次记录的滚动容器 padding-right（右缩变化时清记忆）
       var jumpLastComposerH = null; // 上次记录的 --dsh-composer-height（底部任务条出现/消失时清记忆）
-
-      /** 当前会话滚动容器：取第一个可见（非零尺寸）的 [data-conversation-scroll]。 */
-      function jumpFindScrollport() {
-        if (typeof document === "undefined") return null;
-        var nodes = document.querySelectorAll(JUMP_SCROLL_SEL);
-        var fallback = null;
-        for (var i = 0; i < nodes.length; i++) {
-          if (fallback === null) fallback = nodes[i];
-          var r = nodes[i].getBoundingClientRect();
-          if (r && r.width > 0 && r.height > 0) return nodes[i];
-        }
-        return fallback;
-      }
-
-      /** 最早一条 user 消息行（DOM 顺序即时间顺序）。 */
-      function jumpFindFirstUserRow(port) {
-        if (!port) return null;
-        return port.querySelector(JUMP_USER_ROW_SEL);
-      }
-
-      function jumpIsDrawerOpen() {
-        return typeof document !== "undefined" &&
-          document.documentElement.hasAttribute(JUMP_DRAWER_ATTR);
-      }
-
-      /**
-       * 当前打开的右侧抽屉宽度（px）。读 html 上的 --active-drawer-width
-       * （task-pool / git-hub 等面板打开时按 FAB 让位协议设置）。无抽屉返回 null。
-       */
-      function jumpDrawerWidth() {
-        if (!jumpIsDrawerOpen()) return null;
-        if (typeof document === "undefined" || !window.getComputedStyle) return null;
-        var cs = window.getComputedStyle(document.documentElement);
-        var raw = cs ? cs.getPropertyValue("--active-drawer-width") : "";
-        var n = raw ? parseFloat(raw) : NaN;
-        return isFinite(n) ? n : null;
-      }
+      var nativeListenerInstalled = false;  // v0.9.1：原生按钮 capture-phase document click listener 是否已挂（防重复）
 
       /**
        * 抽屉是否真的盖住按钮。按钮右缘距视口右侧为 right；抽屉覆盖视口右侧 [0, 抽屉宽]。
@@ -1553,27 +1617,6 @@ window.__ModuleLoader__.load({
         var raw = cs.getPropertyValue("--dsh-composer-height");
         var n = raw ? parseFloat(raw) : NaN;
         return isFinite(n) && n > 0 ? n : 152;
-      }
-
-      /**
-       * 需要显示：最早 user 行**不在**滚动区视口顶部附近的可见带内。
-       * 三种情况：
-       *   - 已滚出视口上方（正常聊天时停在底部，最早消息在上面）→ 显示；
-       *   - 顶部在视口顶部附近带内（JUMP_NEAR_TOP_PX，已能看到起点）→ 隐藏；
-       *   - 顶部明显低于视口顶部（前面垫了大段上下文/压缩块）→ 显示。
-       * 可见带 = [portTop - 8, portTop + JUMP_NEAR_TOP_PX]。
-       * 右侧抽屉是否真的盖住按钮由 jumpUpdate 里 jumpCoveredByDrawer 判断
-       * （conversation-shift 已让位时按钮在抽屉左边，不需要隐藏）。
-       */
-      function jumpShouldShow(port, row) {
-        if (!port || !row) return false;
-        var portRect = port.getBoundingClientRect();
-        var rowRect = row.getBoundingClientRect();
-        if (!portRect || !rowRect) return false;
-        var rowTop = rowRect.top;
-        var bandTop = portRect.top - 8;
-        var bandBottom = portRect.top + JUMP_NEAR_TOP_PX;
-        return rowTop < bandTop || rowTop > bandBottom;
       }
 
       /** 原生「回到底部」按钮：按 aria-label 匹配（zh/en），找不到返回 null。 */
@@ -1693,8 +1736,19 @@ window.__ModuleLoader__.load({
           jumpLastNative = null;
         }
         if (!button && typeof document !== "undefined" && document.body) jumpCreateButton();
-        var row = jumpFindFirstUserRow(scrollport);
-        var show = jumpShouldShow(scrollport, row);
+        // v0.9.1：钩原生「回到底部」按钮（幂等）。document 上挂一次 capture-phase
+        // click listener；命中原生按钮时按 Shift 状态分发到"下一条"或"放行原生"。
+        jumpHookNativeButton();
+        // v0.9.2：可见性放宽——只要 rows.length >= 2 就显示（短会话也可见）。
+        // v0.9.1 用 `target !== null` 判断：topVisible === firstRow 时按钮
+        // 隐藏——但这导致短会话（2 条 user 行）底部 TodoList 卡片出现时按钮
+        // 直接不出现（用户反馈"老问题"）；topVisible === firstRow 时其实
+        // jumpToPrev 是 no-op（已在最顶），但按钮仍可见作为"导航面板存在"的
+        // 视觉提示；Shift+点击仍能到最顶。锚点 topVisible（v0.9.1）替代
+        // lastVisible（v0.9.0）——修复"上数第二条卡住"bug 这点不变。
+        var allRows = jumpAllUserRows(scrollport);
+        var target = jumpFindPrevUserRow(scrollport);
+        var show = (allRows.length >= 2);
         if (show) jumpPositionButton();
         // 抽屉遮挡检查：conversation-shift 已让位时不遮挡 → 保持可见
         if (show && jumpIsDrawerOpen() && jumpCoveredByDrawer()) show = false;
@@ -1739,22 +1793,167 @@ window.__ModuleLoader__.load({
         }, 120);
       }
 
-      /** 点击：把最早 user 行滚到滚动区顶部（留 JUMP_TOP_PADDING 呼吸），无则回顶。 */
-      function jumpToFirst() {
+      /**
+       * 点击：跳到"上一条"user 行（jumpFindPrevUserRow 计算）。连续点击
+       * 可一路向上，最终到达 firstRow——此时按钮自动隐藏（target === null）。
+       * v0.9.1：锚点从 lastVisible 改为 topVisible，修复"上数第二条卡住"
+       * bug（详见 jumpFindPrevUserRow 注释）。
+       */
+      function jumpToPrev() {
         var port = jumpFindScrollport();
         if (!port) return;
-        var row = jumpFindFirstUserRow(port);
+        var row = jumpFindPrevUserRow(port);
+        if (!row) return; // 已无路可上（极少见，jumpUpdate 也会隐藏按钮）
+        var portRect = port.getBoundingClientRect();
+        var rowRect = row.getBoundingClientRect();
         var target = 0;
-        if (row) {
-          var portRect = port.getBoundingClientRect();
-          var rowRect = row.getBoundingClientRect();
-          if (portRect && rowRect) {
-            var off = rowRect.top - portRect.top + port.scrollTop - JUMP_TOP_PADDING;
-            if (off > 0) target = off;
-          }
+        if (portRect && rowRect) {
+          var off = rowRect.top - portRect.top + port.scrollTop - JUMP_TOP_PADDING;
+          if (off > 0) target = off;
         }
         port.scrollTop = target;
         jumpScheduleUpdate();
+      }
+
+      /**
+       * v0.9.1：Shift+单击我的按钮 → 一键到 rows[0]（最早一条 user 行）。
+       * 与 v0.8.0 的「jumpToFirst」逻辑一致——把 firstRow 滚到视口顶部
+       * + JUMP_TOP_PADDING。无 firstRow（空对话）则回顶（scrollTop=0）。
+       * v0.9.2：firstRow 取的是「跳过 compaction 块后的第一条」——
+       * jumpFindFirstRealUserRow()。这样 Shift+点击直达"当前会话的
+       * 第一条"，而不是 compact 摘要里的旧 user 行（v0.9.1 落到了
+       * compaction 块下方的某条 user 行——bug）。
+       */
+      function jumpToFirst() {
+        var port = jumpFindScrollport();
+        if (!port) return;
+        var row = jumpFindFirstRealUserRow(port);
+        if (!row) return;
+        var portRect = port.getBoundingClientRect();
+        var rowRect = row.getBoundingClientRect();
+        var target = 0;
+        if (portRect && rowRect) {
+          var off = rowRect.top - portRect.top + port.scrollTop - JUMP_TOP_PADDING;
+          if (off > 0) target = off;
+        }
+        port.scrollTop = target;
+        jumpScheduleUpdate();
+      }
+
+      /**
+       * v0.9.2：找"当前会话的第一条 user 行"——跳过 compaction / context
+       * 容器里的 user 行。详见 jumpIsRowInCompaction。
+       * 兜底：所有 user 行都在 compaction 里（极端情况）→ 返回 DOM 顺序的
+       * 第一条（保留 v0.9.1 行为，宁可给一个错的目标也不要 no-op）。
+       */
+      function jumpFindFirstRealUserRow(port) {
+        var rows = jumpAllUserRows(port);
+        for (var i = 0; i < rows.length; i++) {
+          if (!jumpIsRowInCompaction(rows[i])) {
+            return rows[i];
+          }
+        }
+        return rows.length > 0 ? rows[0] : null;
+      }
+
+      /**
+       * v0.9.1：单击原生「回到底部」按钮（无 Shift）→ "下一条"user 行
+       * （jumpFindNextUserRow 计算）。几何与 jumpToPrev 完全对称——
+       * 把 target 滚到视口顶部 + JUMP_TOP_PADDING。锚点都用 topVisible：
+       *   - 用户在中间（视口内含多条 user 行）→ 滚到 topVisible.next
+       *   - 用户在顶部（只 rows[0] 可见）→ 滚到 rows[1]
+       *   - 用户在底部（只 rows[N] 可见）→ topVisible === lastRow → target = null → no-op
+       *   - 视口内无 user 行（页面刚打开 / 在对话外空白区）→ 滚到 rows[0] 作起点
+       */
+      function jumpToNext() {
+        var port = jumpFindScrollport();
+        if (!port) return;
+        var row = jumpFindNextUserRow(port);
+        if (!row) return;
+        var portRect = port.getBoundingClientRect();
+        var rowRect = row.getBoundingClientRect();
+        var target = 0;
+        if (portRect && rowRect) {
+          var off = rowRect.top - portRect.top + port.scrollTop - JUMP_TOP_PADDING;
+          if (off > 0) target = off;
+        }
+        port.scrollTop = target;
+        jumpScheduleUpdate();
+      }
+
+      /**
+       * v0.9.1：我的按钮的 click 处理器。
+       *   - e.shiftKey === true  → jumpToFirst()（一键到 rows[0]）
+       *   - e.shiftKey === false → jumpToPrev()（step-by-step 上一条）
+       * 浏览器在 click 事件上对 shift 键的判定由 MouseEvent.shiftKey 给
+       * 出——不需要自己跟踪 keydown/keyup。Edge case：合成事件（脚本
+       * dispatchEvent）可能 shiftKey=false 但本意是"Shift+单击"——这
+       * 是正常 DSH 用户流程不会触发的场景，忽略即可。
+       */
+      function jumpOnButtonClick(e) {
+        if (e && e.shiftKey) {
+          jumpToFirst();
+        } else {
+          jumpToPrev();
+        }
+      }
+
+      /**
+       * v0.9.1：原生「回到底部」按钮的 capture-phase click 钩子。
+       * 监听器挂在 document 上（capture phase），先于任何 bubble phase
+       * 监听器（包括 DSH 在原生 button 上的 onClick 与可能存在的祖先
+       * delegation）触发——这样我们有"否决"权：
+       *   - e.shiftKey === true → 不 preventDefault，让 DSH 原生 handler
+       *     跑（它的语义本来就是"一键到底"）→ 行为退化为 v0.8.0
+       *   - e.shiftKey === false → preventDefault + stopImmediatePropagation
+       *     阻止原生 handler 跑，改由 jumpToNext() 做"下一条"导航
+       *
+       * 命中判定靠手动 walk 父链找 aria-label——target 可能是原生 button
+       * 内部的子元素（SVG 等），不依赖 closest()（保持 ES5-only 风格）。
+       * document listener 只挂一次（nativeListenerInstalled flag），原生
+       * button 被 DSH 重渲时不需要重新挂——listener 一直在 document 上，
+       * 新 button 也会被覆盖。
+       */
+      function jumpOnNativeClick(e) {
+        if (!e || !e.target) return;
+        var target = e.target;
+        var foundNative = false;
+        // Walk up 父链找 aria-label 匹配的 button（含其子元素被点的情况）
+        while (target && target.nodeType === 1) {
+          var label = (typeof target.getAttribute === "function")
+            ? target.getAttribute("aria-label")
+            : null;
+          if (label === "回到底部" || label === "Back to bottom") {
+            foundNative = true;
+            break;
+          }
+          target = target.parentElement;
+        }
+        if (!foundNative) return;
+        if (e.shiftKey) {
+          // Shift+点击原生按钮 = 一键到底（DSH 原生 handler 跑就行）
+          return;
+        }
+        // 单击原生按钮 = 拦截，由我们做"下一条"
+        if (typeof e.preventDefault === "function") e.preventDefault();
+        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+        jumpToNext();
+      }
+
+      /**
+       * v0.9.1：在 document 上挂一次 capture-phase click listener。
+       * 幂等：nativeListenerInstalled flag 防止重复挂。
+       * 调用时机：jumpUpdate() 内每次都尝试挂——若已挂则立刻返回；这样
+       * 既能早期挂上（start 后首次 jumpUpdate），又能容错（理论上
+       * stop() 卸载后 start() 再挂）。
+       */
+      function jumpHookNativeButton() {
+        if (typeof document === "undefined") return;
+        if (nativeListenerInstalled) return;
+        try {
+          document.addEventListener("click", jumpOnNativeClick, true);
+          nativeListenerInstalled = true;
+        } catch (e) { /* 静默：极端环境 document 不可写 */ }
       }
 
       function jumpCreateButton() {
@@ -1763,10 +1962,10 @@ window.__ModuleLoader__.load({
         button.type = "button";
         button.id = JUMP_BTN_ID;
         button.setAttribute("data-dsh-ui-tweaks-jump", "");
-        button.setAttribute("aria-label", "回到最早消息");
-        button.setAttribute("title", "回到最早消息");
-        button.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5L8 6l4.5 4.5"/></svg>';
-        button.addEventListener("click", jumpToFirst);
+        button.setAttribute("aria-label", JUMP_LABEL);
+        button.setAttribute("title", JUMP_BUTTON_TITLE);  // v0.9.1：title 加 Shift 修饰提示
+        button.innerHTML = JUMP_SVG_UP;
+        button.addEventListener("click", jumpOnButtonClick);  // v0.9.1：分发到 jumpOnButtonClick
         document.body.appendChild(button);
       }
 
@@ -1812,6 +2011,11 @@ window.__ModuleLoader__.load({
           boundScrollTarget = null;
         }
         if (typeof window !== "undefined") window.removeEventListener("resize", jumpOnResize);
+        // v0.9.1：拆掉原生按钮的 capture-phase click listener（幂等：未挂也安全）
+        if (typeof document !== "undefined" && nativeListenerInstalled) {
+          try { document.removeEventListener("click", jumpOnNativeClick, true); } catch (e) { /* 静默 */ }
+          nativeListenerInstalled = false;
+        }
         if (button && button.parentNode) button.parentNode.removeChild(button);
         button = null;
         scrollport = null;
@@ -1824,16 +2028,35 @@ window.__ModuleLoader__.load({
       /** 诊断快照（window.__dshUiTweaks.firstMessageJump() 用）。 */
       function getState() {
         var port = jumpFindScrollport();
-        var row = jumpFindFirstUserRow(port);
+        var rows = jumpAllUserRows(port);
+        var firstRow = rows.length > 0 ? rows[0] : null;
+        var lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
+        var topVisible = jumpFindTopVisibleUserRow(port);  // v0.9.1：导航锚点
+        var lastVisible = jumpFindLastVisibleUserRow(port);  // 诊断：v0.9.0 旧锚点（保留对照）
+        var prevTarget = jumpFindPrevUserRow(port);
+        var nextTarget = jumpFindNextUserRow(port);  // v0.9.1：原生按钮单击目标
+        function rowInfo(r) {
+          if (!r || !port) return null;
+          var rt = r.getBoundingClientRect();
+          return {
+            kind: r.getAttribute("data-chat-flow-kind"),
+            topOffset: rt.top - port.getBoundingClientRect().top
+          };
+        }
         return {
           running: isRunning,
           scrollport: port ? { tag: port.tagName, cls: (typeof port.className === "string") ? port.className : "" } : null,
-          firstUserRow: row ? {
-            kind: row.getAttribute("data-chat-flow-kind"),
-            topOffset: row.getBoundingClientRect().top - (port ? port.getBoundingClientRect().top : 0)
-          } : null,
+          totalUserRows: rows.length,
+          firstUserRow: rowInfo(firstRow),
+          lastUserRow: rowInfo(lastRow),
+          topVisibleUserRow: rowInfo(topVisible),    // v0.9.1：当前锚点
+          lastVisibleUserRow: rowInfo(lastVisible),  // 诊断：v0.9.0 旧锚点（保留对照）
+          targetRow: rowInfo(prevTarget),            // 我的按钮单击 → target
+          nextUserRow: rowInfo(nextTarget),          // v0.9.1：原生按钮单击 → target
+          scrollTop: port ? port.scrollTop : 0,
           visible: visible,
-          drawerOpen: jumpIsDrawerOpen()
+          drawerOpen: jumpIsDrawerOpen(),
+          nativeHooked: nativeListenerInstalled      // v0.9.1：原生按钮 capture-phase listener 是否已挂
         };
       }
 
@@ -1843,9 +2066,267 @@ window.__ModuleLoader__.load({
         getState: getState,
         get running() { return isRunning; }
       };
+    }// ===== first-message-jump utils =====
+    // ====================================================================
+    // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 `port` 作参
+    // 数）。从 68-first-message-jump.js 拆出（v0.9.0 → v0.9.2 三轮迭
+    // 代累积后主文件 645 行 / 31.2 KB，超过 maintainability.md 的 30 KB
+    // 阈值）。拆分后主文件回到 ~430 行 / ~21 KB 阈值下，utils 本文件
+    // ~220 行 / ~9 KB。
+    //
+    // 与主文件的关系：所有函数共享一个工厂函数体（client-src/*.js 按
+    // 文件名升序整段拼接进 lib/client.js），所以 jump* 函数名在主文
+    // 件里仍可直接调用。共享常量 (JUMP_SCROLL_SEL / JUMP_USER_ROW_SEL /
+    // JUMP_DRAWER_ATTR) 由 20-constants.js 单点定义。
+    //
+    // 函数清单：
+    //   - jumpFindScrollport         滚动容器查询
+    //   - jumpAllUserRows            当前会话所有 user 行（DOM 顺序，
+    //                                 转静态数组避免 NodeList live 错位）
+    //   - jumpFindFirstUserRow       firstRow（DOM 顺序最早；v0.9.2 仍
+    //                                 保留作为内部锚点）
+    //   - jumpFindLastUserRow        lastRow
+    //   - jumpIsRowInCompaction      v0.9.2：判断 row 是否嵌在
+    //                                 compaction / context 容器里
+    //   - jumpFindFirstRealUserRow   v0.9.2：跳过 compact 块的"当前会话
+    //                                 第一条 user 行"——Shift+点击的终点
+    //   - jumpFindLastVisibleUserRow 视口内最底部可见 user 行（v0.9.0
+    //                                 锚点，保留作诊断对照）
+    //   - jumpFindTopVisibleUserRow  v0.9.1 起当前锚点：视口内最顶部可见
+    //                                 user 行——v0.9.0 的 lastVisible 在
+    //                                 短消息 + 滚到 rows[1] 时会卡死
+    //                                 （下方 rows[2..N] 仍可见 → 死循环）
+    //   - jumpFindPrevUserRow        我的按钮单击 target（v0.9.1 锚点
+    //                                 改为 topVisible 修复"上数第二条卡住"
+    //                                 bug）
+    //   - jumpFindNextUserRow        v0.9.1：原生「回到底部」按钮单击
+    //                                 target——几何与 prev 完全对称
+    //   - jumpIsDrawerOpen           右侧抽屉是否打开（attr 探测）
+    //   - jumpDrawerWidth            抽屉覆盖到视口右侧的宽度（px）——读
+    //                                 --active-drawer-width
+    // ====================================================================
+
+    /** 当前会话滚动容器：取第一个可见（非零尺寸）的 [data-conversation-scroll]。 */
+    function jumpFindScrollport() {
+      if (typeof document === "undefined") return null;
+      var nodes = document.querySelectorAll(JUMP_SCROLL_SEL);
+      var fallback = null;
+      for (var i = 0; i < nodes.length; i++) {
+        if (fallback === null) fallback = nodes[i];
+        var r = nodes[i].getBoundingClientRect();
+        if (r && r.width > 0 && r.height > 0) return nodes[i];
+      }
+      return fallback;
     }
 
-    // ===== debug-api =====
+    /**
+     * 当前会话所有 user 行（DOM 顺序即时间顺序）。每次调用实时查询，
+     * 不缓存（DOM 重建时引用失效；用户消息流式生成 / 删除 / React 重渲都
+     * 会让旧引用作废）。
+     */
+    function jumpAllUserRows(port) {
+      if (!port) return [];
+      var nodes = port.querySelectorAll(JUMP_USER_ROW_SEL);
+      // NodeList 是 live 的，转成静态数组避免迭代中 DOM 变化引起索引错位
+      var arr = [];
+      for (var i = 0; i < nodes.length; i++) arr.push(nodes[i]);
+      return arr;
+    }
+
+    /** 最早一条 user 行（firstRow），无则 null。 */
+    function jumpFindFirstUserRow(port) {
+      var rows = jumpAllUserRows(port);
+      return rows.length > 0 ? rows[0] : null;
+    }
+
+    /**
+     * v0.9.2：判断一个 user 行是否"嵌在" compaction / context 容器里。
+     * 沿父链向上走，遇到的第一个有 `data-chat-flow-kind` 属性的祖先
+     * 若属于 compaction / manual-compaction / context 之一，即视为嵌
+     * 在被压缩或注入的上下文里——不当作"当前会话真实的第一条"。
+     *
+     * 用途：jumpFindFirstUserRow 用它跳过 compact 块里的 user 行———
+     * 用户期望的"第一条我发的消息"是 compaction 块之后的当前会话起点，
+     * 而不是 compact 摘要里旧会话的 user 行（v0.9.1 这里返回 compaction
+     * 里那条——bug）。
+     */
+    function jumpIsRowInCompaction(row) {
+      if (!row) return false;
+      var parent = row.parentElement;
+      while (parent && parent !== document.body && parent.nodeType === 1) {
+        var kind = (typeof parent.getAttribute === "function")
+          ? parent.getAttribute("data-chat-flow-kind")
+          : null;
+        if (kind === "compaction" || kind === "manual-compaction" || kind === "context") {
+          return true;
+        }
+        parent = parent.parentElement;
+      }
+      return false;
+    }
+
+    /** 最近一条 user 行（lastRow），无则 null。 */
+    function jumpFindLastUserRow(port) {
+      var rows = jumpAllUserRows(port);
+      return rows.length > 0 ? rows[rows.length - 1] : null;
+    }
+
+    /**
+     * 找"视口内最底部可见的 user 行"——与当前视口相交、且在 DOM 顺序
+     * 中位置最靠后的那一条。可见判定 = rect 与 viewport rect 相交：
+     *   row.bottom > portTop && row.top < portBottom
+     * 这是"至少有一像素在视口内"的真正相交判定，比 v0.8.0 的"行顶
+     * 在 viewport 顶部 200px 带内"更精确——可以正确处理"row 顶部在
+     * viewport 中下部但 row 本体仍可见"的情况。
+     * 视口内无 user 行 → 返回 null。
+     * v0.9.1：仍保留此函数——供 `getState()` 诊断使用 + 上数第二条
+     * 死循环场景的旧逻辑参考。
+     */
+    function jumpFindLastVisibleUserRow(port) {
+      if (!port) return null;
+      var rows = jumpAllUserRows(port);
+      if (rows.length === 0) return null;
+      var portRect = port.getBoundingClientRect();
+      if (!portRect || portRect.height <= 0) return null;
+      var lastVisible = null;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i].getBoundingClientRect();
+        if (!r || r.height <= 0) continue;
+        // 行顶在视口下方之上（未完全滚出底部） + 行底在视口顶部之下（未完全滚出顶部）
+        if (r.top < portRect.bottom && r.bottom > portRect.top) {
+          lastVisible = rows[i];
+        } else if (r.top >= portRect.bottom) {
+          // 已超过视口底部，且 DOM 顺序后续行只会更靠后 → 后续都不可能可见，break
+          break;
+        }
+      }
+      return lastVisible;
+    }
+
+    /**
+     * v0.9.1：找"视口内最顶部可见的 user 行"——与当前视口相交、且在
+     * DOM 顺序中位置最靠前的那一条。可见判定同 lastVisible。
+     * 视口内无 user 行 → 返回 null。
+     *
+     * 与 `jumpFindLastVisibleUserRow` 的区别：topVisible 是 DOM 顺序
+     * 第一个可见的（最靠顶），lastVisible 是最后一个可见的（最靠底）。
+     * v0.9.1 把 step-by-step 导航的锚点从 lastVisible 改为 topVisible
+     * ——lastVisible 在短消息 + 滚到 rows[1] 时会卡死（因为下方 rows
+     * [2..N] 仍可见 → lastVisible 始终是 rows[N]），topVisible 没有
+     * 这个问题（topVisible 始终是当前视口顶部那条 user 行）。
+     */
+    function jumpFindTopVisibleUserRow(port) {
+      if (!port) return null;
+      var rows = jumpAllUserRows(port);
+      if (rows.length === 0) return null;
+      var portRect = port.getBoundingClientRect();
+      if (!portRect || portRect.height <= 0) return null;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i].getBoundingClientRect();
+        if (!r || r.height <= 0) continue;
+        // 行顶在视口下方之上（未完全滚出底部） + 行底在视口顶部之下（未完全滚出顶部）
+        if (r.top < portRect.bottom && r.bottom > portRect.top) {
+          return rows[i];
+        } else if (r.top >= portRect.bottom) {
+          // 已超过视口底部 → 后续都不可能可见，break
+          break;
+        }
+      }
+      return null;
+    }
+
+    /**
+     * 找"上一条"——按钮点击的 target 行（v0.9.1 用 topVisible）：
+     *   - 视口内最顶部可见 user 行 = topVisible
+     *     - 若 topVisible 存在：target = topVisible 的 DOM 顺序上一条
+     *     - 若 topVisible 不存在（视口在所有 user 之上）：target = lastRow（首次入口）
+     *   - 若 topVisible === firstRow：target = null（已在最早，无路可上）
+     *
+     * v0.9.1 改用 topVisible 的关键修复：v0.9.0 用 lastVisible 时，
+     * rows[1] 已在视口顶部但 rows[2..N] 仍可见 → lastVisible 始终是
+     * rows[N] → target 始终是 rows[N-1] → 死循环（按钮永不隐藏、
+     * 永远到不了 rows[0]）。改用 topVisible 后：
+     *   topVisible = rows[1] → target = rows[0]
+     *   点击 → 滚到 rows[0] → topVisible = rows[0] → target = null → 按钮隐藏 ✓
+     */
+    function jumpFindPrevUserRow(port) {
+      var rows = jumpAllUserRows(port);
+      if (rows.length === 0) return null;
+      var firstRow = rows[0];
+      var lastRow = rows[rows.length - 1];
+      var topVisible = jumpFindTopVisibleUserRow(port);
+      if (!topVisible) {
+        // 视口内无 user 行：跳到最后一条作为入口（用户在对话上方空白区）
+        return lastRow;
+      }
+      if (topVisible === firstRow) {
+        // 已是最早一条，没有"上一条"
+        return null;
+      }
+      // 找 topVisible 在 rows 中的索引，返回前一条
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i] === topVisible) {
+          return i > 0 ? rows[i - 1] : null;
+        }
+      }
+      // 兜底：理论上不可达（topVisible 是 querySelectorAll 结果之一）
+      return null;
+    }
+
+    /**
+     * v0.9.1：找"下一条"——原生「回到底部」按钮单击拦截时的 target 行。
+     * 锚点同样用 topVisible（与 prev 对称）：
+     *   - 视口内最顶部可见 user 行 = topVisible
+     *     - 若 topVisible 存在：target = topVisible 的 DOM 顺序下一条
+     *     - 若 topVisible 不存在（视口在所有 user 之上/之下）：
+     *       target = firstRow（"从对话起点开始往下一条"——自然入口）
+     *   - 若 topVisible === lastRow：target = null（已在最晚，无路可下）
+     *
+     * 与 prev 对称：prev 用 lastRow 作为"无可见"时的入口（页面刚打开
+     * 时跳到最新一条作为起点）；next 用 firstRow（"从对话起点开始往
+     * 下走"——起点即入口）。语义对称。
+     */
+    function jumpFindNextUserRow(port) {
+      var rows = jumpAllUserRows(port);
+      if (rows.length === 0) return null;
+      var firstRow = rows[0];
+      var lastRow = rows[rows.length - 1];
+      var topVisible = jumpFindTopVisibleUserRow(port);
+      if (!topVisible) {
+        // 视口内无 user 行：从对话起点开始（firstRow 本身）作为入口
+        return firstRow;
+      }
+      if (topVisible === lastRow) {
+        // 已是最晚一条，没有"下一条"
+        return null;
+      }
+      // 找 topVisible 在 rows 中的索引，返回下一条
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i] === topVisible) {
+          return i < rows.length - 1 ? rows[i + 1] : null;
+        }
+      }
+      // 兜底：理论上不可达
+      return null;
+    }
+
+    function jumpIsDrawerOpen() {
+      return typeof document !== "undefined" &&
+        document.documentElement.hasAttribute(JUMP_DRAWER_ATTR);
+    }
+
+    /**
+     * 当前打开的右侧抽屉宽度（px）。读 html 上的 --active-drawer-width
+     * （task-pool / git-hub 等面板打开时按 FAB 让位协议设置）。无抽屉返回 null。
+     */
+    function jumpDrawerWidth() {
+      if (!jumpIsDrawerOpen()) return null;
+      if (typeof document === "undefined" || !window.getComputedStyle) return null;
+      var cs = window.getComputedStyle(document.documentElement);
+      var raw = cs ? cs.getPropertyValue("--active-drawer-width") : "";
+      var n = raw ? parseFloat(raw) : NaN;
+      return isFinite(n) ? n : null;
+    }    // ===== debug-api =====
     // ====================================================================
     // 诊断 API（暴露 window.__dshUiTweaks）
     // ====================================================================

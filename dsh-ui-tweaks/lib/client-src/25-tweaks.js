@@ -212,22 +212,37 @@
         }
       },
       {
-        // v0.8.0 新增。用户反馈：长会话里想回看自己最早发的消息，得一屏屏往上翻。
-        // 这个 tweak 在对话区右下角（输入框上方）挂一个「回到最早消息」悬浮按钮，
-        // 点击把当前会话最早一条 user 消息（[data-chat-flow-kind="user"] 第一行）
-        // 滚到滚动区顶部。纯 JS DOM 探测（[data-conversation-scroll] 滚动容器 +
-        // [data-composer-seat] 输入框），不依赖 DSH CSS module hash。
-        // 按钮的挂载 / 显隐 / 点击滚动由 68-first-message-jump.js 的
-        // createFirstMessageJumpController 负责；本 buildCSS 只输出按钮的静态样式
-        // （right/bottom 定位由 JS 每次显隐时内联设置）。
+        // v0.8.0 新增「回到最早消息」（v0.8.0 单击直达）。
+        // v0.9.0 改为「上一条」单向上导航（v0.9.0 用 lastVisible 作锚点，
+        //   短消息场景下"上数第二条"卡死——见 jumpFindPrevUserRow 注释）。
+        // v0.9.1：上数第二条 bug 修复（lastVisible → topVisible）+ Shift+点击
+        //   一键回到最早 + 原生「回到底部」按钮同步改为单击下一条 / Shift+点击
+        //   一键到底。
+        // v0.9.2：可见性放宽（rows.length >= 2 即显示，短会话也可见）+ Shift+
+        //   点击跳过 compaction 块直达"当前会话第一条"（不再落到 compact
+        //   摘要里的旧 user 行）。
+        // 按钮形态 / 位置 / 尺寸 / ID / CSS 选择器 / 内部 path 全不变；
+        // aria-label 保持单一语义「上一条我发的消息」；title 加 Shift 修饰
+        // 提示供悬停时查看。
+        // 按钮的挂载 / 显隐 / 定位 / 点击滚动 / 原生按钮 capture-phase 钩子
+        // 由 68-first-message-jump.js 的 createFirstMessageJumpController 负责；
+        // 纯 finder/scanner 函数（jumpFindScrollport / jumpAllUserRows /
+        // jumpFindPrevUserRow 等）在 68a-first-message-jump-utils.js——主
+        // 文件 vs 工具文件拆分是 maintainability.md 30 KB 阈值的维护动作，
+        // 行为无变化（client-src/ 按文件名升序整段拼接进 bundle，函数名
+        // 共享工厂函数 scope）。
+        // 本 buildCSS 只输出按钮的静态样式（right/bottom 定位由 JS 每次显隐时
+        // 内联设置）。
+        // tweak id / localStorage key（firstMessageJump）保留向后兼容，老用户
+        // 开关状态不丢。
         id: "first-message-jump",
-        name: "回到最早消息按钮",
-        description: "对话区右下角（输入框上方）加一个「回到最早消息」悬浮按钮——点击把当前会话最早一条我发的消息滚到顶部，不用一屏屏往上翻。只在最早消息不在当前视口内时出现，右侧抽屉打开时自动隐藏。",
+        name: "上一条我发的消息按钮（Shift+点击 = 回到最早）",
+        description: "对话区右下角悬浮按钮——单击跳到当前视口内最顶部可见 user 消息的上一条，连续单击可一路向上直到最早一条（按钮始终可见作为提示——v0.9.2 起 rows.length>=2 即显示）。Shift+单击 = 跳过 compact 摘要里的旧 user 行，直接到当前会话的第一条 user 消息（v0.9.2 起跳过 compaction / context 容器）。对称地，DSH 自带「回到底部」按钮的单击行为也被改为：单击 = 下一条 user 行，Shift+单击 = 一键到底——两个按钮都用「单击 step / Shift+单击 极限」的对称模式。",
         configKeys: { enabled: "firstMessageJump", value: "firstMessageJump" },
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.firstMessageJump) return null;
-          return "/* === first-message-jump v0.8.0 : 回到最早消息按钮（样式对齐 DSH 自带「回到底部」按钮）=== */\n" +
+          return "/* === first-message-jump v0.9.2 : 上一条我发的消息按钮（单击上一条 / Shift+单击跳过 compaction 块直达当前会话第一条；样式对齐 DSH 自带「回到底部」按钮）=== */\n" +
             "[data-dsh-ui-tweaks-jump]{" +
               "position:fixed;" +
               "right:20px;" +
