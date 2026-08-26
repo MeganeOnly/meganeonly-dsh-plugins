@@ -31,6 +31,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **配置保存写到错位置**：`POST /api/git-hub/config` 修改扫描根目录后，实际写入路径与读取路径不一致——写入到了源仓库根的 `.git-hub-config.json`，但读取时却到 web profile 根的 `.git-hub-config.json` 去找，导致下一次启动读到默认根列表而非用户上次保存的内容，前端表现为「保存按钮无效」。根因：`PROFILE_ROOT` 原本用 `import.meta.url` 上溯 3 层推导，但 DSH loader 会按 cordis patch id 在 `node_modules\<id>` 建 junction 指向源仓库目录，Node ESM 解析 junction 是透明的，`import.meta.url` 拿到的是真实源路径（源仓库内的 `dsh-git-hub/lib/index.js`），上溯 3 层落到源仓库根而非 web profile 根。Fix：改用 `ctx.baseUrl`（loader 注入的 `file://` profile 根 URL，`fileURLToPath` 直接拿到 profile 根），与 `dsh-peak-hour-lock/lib/index.js` 的 `profileRoot(ctx)` 同款。`PROFILE_ROOT` 顶层常量与 `configPath` 顶层常量一并删除；`loadConfig` / `saveConfig` 改在 `apply(ctx)` 闭包内按 `ctx` 构造（被 `getAllRepos` / `listChangedRepos` / `listMergeableRepos` / `/api/git-hub/config` handler 共用的 4 处调用方都在同一闭包，无需改调用代码）。修复后用户重启 DSH 即可。
+
 ### 维护
 
 - **80-controller.js 二级拆分**：v0.5.0 之后，原 `80-controller.js` 单文件 497 行 / 24 KB，已顶到通用规范 § 八的 50-500 行软目标上限。同 B0-view.js 拆分前一样，AI 局部改多次因全文件过大误伤同变量引用。沿"按域拆分"思路收敛：

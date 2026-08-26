@@ -36,8 +36,25 @@
 import { execFile, execFileSync } from 'node:child_process'
 import { readFile, writeFile, rename, readdir, stat } from 'node:fs/promises'
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { join, sep, basename, dirname } from 'node:path'
+import { join, sep, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+/**
+ * 解析 profile 根目录。
+ * 关键陷阱：DSH loader 启动时按 cordis patch 的 id 在 node_modules\<id>
+ * 建 junction 指向源仓库目录；Node ESM 在 junction 后是透明的，
+ * import.meta.url 拿到的是真实源路径（源仓库内的 dsh-git-hub/lib/index.js），
+ * 不能再用上溯 N 层来推导 profile 根。
+ * 用 ctx.baseUrl（loader 注入的 file:// profile 根 URL）是稳态解——
+ *   ctx.baseUrl 形如 "file:///<profile-root>/"，fileURLToPath 直接拿到 profile 根。
+ */
+function resolveProfileRoot(ctx) {
+  const base = ctx && ctx.baseUrl
+  if (typeof base === 'string' && base.startsWith('file://')) return fileURLToPath(base)
+  if (typeof base === 'string' && base.length > 0) return base
+  // 兜底：旧 profileLoader 语义（path-to-file-loader + cwd）— 已不期望命中
+  return process.cwd()
+}
 
 export const name = 'git-hub'
 
@@ -47,8 +64,6 @@ export const inject = ['webServer']
  * 常量
  * ------------------------------------------------------------------ */
 
-const PROFILE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
-// 配置文件位于 web profile 根（F:\.dsh\profiles\web\.git-hub-config.json）
 const CONFIG_FILENAME = '.git-hub-config.json'
 
 const DEFAULT_SCAN_ROOTS = ['F:\\AllWorkSpace', 'E:\\']
@@ -166,33 +181,13 @@ function isDirectory(p) {
 
 /* ------------------------------------------------------------------ *
  * 配置持久化
+ *
+ * 关键点：configPath 必须在 apply(ctx) 闭包里根据 ctx.baseUrl 计算
+ * （不能在 module 顶层按 import.meta.url 上溯 N 层——junction 模式下
+ * import.meta.url 是真实源路径，会上溯到错位置；详见 resolveProfileRoot 注释）。
  * ------------------------------------------------------------------ */
 
-const configPath = join(PROFILE_ROOT, CONFIG_FILENAME)
-
-async function loadConfig() {
-  try {
-    const raw = await readFile(configPath, 'utf8')
-    const parsed = JSON.parse(raw)
-    const roots = Array.isArray(parsed.scanRoots)
-      ? parsed.scanRoots.map(normalizePath).filter(Boolean)
-      : []
-    return { scanRoots: roots.length > 0 ? roots : DEFAULT_SCAN_ROOTS }
-  } catch {
-    return { scanRoots: DEFAULT_SCAN_ROOTS }
-  }
-}
-
-async function saveConfig(scanRoots) {
-  const cleaned = Array.isArray(scanRoots)
-    ? scanRoots.map(normalizePath).filter(Boolean)
-    : []
-  const next = { scanRoots: cleaned.length > 0 ? cleaned : DEFAULT_SCAN_ROOTS }
-  const tmp = configPath + '.tmp'
-  await writeFile(tmp, JSON.stringify(next, null, 2), 'utf8')
-  await rename(tmp, configPath)
-  return next
-}
+// 留空占位：loadConfig/saveConfig 实际定义在 apply(ctx) 闭包内（见下）
 
 /* ------------------------------------------------------------------ *
  * RepoScanner：递归找 .git 目录（跳过白名单）
@@ -397,6 +392,36 @@ export function apply(ctx) {
   const toolAvailable = existsSync(DEFAULT_PUSH_TOOL)
   if (!toolAvailable) {
     console.warn('[dsh-git-hub] daily-push.cjs not found at', DEFAULT_PUSH_TOOL, '; push buttons will be disabled')
+  }
+
+  // 配置持久化路径（按 ctx.baseUrl 解析 profile 根；不能用 import.meta.url 上溯——
+  // junction 模式下 Node ESM 透明，拿到的是真实源路径而非 node_modules 路径，
+  // 会写错位置。详见 resolveProfileRoot 注释。）
+  const profileRoot = resolveProfileRoot(ctx)
+  const configPath = join(profileRoot, CONFIG_FILENAME)
+
+  async function loadConfig() {
+    try {
+      const raw = await readFile(configPath, 'utf8')
+      const parsed = JSON.parse(raw)
+      const roots = Array.isArray(parsed.scanRoots)
+        ? parsed.scanRoots.map(normalizePath).filter(Boolean)
+        : []
+      return { scanRoots: roots.length > 0 ? roots : DEFAULT_SCAN_ROOTS }
+    } catch {
+      return { scanRoots: DEFAULT_SCAN_ROOTS }
+    }
+  }
+
+  async function saveConfig(scanRoots) {
+    const cleaned = Array.isArray(scanRoots)
+      ? scanRoots.map(normalizePath).filter(Boolean)
+      : []
+    const next = { scanRoots: cleaned.length > 0 ? cleaned : DEFAULT_SCAN_ROOTS }
+    const tmp = configPath + '.tmp'
+    await writeFile(tmp, JSON.stringify(next, null, 2), 'utf8')
+    await rename(tmp, configPath)
+    return next
   }
 
   ctx.webServer.register({
