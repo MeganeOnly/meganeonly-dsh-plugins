@@ -13,7 +13,15 @@
       err: "#b02a37",
       errSoft: "rgba(176,42,55,0.10)",
       inputBar: "rgba(128,128,128,0.42)",
-      outputBar: "#16a34a"
+      outputBar: "#16a34a",
+      // 图表专用色 token（峰值：暖陶土色，对比绿/灰而不抢戏）
+      peakLine: "#b06a3a",
+      peakText: "#8d5028",
+      peakSoft: "rgba(176,106,58,0.10)",
+      peakBorder: "rgba(176,106,58,0.30)",
+      todayLine: "rgba(128,128,128,0.40)",
+      gridDashed: "rgba(128,128,128,0.10)",
+      gridBase: "rgba(128,128,128,0.20)"
     };
 
     var s = {
@@ -43,8 +51,25 @@
       // 错误
       errBox: { padding: "8px 12px", borderRadius: "5px", background: C.errSoft, border: "1px solid rgba(176,42,55,0.25)", color: C.err, fontSize: "12px", marginBottom: "12px" },
       // 图表
-      chartBar: { flex: "1 1 0", minWidth: "6px", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", cursor: "default" },
-      chartAxis: { flex: "1 1 0", minWidth: "6px", textAlign: "center", fontSize: "10px", color: C.text3, fontVariantNumeric: "tabular-nums" },
+      chartSection: { marginTop: "4px" },
+      chartLegend: { display: "flex", alignItems: "center", gap: "14px", fontSize: "11px", color: C.text2, marginBottom: "12px" },
+      chartLegendHint: { marginLeft: "auto", fontSize: "11px", color: C.text3 },
+      chartWrap: { position: "relative", height: "100px" },
+      chartGridLine: { position: "absolute", left: 0, right: 0, borderTopStyle: "dashed", borderTopWidth: "1px", borderTopColor: C.gridDashed, pointerEvents: "none" },
+      chartGridBase: { position: "absolute", left: 0, right: 0, borderTopStyle: "solid", borderTopWidth: "1px", borderTopColor: C.gridBase, pointerEvents: "none" },
+      chartTodayLine: { position: "absolute", top: 0, bottom: 0, width: "1px", background: C.todayLine, opacity: 0.7, pointerEvents: "none" },
+      chartPeakLine: { position: "absolute", top: 0, bottom: 0, width: "1px", background: C.peakLine, opacity: 0.55, pointerEvents: "none" },
+      chartPeakBadge: { position: "absolute", transform: "translate(-50%, -100%)", padding: "2px 7px", borderRadius: "3px", background: C.peakSoft, border: "1px solid " + C.peakBorder, color: C.peakText, fontSize: "10px", fontWeight: 600, letterSpacing: "0.02em", whiteSpace: "nowrap", pointerEvents: "none", fontVariantNumeric: "tabular-nums" },
+      chartBarsRow: { position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", gap: "2px" },
+      chartBar: { flex: "1 1 0", minWidth: "4px", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", cursor: "default" },
+      chartBarOut: { borderRadius: "1px 1px 0 0", minHeight: 0 },
+      chartBarIn: { minHeight: 0 },
+      chartAxisRow: { display: "flex", gap: "2px", marginTop: "8px" },
+      chartAxis: { flex: "1 1 0", minWidth: "4px", textAlign: "center", fontSize: "10px", color: C.text3, fontVariantNumeric: "tabular-nums" },
+      chartAxisToday: { flex: "1 1 0", minWidth: "4px", textAlign: "center", fontSize: "10px", color: C.text2, fontVariantNumeric: "tabular-nums", fontWeight: 600 },
+      chartSummary: { display: "flex", gap: "14px", marginTop: "12px", fontSize: "11px", color: C.text3, letterSpacing: "0.02em", flexWrap: "wrap" },
+      chartSummaryPeak: { color: C.peakText, fontWeight: 500 },
+      chartSummaryTotal: { color: C.text2 },
       // 显示设置面板
       panelWrap: { position: "relative" },
       panel: {
