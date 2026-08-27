@@ -13,7 +13,7 @@ dsh-ui-tweaks 的 `lib/client-src/` 现行结构（v0.7.4 拆解）：
 | `00-banner.js`        | 顶部 JSDoc 注释块（version 历程 + 架构说明）                                |
 | `10-loader-open.js`   | `__ModuleLoader__.load({...})` 开头 + `var inject = ["slots"]`             |
 | `20-constants.js`     | 常量（`VERSION` / `MAIN_CSS_TAG_ID` / `STORAGE_KEY` / `SHIM_PANE_*` / `SHIFT_TARGET_*` / `SIMPLE_*` / `STATE_EVENT` / `DEBUG_API_KEY`） |
-| `25-tweaks.js`        | `TWEAKS` 数组：8 条 tweak（`conversation-shift` / `conversation-shift-debug` / `simple-mode` / `hide-sidebar-tooltip` / `hide-trajectory-tab` / `hide-chat-tab` / `first-message-jump` / **`disclosure-end-collapse`**）的 `buildCSS` |
+| `25-tweaks.js`        | `TWEAKS` 数组：9 条 tweak（`conversation-shift` / `conversation-shift-debug` / `simple-mode` / `hide-sidebar-tooltip` / `hide-trajectory-tab` / `hide-chat-tab` / `first-message-jump` / `disclosure-end-collapse` / **`sidebar-match-conversation-bg`**）的 `buildCSS` |
 | `30-storage.js`       | `localStorage` 持久化：`storage` 探测 + `defaultState` / `loadState` / `saveState` |
 | `35-styles.js`        | `buildCSS` / `buildDebugHighlightCSS` / `injectCSS` + `SECTION_CSS` 静态样式 + `injectSectionCSS` |
 | `40-shim.js`          | self-shim 4 层 selector：`discoverFrameTriptych` / `findConversationPane` / `stampIfMissing` / `applyShellShim` / `startShellShimObserver` |

@@ -4,7 +4,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 
 ## 功能
 
-当前包含八条微调：
+当前包含九条微调：
 
 | id | 名称 | 说明 |
 | --- | --- | --- |
@@ -16,6 +16,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 | `hide-chat-tab` | 隐藏"对话"标签 | 隐藏对话顶部的"对话"标签页（默认 view 的标签，纯视觉噪音）；和 `hide-trajectory-tab` 一起开启 → 两个标签都消失。 |
 | `first-message-jump` | 上一条我发的消息按钮（Shift+点击 = 回到最早） | 对话区右下角（输入框上方）的悬浮按钮——单击跳到当前视口内最顶部可见 user 消息的上一条，连续单击可一路向上直到第一个可见 user 行（v0.9.4 起 prev 跳过 hidden row——例如 simple-mode `display:none` 隐藏的 compaction 块里的旧 user 行，避免按钮"卡死"在看不见的位置；v0.9.2 起可见性放宽为 `rows.length >= 2`：2 条以上 user 行就显示作为视觉提示，即使已在顶部 click 也是 no-op）。**Shift+单击 = 一键回到最早一条可见 user 行**（v0.9.2 起跳过 compaction / context 容器里的旧 user 行，恢复 v0.8.0 的「回到最早」语义）。 |
 | `disclosure-end-collapse` | 展开块末尾收起按钮 | Think / 工具调用 / 上下文注入等折叠块展开后，末尾追加一个"收起"按钮——阅读到底部能直接收起，不用滚回头部再点行。点击调用 row.click() 触发 DSH React onToggle 折叠，body 与按钮一起被 React unmount，无需手动清理。 |
+| `sidebar-match-conversation-bg` | 侧栏背景与对话一致 | DSH 默认左侧栏（展示会话列表的区域）有独立的背景色，与对话区的 `--dsw-alias-bg-base` 不同——视觉上有明显分割。开启后把侧栏列容器背景设为对话区同款（用 `--dsw-alias-bg-base`，主题没定义时退化到 `--dsw-alias-bg-layer-1` 再退化到白），让两个区域在背景色上融合。会话项 / 按钮 / hover 态等子元素的视觉行为不变（只改列容器背景）。 |
 
 每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
 

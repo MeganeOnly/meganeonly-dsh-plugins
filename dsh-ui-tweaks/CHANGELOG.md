@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+### 新增（v0.9.9）
+
+- **`sidebar-match-conversation-bg` 侧栏背景与对话一致**（v0.9.9）：DSH 默认左侧栏（展示会话列表的区域，`data-pane="sidebar"`）有独立背景色，与对话区（`data-pane="conversation"`）的 `--dsw-alias-bg-base` 不同——视觉上有明显的边界分割。开启后把侧栏列容器背景设为对话区同款，让两个区域在背景色上融合。
+  - **CSS 一条规则**：`[data-pane="sidebar"]{background:var(--dsw-alias-bg-base, var(--dsw-alias-bg-layer-1, #ffffff)) !important}`——三层 fallback 链：
+    - `--dsw-alias-bg-base`（DSH 主背景，主路径）
+    - `--dsw-alias-bg-layer-1`（DSH 卡片背景，主题没定义 bg-base 时退化）
+    - `#ffffff`（硬值白兜底）
+  - **DSH bg-base 的来源证据**：
+    - `dsh-ssh` 的 panel（`mL8Uca_panel`）用 `background:var(--dsw-alias-bg-base)` 来"无缝融入"对话区
+    - `dsh-client-ui-skin-center` #712 注释明确 AppFrame frame + conversation root + details root 是"shell surfaces"共用 bg-base，sidebar 不在这个列表里——所以侧栏有独立视觉背景
+  - **子元素零变化**：会话项 / 按钮 / hover 态保持原样——`--dsw-specific-sidebar-nav-item-hover` / `--dsw-specific-sidebar-nav-item-active` 等功能性背景不动。只改列容器背景色，会话列表的交互行为完全不变。
+  - **默认 OFF**：v0.9.9 新引入，倾向保守——老用户升级后视觉不变，需要在设置页显式开启。与 v0.9.6 disclosure-end-collapse 的"默认 ON"反着来（后者修复 UX 痛点必开，前者是视觉偏好可选）。
+  - **新增 tweak 项**：`{ id: "sidebar-match-conversation-bg", name: "侧栏背景与对话一致", configKeys: { enabled: "sidebarMatchConversationBg", value: "sidebarMatchConversationBg" } }`——localStorage key `sidebarMatchConversationBg`
+  - **兼容性**：不动现有任何 CSS / JS / 持久化字段 / 调试 API。DSH 升级 CSS Module hash 改了 `[data-pane="sidebar"]` 选择器仍命中（attribute selector 不依赖 hash）。
+  - **诊断**：浏览器 DevTools inspect `[data-pane="sidebar"]` 元素的 Computed `background-color`——开启后应是 `var(--dsw-alias-bg-base)` 解析后的颜色，与 `[data-pane="conversation"]` 的 background-color 一致；关闭后恢复 DSH 默认侧栏背景。
+  - **测试/构建**：`lib/client-src/25-tweaks.js` 的 TWEAKS 数组新增一项（buildCSS 输出 ~280 B CSS）；`lib/client-src/00-banner.js` 加 v0.9.9 banner 段；`20-constants.js` VERSION 字符串 0.9.8 → 0.9.9；`package.json` version 同步；走 `npm run build:client` + `node --check lib/client.js` 语法校验。
+
 ### 修复（v0.9.8）
 
 - **`simple-mode` 状态行接管 DSH 原生 turnStatus 视觉呈现**（v0.9.8）：解决 v0.9.7 后三个用户反馈：（1）「正在处理」还在闪（2）时间想出现在后面（3）还是比原生高一点点。**根因诊断**：v0.9.7 只撤了我们自己 `::before` 上的 `@keyframes dsh-status-pulse`；用户看到的「正在处理」不是「正在处理…」我们的 fallback 文本，而是 DSH 原生 TurnStatus 组件（`dsh-client-ui-conversation/lib/client.js:5591`）的 `linear-gradient + background-clip:text + animation:1.8s linear infinite Md3f7G_dsh-turn-status-shimmer` 做的 shimmer effect——gradient 在 DSH "Deep diving..." 文字形状里平移。我们的 `<span class="dsh-ui-tweaks-status">` 是 appendChild 到 `<div class="Md3f7G_turnStatus">` 内的，shimmer 渲染整容器，包括 DSH 原生文字 + 我们 append 的 span，看起来整个 status 在闪。**整容器接管**（在 `.dsh-ui-tweaks-status` 之前加 `[class*="turnStatus"]{ ... }` 块）：

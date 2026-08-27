@@ -433,6 +433,51 @@
             "}\n" +
             "[data-dsh-ui-tweaks-jump][data-visible]{opacity:1;pointer-events:auto;transform:translateY(0);}";
         }
+      },
+      {
+        // v0.9.9 新增：侧栏背景与对话一致。
+        //
+        // 用户反馈：DSH 默认侧栏（展示会话列表的左侧栏，data-pane="sidebar"）
+        //   有自己独立的背景色，与对话区（data-pane="conversation"）的
+        //   `--dsw-alias-bg-base` 不同——视觉上有清晰的边界分割。开启后让
+        //   两个区域在背景色上融合。
+        //
+        // 实现：纯 CSS 一条规则——把 [data-pane="sidebar"] 的 background 设为
+        //   与对话区同款的 DSH 主题变量 `--dsw-alias-bg-base`。来源证据：
+        //     - dsh-ssh 的 panel（"data-pane=conversation" 上的 mL8Uca_panel）
+        //       用 `background:var(--dsw-alias-bg-base)` 来"无缝融入"对话区
+        //     - dsh-client-ui-skin-center #712 注释明确 AppFrame frame +
+        //       conversation root + details root 共同"paint the opaque app
+        //       base background via hashed CSS-module classes"——侧栏不在
+        //       这个列表里，所以有独立的视觉背景
+        //   fallback 链：`--dsw-alias-bg-base` → `--dsw-alias-bg-layer-1` →
+        //   `#ffffff`——主题切到没定义 bg-base 时退化到 layer-1（与简单
+        //   模式状态行按钮背景同款），再退化到硬值白。
+        //
+        // 子元素（会话项 / 按钮 / hover 态）不动——它们有功能性背景（hover
+        //   高亮 `--dsw-specific-sidebar-nav-item-hover` 等），保持可见。
+        //   只让容器背景色与对话一致，子元素视觉行为零变化。
+        //
+        // 默认 OFF：本 tweak 是 v0.9.9 新引入，倾向保守——老用户升级后默认
+        //   视觉不变，需要在设置页显式开启；与 v0.9.6 disclosure-end-collapse
+        //   的"默认 ON"反着来（后者是修复 UX 痛点必开，前者是视觉偏好可选）。
+        id: "sidebar-match-conversation-bg",
+        name: "侧栏背景与对话一致",
+        description: "DSH 默认左侧栏（展示会话列表的区域）有独立的背景色，与对话区视觉上有明显分割。开启后把侧栏列容器的背景设为对话区同款（用 DSH 主题变量 --dsw-alias-bg-base，主题没定义时退化到 --dsw-alias-bg-layer-1 再退化到白），让两个区域在背景色上融合。会话项 / 按钮 / hover 态等子元素的视觉行为不变（只改列容器背景）。",
+        // 仅开关型 tweak：enabled 和 value 复用同一 key（与 simple-mode / hide-* 同模式），
+        //   localStorage 只存一个布尔字段；TweakRow 通过 k2===k1 检测不渲染数字框。
+        configKeys: { enabled: "sidebarMatchConversationBg", value: "sidebarMatchConversationBg" },
+        defaults: { enabled: false, value: false },
+        buildCSS: function (state) {
+          if (!state.sidebarMatchConversationBg) return null;
+          // 三层 fallback 链：--dsw-alias-bg-base（DSH 主背景，ssh / task-board 面板用同款）
+          //   → --dsw-alias-bg-layer-1（DSH 卡片背景，disclosure 按钮背景同款）
+          //   → #ffffff（硬值白）。任意一层在当前主题下可用即可。
+          return "/* === sidebar-match-conversation-bg v0.9.9 : 侧栏 [data-pane=\"sidebar\"] 列容器背景与对话区一致（--dsw-alias-bg-base） === */\n" +
+            "[data-pane=\"sidebar\"] {" +
+              "background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1,#ffffff)) !important" +
+            "}";
+        }
       }
     ];
 

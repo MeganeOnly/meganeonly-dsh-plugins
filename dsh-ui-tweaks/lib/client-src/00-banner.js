@@ -1,6 +1,27 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.9：新增 sidebar-match-conversation-bg「侧栏背景与对话一致」tweak。
+ *   用户反馈 DSH 默认侧栏（data-pane="sidebar"，展示会话列表的区域）
+ *   有独立背景色，与对话区（data-pane="conversation"）的 --dsw-alias-bg-base
+ *   不同，视觉上有明显分割。开启后把侧栏列容器背景改为对话区同款，让两
+ *   个区域在背景色上融合。
+ *
+ *   - CSS 一条规则：`[data-pane="sidebar"]{background:var(--dsw-alias-bg-base,
+ *     var(--dsw-alias-bg-layer-1,#ffffff)) !important}`——三层 fallback：
+ *     --dsw-alias-bg-base（DSH 主背景；dsh-ssh 的 mL8Uca_panel 用同款
+ *     与对话区"无缝融入"；dsh-client-ui-skin-center #712 注释明确
+ *     AppFrame frame + conversation root + details root 是 shell surfaces
+ *     共用 bg-base，侧栏不在列）→ --dsw-alias-bg-layer-1（DSH 卡片背景，
+ *     退化场景）→ #ffffff（硬值白兜底）。
+ *   - 子元素（会话项 / 按钮 / hover 态）零变化——只改列容器背景色。
+ *     hover 高亮 `--dsw-specific-sidebar-nav-item-hover`、active 高亮
+ *     `--dsw-specific-sidebar-nav-item-active` 等功能性背景保持可见。
+ *   - 默认 OFF：v0.9.9 新引入，倾向保守——老用户升级后视觉不变，需要在
+ *     设置页显式开启。tweak id `sidebar-match-conversation-bg`，localStorage
+ *     key `sidebarMatchConversationBg`。见 `25-tweaks.js` 的
+ *     sidebar-match-conversation-bg buildCSS。
+ *
  * v0.9.8：simple-mode 状态行接管 DSH 原生 turnStatus——根因不是自家
  *   pulse，是 DSH 的 `linear-gradient + background-clip:text +
  *   animation:1.8s linear infinite dsh-turn-status-shimmer` shimmer

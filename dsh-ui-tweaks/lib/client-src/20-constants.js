@@ -1,4 +1,13 @@
     // ===== constants =====
+        // v0.9.9：新增 sidebar-match-conversation-bg tweak——DSH 默认侧栏（data-pane="sidebar"）
+        //   有独立背景色，与对话区（data-pane="conversation"）的 --dsw-alias-bg-base
+        //   不同。开启后把侧栏列容器的背景设为对话区同款，让两个区域在背景色上融合。
+        //   CSS 用 `var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1,#ffffff))` 三层
+        //   fallback 链（来源证据：dsh-ssh 的 mL8Uca_panel 用 --dsw-alias-bg-base 与
+        //   对话区"无缝融入"；dsh-client-ui-skin-center #712 注释明确 AppFrame frame +
+        //   conversation root + details root 是 shell surfaces 共用 bg-base，侧栏不在列）。
+        //   子元素（会话项 / 按钮 / hover 态）不动——只改列容器背景。默认 OFF。
+        //   见 25-tweaks.js 的 sidebar-match-conversation-bg buildCSS。
         // v0.9.8：simple-mode 状态行接管 DSH 原生 turnStatus 视觉呈现——
         //   用户反馈三个问题（"正在处理 还在闪" / "时间想出现在 后面" /
         //   "还是比原生高一点点"）根因不是 v0.9.7 撤掉的自家 pulse，而是
@@ -24,7 +33,7 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.8";
+        var VERSION = "0.9.9";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
