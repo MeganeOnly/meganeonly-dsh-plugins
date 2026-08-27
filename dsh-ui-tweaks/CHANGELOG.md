@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+### 优化（v0.9.3）
+
+- **`simple-mode` 状态行美术度升级**（v0.9.3）：三轴叠加，单一设计语言——
+  - **A) Pill 化**（圆角胶囊）：`padding:3px 10px 3px 8px` + `border-radius:999px` + `background:color-mix(in srgb, currentColor 8%, transparent)`——取代 v0.9.2 的裸灰文字，"飘字" 变 "状态徽章"，背景跟当前活动色淡出不抢戏
+  - **B) 呼吸点**：`::before` 6px 圆点 + `@keyframes dsh-status-pulse` 1.6s 透明度+缩放循环，"现在还活着" 的活性信号。`@media (prefers-reduced-motion: reduce)` 自动关掉动画（动效敏感用户友好，圆点静态保留仍是 chip 形态）
+  - **C) 语义色**：JS 在 `tick()` 给状态 span `setAttribute(SIMPLE_STATUS_ACTIVITY_ATTR, category)`，CSS 8 条 `[data-dsh-activity="..."]` 规则按类目着色——点继承 `currentColor`，单一着色真相源：
+    - `think`（思辨）=#2563eb 蓝 / `read`（输入）=#475569 中性 / `write`（变更）=#d97706 琥珀
+    - `bash`（执行）=#7c3aed 紫 / `task`（调度）=#0891b2 青 / `plan`（计划）=#059669 绿
+    - `goal`（跟踪）=#db2777 粉 / `git`（版本）=#64748b 石板 / `generic`（兜底）=DSH 三级灰
+  - **性能**：`tick()` 用 `lastKey = category + "\u0000" + text` 合并去重——text 或 category 任一变化才写 DOM（保持 v0.7.1 起的 `lastText` 节流效果，250 ms 轮询 × React reconciler 触发频率不变）
+  - **兼容**：`.dsh-ui-tweaks-status` 类名 + `dsh-ui-tweaks-status-row` ID 不动（调试 API / 验证脚本仍命中）；localStorage `simpleModeEnabled` key 不动（老用户开关状态保留）；`visibility:visible !important` 兜底保留（防止被 simple-mode 隐藏的祖先节点带连累）；DSH 主题颜色变量缺失时硬值 fallback
+  - **改动文件**：`25-tweaks.js` 的 simple-mode buildCSS（+1.5 KB CSS）+ `55-simple-mode.js` 加 `simpleActivityCategory(name)` + tick() 改 lastKey 合并去重（+400 B JS）+ `20-constants.js` 加 `SIMPLE_STATUS_ACTIVITY_ATTR` 常量 1 行（+50 B）
+
 ### 修复
 
 - **`first-message-jump` Shift+点击跳过 compaction 块直达当前会话第一条**（v0.9.2）：v0.9.1 的 `jumpFindFirstUserRow` 返回 DOM 顺序的第一条 user 行——若对话顶部有 compact 摘要块（`data-chat-flow-kind="compaction"` / `"manual-compaction"`），里面的旧 user 行会被算成"第一条"，Shift+点击实际落到的是 compact 块下方的某条 user 行（不是当前会话起点）。新增 `jumpIsRowInCompaction(row)` 沿父链检查 `data-chat-flow-kind="compaction"` / `"manual-compaction"` / `"context"` 容器，跳过其中的 user 行。新增 `jumpFindFirstRealUserRow(port)` 作为 Shift+点击的目标；`jumpFindFirstUserRow` 保留作为内部锚点（v0.9.1 行为）。

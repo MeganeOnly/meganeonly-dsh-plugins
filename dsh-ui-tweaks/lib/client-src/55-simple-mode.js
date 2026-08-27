@@ -25,6 +25,22 @@
       return "正在处理…";
     }
 
+    // v0.9.3：simpleActivityCategory(name) 返回活动类目（think / read / write /
+    // bash / task / plan / goal / git / generic）。simpleActivityText 给出文案，
+    // 这个给出颜色——两个轴解耦，新增工具只需在这里加一行 + CSS 加一条着色规则。
+    function simpleActivityCategory(name) {
+      if (!name) return "generic";
+      if (name === "think" || (typeof name === "string" && name.indexOf("reason") === 0)) return "think";
+      if (name === "read" || name === "web_fetch" || name === "web_search") return "read";
+      if (name === "edit" || name === "write") return "write";
+      if (name === "bash" || name === "pwsh" || name === "run_code") return "bash";
+      if (name === "task" || name === "subagent" || name === "agent") return "task";
+      if (name === "todo" || name === "plan" || name === "update_plan") return "plan";
+      if (name === "goal" || name === "objective") return "goal";
+      if (name === "git" || name === "commit" || name === "push") return "git";
+      return "generic";
+    }
+
     function simplePickToolNameFromDom() {
       if (typeof document === "undefined") return null;
       var nodes = document.querySelectorAll('[data-chat-flow-kind="tool-call"]');
@@ -62,9 +78,11 @@
       // 不一致（apply() 的 onStateChange 用 simpleController.running 读判断，
       // 与 createTrajectoryTabHider 的 `get running()` 风格对齐）。
       var isRunning = false;
-      // 缓存上次写入 span 的文本——tick 每 250ms 跑一次，但 99% 时间工具名没变，
-      // 不写 DOM 就不会触发 React reconciler 监听 attribute / textContent 变化。
-      var lastText = null;
+      // v0.9.3：缓存上次写入 span 的 (category, text) 合并 key——tick 每 250ms 跑一次，
+      // 但 99% 时间工具名没变（同时 category 也不变），不写 DOM 就不会触发 React
+      // reconciler 监听 attribute / textContent 变化。category 用 "\u0000" 与 text
+      // 隔开防止碰撞（工具名 / 文案里都不会出现 NUL）。
+      var lastKey = null;
 
       function ensureStatusSpan() {
         if (typeof document === "undefined") return null;
@@ -135,18 +153,23 @@
         if (typeof document === "undefined") return;
         if (!simpleIsRunningFromDom()) {
           if (current !== null) { detach(); current = null; }
-          lastText = null;
+          lastKey = null;
           return;
         }
         attach();
         var span = document.getElementById(SIMPLE_STATUS_ID);
         if (span === null) return;
-        var text = simpleActivityText(simplePickToolNameFromDom());
-        // 文字未变就跳过 setTextContent——tick 每 250ms 跑，绝大多数 tick
-        // 工具名不变，写 DOM 触发 mutation listeners 是浪费。
-        if (text === lastText) return;
-        lastText = text;
+        var name = simplePickToolNameFromDom();
+        var text = simpleActivityText(name);
+        // v0.9.3：category 给 CSS 着色用（[data-dsh-activity]），与 text 同步写。
+        // 合并 key = category + "\u0000" + text——任一变化才走 DOM 写，避免 250ms
+        // 轮询 × React reconciler 监听 attribute / textContent 变化的浪费。
+        var category = simpleActivityCategory(name);
+        var key = category + "\u0000" + text;
+        if (key === lastKey) return;
+        lastKey = key;
         span.textContent = text;
+        span.setAttribute(SIMPLE_STATUS_ACTIVITY_ATTR, category);
       }
 
       function start() {
@@ -162,7 +185,7 @@
         detach();
         current = null;
         lastTurnStatus = null;
-        lastText = null;
+        lastKey = null;
         isRunning = false;
       }
       return {

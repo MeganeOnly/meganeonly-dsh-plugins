@@ -51,6 +51,13 @@
         // 两个不同的 key。
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
+        // v0.9.3 美术度升级：状态行三轴叠加——
+        //   A) 圆角胶囊 (pill)：padding 3 10 3 8 + border-radius 999 + 极淡背景
+        //   B) 呼吸点 (::before)：6px 圆点 + @keyframes 1.6s 透明度+缩放循环
+        //   C) 语义色 ([data-dsh-activity]=...)：8 类活动对应 8 色；点继承 currentColor
+        // 单一设计语言：JS 在 tick() 给 span 写 data-dsh-activity，CSS 命中着色；
+        // 背景用 color-mix(currentColor 8%, transparent) 跟着 accent 色淡出——
+        // 视觉信号三件套协同，不抢戏、不僵死、不需要读完文字。
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
           return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +
@@ -62,11 +69,60 @@
             '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
-            "/* === simple-mode : status row === */\n" +
-            // visibility:visible 防御:万一 DSH 渲染时把 [class*=\"turnStatus\"] 包在某个
-            // 被 simple-mode CSS 隐藏的元素(如 [data-chat-flow-kind=\"tool-call\"])里,
-            // 父元素 display:none 会让状态行跟着看不见。visibility 兜底保证可见。
-            ".dsh-ui-tweaks-status{display:inline-flex !important;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:18px;margin-left:10px;vertical-align:middle;flex:none;visibility:visible !important}";
+            // —— v0.9.3 status row chip —— 取代 v0.9.2 的裸灰文字
+            // visibility:visible !important 保留（v0.7.1 起的祖先 display:none 兜底）
+            // color-mix(in srgb, currentColor 8%, transparent) 跟随 accent 色淡出
+            // — DSH Electron Chromium 111+ 支持，主题变量缺失不影响
+            ".dsh-ui-tweaks-status{" +
+              "display:inline-flex !important;" +
+              "align-items:center;" +
+              "gap:7px;" +
+              "padding:3px 10px 3px 8px;" +
+              "margin-left:12px;" +
+              "border-radius:999px;" +
+              "background:color-mix(in srgb, currentColor 8%, transparent);" +
+              "color:var(--dsw-alias-label-tertiary);" +
+              "font-size:12.5px;" +
+              "line-height:18px;" +
+              "vertical-align:middle;" +
+              "flex:none;" +
+              "white-space:nowrap;" +
+              "transition:background-color .25s ease,color .25s ease;" +
+              "visibility:visible !important" +
+            "}\n" +
+            // —— 呼吸点 ::before —— "现在还活着" 的活性信号
+            // 6×6 圆点；background:currentColor 继承 [data-dsh-activity] 着色
+            "@keyframes dsh-status-pulse{" +
+              "0%,100%{opacity:.35;transform:scale(.85)}" +
+              "50%{opacity:.95;transform:scale(1)}" +
+            "}\n" +
+            ".dsh-ui-tweaks-status::before{" +
+              "content:\"\";" +
+              "width:6px;" +
+              "height:6px;" +
+              "border-radius:50%;" +
+              "background:currentColor;" +
+              "opacity:.55;" +
+              "flex:none;" +
+              "animation:dsh-status-pulse 1.6s ease-in-out infinite" +
+            "}\n" +
+            // —— 8 类活动语义色 —— JS tick() 给 span setAttribute("data-dsh-activity", ...)
+            // 顺序：think (思辨) / read (输入) / write (变更) / bash (执行) /
+            //       task (调度) / plan (计划) / goal (跟踪) / git (版本) / generic (兜底)
+            // 硬值 fallback——主题切到没有这些变量的主题时仍能着色
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"think\"]   {color:#2563eb}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"read\"]    {color:#475569}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"write\"]   {color:#d97706}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"bash\"]    {color:#7c3aed}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"task\"]    {color:#0891b2}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"plan\"]    {color:#059669}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"goal\"]    {color:#db2777}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"git\"]     {color:#64748b}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary)}" +
+            // —— 无障碍：动效敏感用户关掉呼吸 —— 静态圆点保留（仍是 chip 形态）
+            "@media (prefers-reduced-motion:reduce){" +
+              ".dsh-ui-tweaks-status::before{animation:none;opacity:.7}" +
+            "}";
         }
       },
       {

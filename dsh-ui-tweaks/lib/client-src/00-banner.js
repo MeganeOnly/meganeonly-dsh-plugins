@@ -1,6 +1,28 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.3：`simple-mode` 状态行美术度升级——三轴叠加：
+ *   - **A) Pill 化**：`padding:3px 10px 3px 8px` + `border-radius:999px` +
+ *     `background:color-mix(in srgb, currentColor 8%, transparent)`——取代 v0.9.2
+ *     的裸灰文字，"飘字" 变 "状态徽章"，背景跟当前活动色淡出不抢戏
+ *   - **B) 呼吸点**：`::before` 6px 圆点 + `@keyframes dsh-status-pulse` 1.6s
+ *     透明度+缩放循环，"现在还活着" 的活性信号（`prefers-reduced-motion` 关掉）
+ *   - **C) 语义色**：JS 在 tick() 给 span `setAttribute("data-dsh-activity", ...)`，
+ *     CSS 8 条 `[data-dsh-activity="..."]` 规则按类目着色——点继承 currentColor，
+ *     单一着色真相源：
+ *       think(思辨)=#2563eb 蓝 / read(输入)=#475569 中性 / write(变更)=#d97706 琥珀
+ *       bash(执行)=#7c3aed 紫 / task(调度)=#0891b2 青 / plan(计划)=#059669 绿
+ *       goal(跟踪)=#db2777 粉 / git(版本)=#64748b 石板 / generic(兜底)=DSH 三级灰
+ *   - **性能**：tick() 用 `lastKey = category + "\u0000" + text` 合并去重——text 或
+ *     category 任一变化才写 DOM（保持 v0.7.1 起的 `lastText` 节流效果，250ms 轮询
+ *     × React reconciler 触发频率不变）
+ *   - **兼容**：`.dsh-ui-tweaks-status` 类名 + `dsh-ui-tweaks-status-row` ID 不动
+ *     （调试 API / 验证脚本仍命中）；localStorage `simpleModeEnabled` key 不动
+ *     （老用户开关状态保留）；`visibility:visible !important` 兜底保留
+ *   - **改动文件**：`25-tweaks.js` 的 simple-mode buildCSS（+1.5 KB CSS）+
+ *     `55-simple-mode.js` 加 `simpleActivityCategory(name)` + tick() 改 lastKey
+ *     （+400 B JS）+ `20-constants.js` 加 `SIMPLE_STATUS_ACTIVITY_ATTR` 1 行（+50 B）
+ *
  * v0.9.2：`first-message-jump` compaction 跳过 + 可见性放宽：
  *   - Shift+点击现在跳过 compact 摘要里的旧 user 行，直接到当前会话的第
  *     一条 user 消息（v0.9.1 落到 compaction 块下方的某条 user 行——

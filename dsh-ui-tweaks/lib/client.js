@@ -1,6 +1,28 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.3：`simple-mode` 状态行美术度升级——三轴叠加：
+ *   - **A) Pill 化**：`padding:3px 10px 3px 8px` + `border-radius:999px` +
+ *     `background:color-mix(in srgb, currentColor 8%, transparent)`——取代 v0.9.2
+ *     的裸灰文字，"飘字" 变 "状态徽章"，背景跟当前活动色淡出不抢戏
+ *   - **B) 呼吸点**：`::before` 6px 圆点 + `@keyframes dsh-status-pulse` 1.6s
+ *     透明度+缩放循环，"现在还活着" 的活性信号（`prefers-reduced-motion` 关掉）
+ *   - **C) 语义色**：JS 在 tick() 给 span `setAttribute("data-dsh-activity", ...)`，
+ *     CSS 8 条 `[data-dsh-activity="..."]` 规则按类目着色——点继承 currentColor，
+ *     单一着色真相源：
+ *       think(思辨)=#2563eb 蓝 / read(输入)=#475569 中性 / write(变更)=#d97706 琥珀
+ *       bash(执行)=#7c3aed 紫 / task(调度)=#0891b2 青 / plan(计划)=#059669 绿
+ *       goal(跟踪)=#db2777 粉 / git(版本)=#64748b 石板 / generic(兜底)=DSH 三级灰
+ *   - **性能**：tick() 用 `lastKey = category + "\u0000" + text` 合并去重——text 或
+ *     category 任一变化才写 DOM（保持 v0.7.1 起的 `lastText` 节流效果，250ms 轮询
+ *     × React reconciler 触发频率不变）
+ *   - **兼容**：`.dsh-ui-tweaks-status` 类名 + `dsh-ui-tweaks-status-row` ID 不动
+ *     （调试 API / 验证脚本仍命中）；localStorage `simpleModeEnabled` key 不动
+ *     （老用户开关状态保留）；`visibility:visible !important` 兜底保留
+ *   - **改动文件**：`25-tweaks.js` 的 simple-mode buildCSS（+1.5 KB CSS）+
+ *     `55-simple-mode.js` 加 `simpleActivityCategory(name)` + tick() 改 lastKey
+ *     （+400 B JS）+ `20-constants.js` 加 `SIMPLE_STATUS_ACTIVITY_ATTR` 1 行（+50 B）
+ *
  * v0.9.2：`first-message-jump` compaction 跳过 + 可见性放宽：
  *   - Shift+点击现在跳过 compact 摘要里的旧 user 行，直接到当前会话的第
  *     一条 user 消息（v0.9.1 落到 compaction 块下方的某条 user 行——
@@ -203,6 +225,10 @@ window.__ModuleLoader__.load({
         var SHIM_RESOLVED_FLAG = "__dshUiTweaks_shimResolved";
         var SIMPLE_STATUS_ID = "dsh-ui-tweaks-status-row";
         var SIMPLE_STATUS_CLASS = "dsh-ui-tweaks-status";
+        // v0.9.3：tick() 给状态 span 写 data-dsh-activity 标记当前活动类目（think / read /
+        // write / bash / task / plan / goal / git / generic），CSS 按类目着色。
+        // span 由 ensureStatusSpan() 创建并由本插件独占——与 DSH 内部属性不冲突。
+        var SIMPLE_STATUS_ACTIVITY_ATTR = "data-dsh-activity";
         var SIMPLE_TURN_STATUS_SEL = '[class*="turnStatus"]';
         var SIMPLE_POLL_MS = 250;
         // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
@@ -282,6 +308,13 @@ window.__ModuleLoader__.load({
         // 两个不同的 key。
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
+        // v0.9.3 美术度升级：状态行三轴叠加——
+        //   A) 圆角胶囊 (pill)：padding 3 10 3 8 + border-radius 999 + 极淡背景
+        //   B) 呼吸点 (::before)：6px 圆点 + @keyframes 1.6s 透明度+缩放循环
+        //   C) 语义色 ([data-dsh-activity]=...)：8 类活动对应 8 色；点继承 currentColor
+        // 单一设计语言：JS 在 tick() 给 span 写 data-dsh-activity，CSS 命中着色；
+        // 背景用 color-mix(currentColor 8%, transparent) 跟着 accent 色淡出——
+        // 视觉信号三件套协同，不抢戏、不僵死、不需要读完文字。
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
           return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +
@@ -293,11 +326,60 @@ window.__ModuleLoader__.load({
             '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
-            "/* === simple-mode : status row === */\n" +
-            // visibility:visible 防御:万一 DSH 渲染时把 [class*=\"turnStatus\"] 包在某个
-            // 被 simple-mode CSS 隐藏的元素(如 [data-chat-flow-kind=\"tool-call\"])里,
-            // 父元素 display:none 会让状态行跟着看不见。visibility 兜底保证可见。
-            ".dsh-ui-tweaks-status{display:inline-flex !important;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:18px;margin-left:10px;vertical-align:middle;flex:none;visibility:visible !important}";
+            // —— v0.9.3 status row chip —— 取代 v0.9.2 的裸灰文字
+            // visibility:visible !important 保留（v0.7.1 起的祖先 display:none 兜底）
+            // color-mix(in srgb, currentColor 8%, transparent) 跟随 accent 色淡出
+            // — DSH Electron Chromium 111+ 支持，主题变量缺失不影响
+            ".dsh-ui-tweaks-status{" +
+              "display:inline-flex !important;" +
+              "align-items:center;" +
+              "gap:7px;" +
+              "padding:3px 10px 3px 8px;" +
+              "margin-left:12px;" +
+              "border-radius:999px;" +
+              "background:color-mix(in srgb, currentColor 8%, transparent);" +
+              "color:var(--dsw-alias-label-tertiary);" +
+              "font-size:12.5px;" +
+              "line-height:18px;" +
+              "vertical-align:middle;" +
+              "flex:none;" +
+              "white-space:nowrap;" +
+              "transition:background-color .25s ease,color .25s ease;" +
+              "visibility:visible !important" +
+            "}\n" +
+            // —— 呼吸点 ::before —— "现在还活着" 的活性信号
+            // 6×6 圆点；background:currentColor 继承 [data-dsh-activity] 着色
+            "@keyframes dsh-status-pulse{" +
+              "0%,100%{opacity:.35;transform:scale(.85)}" +
+              "50%{opacity:.95;transform:scale(1)}" +
+            "}\n" +
+            ".dsh-ui-tweaks-status::before{" +
+              "content:\"\";" +
+              "width:6px;" +
+              "height:6px;" +
+              "border-radius:50%;" +
+              "background:currentColor;" +
+              "opacity:.55;" +
+              "flex:none;" +
+              "animation:dsh-status-pulse 1.6s ease-in-out infinite" +
+            "}\n" +
+            // —— 8 类活动语义色 —— JS tick() 给 span setAttribute("data-dsh-activity", ...)
+            // 顺序：think (思辨) / read (输入) / write (变更) / bash (执行) /
+            //       task (调度) / plan (计划) / goal (跟踪) / git (版本) / generic (兜底)
+            // 硬值 fallback——主题切到没有这些变量的主题时仍能着色
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"think\"]   {color:#2563eb}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"read\"]    {color:#475569}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"write\"]   {color:#d97706}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"bash\"]    {color:#7c3aed}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"task\"]    {color:#0891b2}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"plan\"]    {color:#059669}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"goal\"]    {color:#db2777}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"git\"]     {color:#64748b}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary)}" +
+            // —— 无障碍：动效敏感用户关掉呼吸 —— 静态圆点保留（仍是 chip 形态）
+            "@media (prefers-reduced-motion:reduce){" +
+              ".dsh-ui-tweaks-status::before{animation:none;opacity:.7}" +
+            "}";
         }
       },
       {
@@ -1095,6 +1177,22 @@ window.__ModuleLoader__.load({
       return "正在处理…";
     }
 
+    // v0.9.3：simpleActivityCategory(name) 返回活动类目（think / read / write /
+    // bash / task / plan / goal / git / generic）。simpleActivityText 给出文案，
+    // 这个给出颜色——两个轴解耦，新增工具只需在这里加一行 + CSS 加一条着色规则。
+    function simpleActivityCategory(name) {
+      if (!name) return "generic";
+      if (name === "think" || (typeof name === "string" && name.indexOf("reason") === 0)) return "think";
+      if (name === "read" || name === "web_fetch" || name === "web_search") return "read";
+      if (name === "edit" || name === "write") return "write";
+      if (name === "bash" || name === "pwsh" || name === "run_code") return "bash";
+      if (name === "task" || name === "subagent" || name === "agent") return "task";
+      if (name === "todo" || name === "plan" || name === "update_plan") return "plan";
+      if (name === "goal" || name === "objective") return "goal";
+      if (name === "git" || name === "commit" || name === "push") return "git";
+      return "generic";
+    }
+
     function simplePickToolNameFromDom() {
       if (typeof document === "undefined") return null;
       var nodes = document.querySelectorAll('[data-chat-flow-kind="tool-call"]');
@@ -1132,9 +1230,11 @@ window.__ModuleLoader__.load({
       // 不一致（apply() 的 onStateChange 用 simpleController.running 读判断，
       // 与 createTrajectoryTabHider 的 `get running()` 风格对齐）。
       var isRunning = false;
-      // 缓存上次写入 span 的文本——tick 每 250ms 跑一次，但 99% 时间工具名没变，
-      // 不写 DOM 就不会触发 React reconciler 监听 attribute / textContent 变化。
-      var lastText = null;
+      // v0.9.3：缓存上次写入 span 的 (category, text) 合并 key——tick 每 250ms 跑一次，
+      // 但 99% 时间工具名没变（同时 category 也不变），不写 DOM 就不会触发 React
+      // reconciler 监听 attribute / textContent 变化。category 用 "\u0000" 与 text
+      // 隔开防止碰撞（工具名 / 文案里都不会出现 NUL）。
+      var lastKey = null;
 
       function ensureStatusSpan() {
         if (typeof document === "undefined") return null;
@@ -1205,18 +1305,23 @@ window.__ModuleLoader__.load({
         if (typeof document === "undefined") return;
         if (!simpleIsRunningFromDom()) {
           if (current !== null) { detach(); current = null; }
-          lastText = null;
+          lastKey = null;
           return;
         }
         attach();
         var span = document.getElementById(SIMPLE_STATUS_ID);
         if (span === null) return;
-        var text = simpleActivityText(simplePickToolNameFromDom());
-        // 文字未变就跳过 setTextContent——tick 每 250ms 跑，绝大多数 tick
-        // 工具名不变，写 DOM 触发 mutation listeners 是浪费。
-        if (text === lastText) return;
-        lastText = text;
+        var name = simplePickToolNameFromDom();
+        var text = simpleActivityText(name);
+        // v0.9.3：category 给 CSS 着色用（[data-dsh-activity]），与 text 同步写。
+        // 合并 key = category + "\u0000" + text——任一变化才走 DOM 写，避免 250ms
+        // 轮询 × React reconciler 监听 attribute / textContent 变化的浪费。
+        var category = simpleActivityCategory(name);
+        var key = category + "\u0000" + text;
+        if (key === lastKey) return;
+        lastKey = key;
         span.textContent = text;
+        span.setAttribute(SIMPLE_STATUS_ACTIVITY_ATTR, category);
       }
 
       function start() {
@@ -1232,7 +1337,7 @@ window.__ModuleLoader__.load({
         detach();
         current = null;
         lastTurnStatus = null;
-        lastText = null;
+        lastKey = null;
         isRunning = false;
       }
       return {

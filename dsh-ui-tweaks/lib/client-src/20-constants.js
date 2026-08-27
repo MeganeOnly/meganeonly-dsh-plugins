@@ -15,6 +15,10 @@
         var SHIM_RESOLVED_FLAG = "__dshUiTweaks_shimResolved";
         var SIMPLE_STATUS_ID = "dsh-ui-tweaks-status-row";
         var SIMPLE_STATUS_CLASS = "dsh-ui-tweaks-status";
+        // v0.9.3：tick() 给状态 span 写 data-dsh-activity 标记当前活动类目（think / read /
+        // write / bash / task / plan / goal / git / generic），CSS 按类目着色。
+        // span 由 ensureStatusSpan() 创建并由本插件独占——与 DSH 内部属性不冲突。
+        var SIMPLE_STATUS_ACTIVITY_ATTR = "data-dsh-activity";
         var SIMPLE_TURN_STATUS_SEL = '[class*="turnStatus"]';
         var SIMPLE_POLL_MS = 250;
         // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
