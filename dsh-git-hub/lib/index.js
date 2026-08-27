@@ -159,13 +159,35 @@ function beijingToday() {
   return `${y}-${m}-${day}`
 }
 
-/** 路径归一化（Windows 反斜杠）。空字符串 / null 视为无效。 */
+/**
+ * 路径归一化（Windows 反斜杠）。空字符串 / null 视为无效。
+ *
+ * 关键陷阱：drive root（盘符根），如 `D:\` / `E:\` 必须保留尾随反斜杠。
+ * 原因：Node `readdirSync('D:')` 是"D 盘当前目录"（依赖 Node cwd），
+ *       `readdirSync('D:\\')` 才是"D 盘根"。scanner 拿前者扫不到用户
+ *       想要的整盘范围，所以尾部 `\` 不可一刀切。
+ *
+ * 规则（按顺序）：
+ *   1. 全 `/` 替换成 `\`
+ *   2. 末尾单 `\` 剥离——除非剥光后剩 `<letter>:`（drive root 标点形式必须保留 `\`）
+ *   3. 兜底：纯 `<letter>:`（无尾随 `\`）补 `\` 锁住 drive root 语义，
+ *      避免回 round-trip 后又变成 cwd 形式
+ */
 function normalizePath(p) {
   if (typeof p !== 'string') return null
-  const trimmed = p.trim().replace(/\/+$/, '')
+  const trimmed = p.trim()
   if (!trimmed) return null
-  // 把所有 / 替换成 \
-  return trimmed.replace(/\//g, sep).replace(/\\$/, '')
+  let s = trimmed.replace(/\//g, sep)
+  if (/\\$/.test(s)) {
+    const stripped = s.slice(0, -1)
+    if (!/^[A-Za-z]:$/.test(stripped)) s = stripped
+    // else: stripped = D: 这种 drive root 标点形式，保留尾 \
+  }
+  if (/^[A-Za-z]:$/.test(s)) s = s + sep
+  // 兜底：纯 \ 或 \\（无盘符、无UNC、无路径分量）+ 全部剥光的空串视为无效
+  // ——保留原本 trim 后空字符串 → null 的安全语义（filter(Boolean) 收口）
+  if (!s || /^\\+$/.test(s)) return null
+  return s
 }
 
 /** 路径是否存在的目录。同步 fs.existsSync 即可（启动期一次性）。 */

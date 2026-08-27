@@ -33,6 +33,7 @@
 
 ### 修复
 
+- **drive root（盘符根）在 `normalizePath` 被尾部一刀切剥光**：用户输入 `E:\` 想扫整盘 E，保存后 round-trip 回 `E:` —— Windows 上两者不等价，`readdirSync('E:')` 是"E 盘当前工作目录"（依赖 Node cwd），`readdirSync('E:\\')` 才是"E 盘根"。scanner 拿前者扫不到用户预期范围，前端体感"保存按钮无效：明明存的是 `E:\` 怎么 reload 变 `E:`"。修复：`lib/index.js#normalizePath` 改为三步——① 全 `/` 转 `\`；② 末尾单 `\` 剥离，但若剥光剩 `<letter>:`（drive root 标点形式）必须保留；③ 兜底：纯 `<letter>:`（无尾随 `\`）主动补 `\` 把语义锁到 drive root。20 个用例（drive root / subdir / UNC / 空值 / 非字符串输入）全部 round-trip 通过。**需要重启 DSH** 让新 `normalizePath` 载入（与本段上一条 fix 同款 ESM 缓存约束，已运行进程继续走旧代码）。已保存的 `.git-hub-config.json` 里若有残留 `E:` 形式，用户下次在面板里点一次保存即被自动升级为 `E:\`。
 - **配置路径修复 + 修正此前的 ReferenceError**：上次的「配置保存写到错位置」修复（v0.5.x 早期实现）改用了 `ctx.baseUrl` 解析 profile 根（正确方向），但实现细节选错了层级——把 `loadConfig` / `saveConfig` 定义在 `apply(ctx)` 闭包内，遗漏了 `getAllRepos` / `listChangedRepos` / `listMergeableRepos` 这 3 个**模块顶层**声明的函数也在引用 `loadConfig`，结果 `apply` 闭包里的 `loadConfig` 对它们不可见，`/api/git-hub/repos` 等接口一调就抛 `ReferenceError: loadConfig is not defined`，前端看到「扫描失败 internal」，抽屉仓库列表为空。本条修正实现：保留 `ctx.baseUrl` 解析（不再 `import.meta.url` 上溯），`configPath` 改为模块级 `let` mutable 引用（取代原顶层 `const`），`apply(ctx)` 同步写入一次后供模块顶层共享；`loadConfig` / `saveConfig` 回归模块顶层，`getAllRepos` 等调用方零改动。两层互相矛盾的「修复」合在一起最终落地：路径正确 + 不再 ReferenceError。重启 DSH 即可看到仓库列表重新扫描成功。
 
 ### 维护
