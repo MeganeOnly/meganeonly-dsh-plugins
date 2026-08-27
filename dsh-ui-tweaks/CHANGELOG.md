@@ -18,6 +18,18 @@
   - **性能**：`tick()` 用 `lastKey = category + "\u0000" + text` 合并去重——text 或 category 任一变化才写 DOM（保持 v0.7.1 起的 `lastText` 节流效果，250 ms 轮询 × React reconciler 触发频率不变）
   - **兼容**：`.dsh-ui-tweaks-status` 类名 + `dsh-ui-tweaks-status-row` ID 不动（调试 API / 验证脚本仍命中）；localStorage `simpleModeEnabled` key 不动（老用户开关状态保留）；`visibility:visible !important` 兜底保留（防止被 simple-mode 隐藏的祖先节点带连累）；DSH 主题颜色变量缺失时硬值 fallback
   - **改动文件**：`25-tweaks.js` 的 simple-mode buildCSS（+1.5 KB CSS）+ `55-simple-mode.js` 加 `simpleActivityCategory(name)` + tick() 改 lastKey 合并去重（+400 B JS）+ `20-constants.js` 加 `SIMPLE_STATUS_ACTIVITY_ATTR` 常量 1 行（+50 B）
+  - **首版问题**（见下方 hotfix 段）：v0.9.3 首版用户反馈「一闪一闪 + 高度会变 + 跟原生 Deep diving... 高度不统一」——`padding:3px 10px 3px 8px` 让总高 24px 高于 DSH 原生 turnStatus 的 18px；`scale(.85↔1)` + `opacity(.35↔.95)` + 1.6s 周期 + `transition: background-color/color .25s` 四层动画叠加视觉闪烁。版本号未 bump，作为同版本 hotfix 修复。
+
+### 修复（v0.9.3 hotfix）
+
+- **`simple-mode` 状态行闪烁 + 高度膨胀修复**（v0.9.3 hotfix，版本号不变）：v0.9.3 首版用户反馈「一闪一闪 + 高度会变 + 跟原生 Deep diving... 高度不统一」。三处根因同时修复（CSS 集中在 `25-tweaks.js` 的 simple-mode buildCSS）：
+  - **高度对齐 DSH 原生 turnStatus**：`padding:3px 10px 3px 8px` → `padding:0 10px 0 8px`（仅水平 padding）——总高严格等于 `line-height:18px`，与 DSH 原生「Deep diving...」等 turnStatus 文案严格同高，不再"高度膨胀"
+  - **去掉几何抖动**：删除 `@keyframes` 里的 `transform:scale(.85↔1)`——scale 让圆点几何尺寸变化（从 5.1px 涨到 6px），与字体稳定尺寸冲突，看上去像"在抖"
+  - **去掉颜色过渡闪烁**：删除 `transition:background-color .25s ease,color .25s ease`——color 切换（如 think→bash）时不再有 250ms 颜色过渡闪烁
+  - **减弱呼吸幅度**：opacity 范围 `.35↔.95` → `.6↔.9`（变化幅度缩小到 30%，不再算"闪烁"）
+  - **减慢呼吸周期**：1.6s → 2.4s（柔和的"心跳节奏"，不抢戏）
+  - **保留**：`::before` 圆点 + `@keyframes dsh-status-pulse` + 8 类活动语义色 + pill 形态 + `prefers-reduced-motion` 兜底
+  - **版本号不变**：本次为同版本内 hotfix——v0.9.3 还没发布（commit `03a71c1` 未推送），所有 v0.9.3 内容（视觉升级 + 闪烁/高度修复）整体一起作为 v0.9.3 发布
 
 ### 修复
 

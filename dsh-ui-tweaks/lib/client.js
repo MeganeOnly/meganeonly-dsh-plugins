@@ -2,26 +2,34 @@
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
  * v0.9.3：`simple-mode` 状态行美术度升级——三轴叠加：
- *   - **A) Pill 化**：`padding:3px 10px 3px 8px` + `border-radius:999px` +
+ *   - **A) Pill 化**：`padding:0 10px 0 8px`（仅水平 padding，保持总高严格 18px 与 DSH
+ *     原生 turnStatus 文案如「Deep diving...」同高） + `border-radius:999px` +
  *     `background:color-mix(in srgb, currentColor 8%, transparent)`——取代 v0.9.2
  *     的裸灰文字，"飘字" 变 "状态徽章"，背景跟当前活动色淡出不抢戏
- *   - **B) 呼吸点**：`::before` 6px 圆点 + `@keyframes dsh-status-pulse` 1.6s
- *     透明度+缩放循环，"现在还活着" 的活性信号（`prefers-reduced-motion` 关掉）
+ *   - **B) 呼吸点**：`::before` 6px 圆点 + `@keyframes dsh-status-pulse` 2.4s
+ *     **仅透明度**循环（opacity .6↔.9，无 scale——避免几何抖动）——"现在还活着"
+ *     的活性信号（`prefers-reduced-motion` 关掉）。v0.9.3 首版的 scale(.85↔1)
+ *     + 1.6s 周期 + opacity .35↔.95 三层叠加导致视觉闪烁，已 hotfix
  *   - **C) 语义色**：JS 在 tick() 给 span `setAttribute("data-dsh-activity", ...)`，
  *     CSS 8 条 `[data-dsh-activity="..."]` 规则按类目着色——点继承 currentColor，
  *     单一着色真相源：
  *       think(思辨)=#2563eb 蓝 / read(输入)=#475569 中性 / write(变更)=#d97706 琥珀
  *       bash(执行)=#7c3aed 紫 / task(调度)=#0891b2 青 / plan(计划)=#059669 绿
  *       goal(跟踪)=#db2777 粉 / git(版本)=#64748b 石板 / generic(兜底)=DSH 三级灰
+ *   - **hotfix（不 bump 版本）**：去垂直 padding（总高 18px 与 DSH 原生 turnStatus 同高，
+ *     不再"高度膨胀"）+ 去 scale + 去 `transition: background-color/color`（消除颜色
+ *     切换时的 250ms 过渡闪烁）+ 减弱呼吸幅度（.6↔.9 取代 .35↔.95）+ 减慢周期（2.4s
+ *     取代 1.6s）——v0.9.3 首版发布后用户反馈"一闪一闪 + 高度会变 + 跟原生 Deep diving...
+ *     不统一" 的根因修复
  *   - **性能**：tick() 用 `lastKey = category + "\u0000" + text` 合并去重——text 或
  *     category 任一变化才写 DOM（保持 v0.7.1 起的 `lastText` 节流效果，250ms 轮询
  *     × React reconciler 触发频率不变）
  *   - **兼容**：`.dsh-ui-tweaks-status` 类名 + `dsh-ui-tweaks-status-row` ID 不动
  *     （调试 API / 验证脚本仍命中）；localStorage `simpleModeEnabled` key 不动
  *     （老用户开关状态保留）；`visibility:visible !important` 兜底保留
- *   - **改动文件**：`25-tweaks.js` 的 simple-mode buildCSS（+1.5 KB CSS）+
- *     `55-simple-mode.js` 加 `simpleActivityCategory(name)` + tick() 改 lastKey
- *     （+400 B JS）+ `20-constants.js` 加 `SIMPLE_STATUS_ACTIVITY_ATTR` 1 行（+50 B）
+ *   - **改动文件**：`25-tweaks.js` 的 simple-mode buildCSS（+~1.5 KB CSS，含 hotfix
+ *     校准）+ `55-simple-mode.js` 加 `simpleActivityCategory(name)` + tick() 改 lastKey
+ *     （+~400 B JS）+ `20-constants.js` 加 `SIMPLE_STATUS_ACTIVITY_ATTR` 1 行（+~50 B）
  *
  * v0.9.2：`first-message-jump` compaction 跳过 + 可见性放宽：
  *   - Shift+点击现在跳过 compact 摘要里的旧 user 行，直接到当前会话的第
@@ -309,12 +317,16 @@ window.__ModuleLoader__.load({
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
         // v0.9.3 美术度升级：状态行三轴叠加——
-        //   A) 圆角胶囊 (pill)：padding 3 10 3 8 + border-radius 999 + 极淡背景
-        //   B) 呼吸点 (::before)：6px 圆点 + @keyframes 1.6s 透明度+缩放循环
+        //   A) 圆角胶囊 (pill)：border-radius 999 + 水平 padding 8/10 + 极淡背景
+        //   B) 呼吸点 (::before)：6px 圆点 + @keyframes 仅透明度循环（无 scale）
         //   C) 语义色 ([data-dsh-activity]=...)：8 类活动对应 8 色；点继承 currentColor
         // 单一设计语言：JS 在 tick() 给 span 写 data-dsh-activity，CSS 命中着色；
-        // 背景用 color-mix(currentColor 8%, transparent) 跟着 accent 色淡出——
-        // 视觉信号三件套协同，不抢戏、不僵死、不需要读完文字。
+        // 背景用 color-mix(currentColor 8%, transparent) 跟着 accent 色淡出。
+        //
+        // v0.9.3 hotfix：去垂直 padding（保持总高 18px 与 DSH 原生「Deep diving...」
+        // 等 turnStatus 文案严格对齐）+ 去 scale 动画 + 去 color transition + 减弱
+        // 呼吸幅度（opacity 0.6↔0.9 取代 0.35↔0.95）+ 减慢周期（2.4s 取代 1.6s）——
+        // 解决 v0.9.3 首版的「闪烁 + 高度膨胀」问题。
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
           return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +
@@ -327,31 +339,36 @@ window.__ModuleLoader__.load({
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
             // —— v0.9.3 status row chip —— 取代 v0.9.2 的裸灰文字
+            // 总高严格 18px（padding:0 + line-height:18px，无 box-sizing 影响——
+            //   inline-flex 的 align-items:center 让 6px 圆点视觉居中），
+            //   与 DSH 原生 turnStatus 文案（如「Deep diving...」）严格同高。
             // visibility:visible !important 保留（v0.7.1 起的祖先 display:none 兜底）
             // color-mix(in srgb, currentColor 8%, transparent) 跟随 accent 色淡出
             // — DSH Electron Chromium 111+ 支持，主题变量缺失不影响
             ".dsh-ui-tweaks-status{" +
               "display:inline-flex !important;" +
               "align-items:center;" +
-              "gap:7px;" +
-              "padding:3px 10px 3px 8px;" +
-              "margin-left:12px;" +
+              "gap:6px;" +
+              "padding:0 10px 0 8px;" +
+              "margin-left:10px;" +
               "border-radius:999px;" +
               "background:color-mix(in srgb, currentColor 8%, transparent);" +
               "color:var(--dsw-alias-label-tertiary);" +
-              "font-size:12.5px;" +
+              "font-size:13px;" +
               "line-height:18px;" +
               "vertical-align:middle;" +
               "flex:none;" +
               "white-space:nowrap;" +
-              "transition:background-color .25s ease,color .25s ease;" +
               "visibility:visible !important" +
             "}\n" +
-            // —— 呼吸点 ::before —— "现在还活着" 的活性信号
+            // —— 呼吸点 ::before —— "现在还活着" 的活性信号（hotfix：仅透明度，无 scale）
             // 6×6 圆点；background:currentColor 继承 [data-dsh-activity] 着色
+            // opacity 范围 0.6↔0.9（变化幅度小，不算"闪烁"），周期 2.4s（柔和）
+            // 删 v0.9.3 首版的 scale(.85↔1)：scale 会让圆点几何尺寸变化，
+            //   与字体的稳定尺寸冲突，看上去像"在抖"
             "@keyframes dsh-status-pulse{" +
-              "0%,100%{opacity:.35;transform:scale(.85)}" +
-              "50%{opacity:.95;transform:scale(1)}" +
+              "0%,100%{opacity:.6}" +
+              "50%{opacity:.9}" +
             "}\n" +
             ".dsh-ui-tweaks-status::before{" +
               "content:\"\";" +
@@ -359,9 +376,9 @@ window.__ModuleLoader__.load({
               "height:6px;" +
               "border-radius:50%;" +
               "background:currentColor;" +
-              "opacity:.55;" +
+              "opacity:.7;" +
               "flex:none;" +
-              "animation:dsh-status-pulse 1.6s ease-in-out infinite" +
+              "animation:dsh-status-pulse 2.4s ease-in-out infinite" +
             "}\n" +
             // —— 8 类活动语义色 —— JS tick() 给 span setAttribute("data-dsh-activity", ...)
             // 顺序：think (思辨) / read (输入) / write (变更) / bash (执行) /
