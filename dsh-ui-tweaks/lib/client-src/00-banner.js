@@ -1,6 +1,24 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
+ *   但有时候会有时候不会"。根因：`display:none` 在某些 layout context 下不一定
+ *   让元素彻底不占布局空间——
+ *     - **React VirtualList / react-window 风格**：每个 chat-flow item 有 fixed
+ *       slot，`display:none` 不会回收 slot 高度
+ *     - **CSS Grid `grid-template-rows: masonry` 或 auto**：grid track 可能
+ *       基于 max-content 计算，hidden item 仍占 track
+ *     - **React 给 parent 设的 inline style `min-height`** 基于 child 内容计算——
+ *       child `display:none` 后 parent 的 inline `min-height` 不会被改写
+ *     - **layout 重算时机**：间距时大时小正对应 layout 重算发生在 React 重渲时——
+ *       旧消息按"已收敛 layout"渲染（间距正常），新消息边渲边 hide 时 layout 未收敛
+ *       （间距偏大）
+ *   修法：把 hidden block 的 height / min-height / max-height / margin / padding /
+ *     border / outline / flex-basis / flex-grow / grid-area 全部显式归零——
+ *     在 block / flex / grid / virtual list 任意 layout context 下都不留残余高度。
+ *   兼容性：纯 CSS 加固，所有类名 / ID / attribute / localStorage key 不动。
+ *   见 25-tweaks.js simple-mode buildCSS。
+ *
  * v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
  *   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
  *   根因诊断：v0.9.8 只 reset 了容器本身的 animation / background / background-clip

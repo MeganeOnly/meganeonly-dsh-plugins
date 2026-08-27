@@ -1,4 +1,12 @@
     // ===== constants =====
+        // v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
+        //   但有时候会有时候不会"。根因：`display:none` 在某些 layout context（CSS Grid
+        //   / React VirtualList fixed slot / React inline style min-height based on
+        //   child 内容等）下不一定让元素彻底不占布局空间。间距时大时小正对应 layout
+        //   重算发生在 React 重渲时。修法：把 hidden block 的 height / min-height /
+        //   max-height / margin / padding / border / outline / flex-basis /
+        //   flex-grow / grid-area 全部显式归零——在 block / flex / grid / virtual list
+        //   任意 layout context 下都不留残余高度。兼容性：纯 CSS 加固。
         // v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
         //   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
         //   v0.9.8 只 reset 了 animation / background / background-clip，DSH 可能用
@@ -43,7 +51,7 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.10";
+        var VERSION = "0.9.11";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

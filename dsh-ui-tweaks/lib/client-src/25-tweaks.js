@@ -65,14 +65,41 @@
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
           return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +
-            '[data-chat-flow-kind="tool-call"]{display:none!important}\n' +
-            '[data-chat-flow-kind="context"]{display:none!important}\n' +
-            '[data-variant="think"]{display:none!important}\n' +
-            '[data-chat-flow-kind="compaction"]{display:none!important}\n' +
-            '[data-chat-flow-kind="manual-compaction"]{display:none!important}\n' +
-            '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
-            '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
-            '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
+            // v0.9.11：防御性 layout zero——`display:none` 在某些 layout context
+            //   （CSS Grid / React VirtualList / parent 有 inline style min-height
+            //   基于 child 内容等）下不一定让元素彻底不占布局空间——virtual list
+            //   每个 item 有 fixed slot，`display:none` 不会回收 slot；CSS Grid
+            //   `grid-template-rows: masonry` 类似；React 给 parent 设的
+            //   `style={{minHeight: ...}}` 也不被 child 的 `display:none` 影响。
+            //   用户反馈"两边的字之间的距离会特别大 但有时候会有时候不会"——
+            //   间距时大时小正对应 layout 重算发生在 React 重渲时（旧消息按"已收敛
+            //   layout"渲染间距正常，新消息边渲边 hide 时 layout 未收敛间距偏大）。
+            //   修法：把 hidden block 的 height / min-height / max-height /
+            //   margin / padding / border / outline / flex-basis / flex-grow /
+            //   grid-area 全部显式归零——在 block / flex / grid / virtual list
+            //   任意 layout context 下都不留残余高度。
+            //   兼容性：纯 CSS 加固，不动类名 / ID / attribute / localStorage key。
+            '[data-chat-flow-kind="tool-call"],' +
+            '[data-chat-flow-kind="context"],' +
+            '[data-variant="think"],' +
+            '[data-chat-flow-kind="compaction"],' +
+            '[data-chat-flow-kind="manual-compaction"],' +
+            '[data-chat-flow-kind="model-retry"],' +
+            '[data-chat-flow-kind="turn-error"],' +
+            '[data-chat-flow-kind="turn-max-tokens"]{' +
+              "display:none !important;" +
+              "height:0 !important;" +
+              "min-height:0 !important;" +
+              "max-height:0 !important;" +
+              "margin:0 !important;" +
+              "padding:0 !important;" +
+              "border:0 !important;" +
+              "outline:0 !important;" +
+              "flex:0 0 0 !important;" +
+              "flex-basis:0 !important;" +
+              "flex-grow:0 !important;" +
+              "grid-area:auto !important" +
+            "}\n" +
             // —— v0.9.10 status row —— 接管 DSH 原生 turnStatus 视觉呈现。
             //   v0.9.8 整容器接管：杀 DSH animation / background / background-clip /
             //   -webkit-text-fill-color / color:transparent / font-size:0 抹 DSH 文字 /

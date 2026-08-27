@@ -1,6 +1,24 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
+ *   但有时候会有时候不会"。根因：`display:none` 在某些 layout context 下不一定
+ *   让元素彻底不占布局空间——
+ *     - **React VirtualList / react-window 风格**：每个 chat-flow item 有 fixed
+ *       slot，`display:none` 不会回收 slot 高度
+ *     - **CSS Grid `grid-template-rows: masonry` 或 auto**：grid track 可能
+ *       基于 max-content 计算，hidden item 仍占 track
+ *     - **React 给 parent 设的 inline style `min-height`** 基于 child 内容计算——
+ *       child `display:none` 后 parent 的 inline `min-height` 不会被改写
+ *     - **layout 重算时机**：间距时大时小正对应 layout 重算发生在 React 重渲时——
+ *       旧消息按"已收敛 layout"渲染（间距正常），新消息边渲边 hide 时 layout 未收敛
+ *       （间距偏大）
+ *   修法：把 hidden block 的 height / min-height / max-height / margin / padding /
+ *     border / outline / flex-basis / flex-grow / grid-area 全部显式归零——
+ *     在 block / flex / grid / virtual list 任意 layout context 下都不留残余高度。
+ *   兼容性：纯 CSS 加固，所有类名 / ID / attribute / localStorage key 不动。
+ *   见 25-tweaks.js simple-mode buildCSS。
+ *
  * v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
  *   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
  *   根因诊断：v0.9.8 只 reset 了容器本身的 animation / background / background-clip
@@ -340,6 +358,14 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
+        // v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
+        //   但有时候会有时候不会"。根因：`display:none` 在某些 layout context（CSS Grid
+        //   / React VirtualList fixed slot / React inline style min-height based on
+        //   child 内容等）下不一定让元素彻底不占布局空间。间距时大时小正对应 layout
+        //   重算发生在 React 重渲时。修法：把 hidden block 的 height / min-height /
+        //   max-height / margin / padding / border / outline / flex-basis /
+        //   flex-grow / grid-area 全部显式归零——在 block / flex / grid / virtual list
+        //   任意 layout context 下都不留残余高度。兼容性：纯 CSS 加固。
         // v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
         //   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
         //   v0.9.8 只 reset 了 animation / background / background-clip，DSH 可能用
@@ -384,7 +410,7 @@ window.__ModuleLoader__.load({
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.10";
+        var VERSION = "0.9.11";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -514,14 +540,41 @@ window.__ModuleLoader__.load({
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
           return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +
-            '[data-chat-flow-kind="tool-call"]{display:none!important}\n' +
-            '[data-chat-flow-kind="context"]{display:none!important}\n' +
-            '[data-variant="think"]{display:none!important}\n' +
-            '[data-chat-flow-kind="compaction"]{display:none!important}\n' +
-            '[data-chat-flow-kind="manual-compaction"]{display:none!important}\n' +
-            '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
-            '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
-            '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
+            // v0.9.11：防御性 layout zero——`display:none` 在某些 layout context
+            //   （CSS Grid / React VirtualList / parent 有 inline style min-height
+            //   基于 child 内容等）下不一定让元素彻底不占布局空间——virtual list
+            //   每个 item 有 fixed slot，`display:none` 不会回收 slot；CSS Grid
+            //   `grid-template-rows: masonry` 类似；React 给 parent 设的
+            //   `style={{minHeight: ...}}` 也不被 child 的 `display:none` 影响。
+            //   用户反馈"两边的字之间的距离会特别大 但有时候会有时候不会"——
+            //   间距时大时小正对应 layout 重算发生在 React 重渲时（旧消息按"已收敛
+            //   layout"渲染间距正常，新消息边渲边 hide 时 layout 未收敛间距偏大）。
+            //   修法：把 hidden block 的 height / min-height / max-height /
+            //   margin / padding / border / outline / flex-basis / flex-grow /
+            //   grid-area 全部显式归零——在 block / flex / grid / virtual list
+            //   任意 layout context 下都不留残余高度。
+            //   兼容性：纯 CSS 加固，不动类名 / ID / attribute / localStorage key。
+            '[data-chat-flow-kind="tool-call"],' +
+            '[data-chat-flow-kind="context"],' +
+            '[data-variant="think"],' +
+            '[data-chat-flow-kind="compaction"],' +
+            '[data-chat-flow-kind="manual-compaction"],' +
+            '[data-chat-flow-kind="model-retry"],' +
+            '[data-chat-flow-kind="turn-error"],' +
+            '[data-chat-flow-kind="turn-max-tokens"]{' +
+              "display:none !important;" +
+              "height:0 !important;" +
+              "min-height:0 !important;" +
+              "max-height:0 !important;" +
+              "margin:0 !important;" +
+              "padding:0 !important;" +
+              "border:0 !important;" +
+              "outline:0 !important;" +
+              "flex:0 0 0 !important;" +
+              "flex-basis:0 !important;" +
+              "flex-grow:0 !important;" +
+              "grid-area:auto !important" +
+            "}\n" +
             // —— v0.9.10 status row —— 接管 DSH 原生 turnStatus 视觉呈现。
             //   v0.9.8 整容器接管：杀 DSH animation / background / background-clip /
             //   -webkit-text-fill-color / color:transparent / font-size:0 抹 DSH 文字 /

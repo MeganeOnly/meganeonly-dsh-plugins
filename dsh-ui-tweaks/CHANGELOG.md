@@ -6,6 +6,44 @@
 
 ## [Unreleased]
 
+### 修复（v0.9.11）
+
+- **`simple-mode` hidden block 间距过大**（v0.9.11）：用户反馈"两边的字之间的距离会特别大 但有时候会有时候不会"——大量思考 + 各种操作隐藏后，可见 user message 与 assistant response 之间的垂直间距过大（且时大时小不一致）。
+  - **根因诊断**：`display:none` 在某些 layout context 下不一定让元素彻底不占布局空间——
+    - **React VirtualList / react-window 风格**：每个 chat-flow item 有 fixed slot，`display:none` 不会回收 slot 高度
+    - **CSS Grid `grid-template-rows: masonry` 或 auto**：grid track 可能基于 max-content 计算，hidden item 仍占 track
+    - **React 给 parent 设的 inline style `min-height`** 基于 child 内容计算——child `display:none` 后 parent 的 inline `min-height` 不会被改写
+    - **layout 重算时机**：间距时大时小正对应 layout 重算发生在 React 重渲时——旧消息按"已收敛 layout"渲染（间距正常），新消息边渲边 hide 时 layout 未收敛（间距偏大）
+  - **修法**：在 `display:none` 基础上加防御性 layout zero——把 hidden block 的 height / min-height / max-height / margin / padding / border / outline / flex-basis / flex-grow / grid-area 全部显式归零，确保在 block / flex / grid / virtual list 任意 layout context 下都不留残余高度
+  - **CSS**：
+    ```css
+    [data-chat-flow-kind="tool-call"],
+    [data-chat-flow-kind="context"],
+    [data-variant="think"],
+    [data-chat-flow-kind="compaction"],
+    [data-chat-flow-kind="manual-compaction"],
+    [data-chat-flow-kind="model-retry"],
+    [data-chat-flow-kind="turn-error"],
+    [data-chat-flow-kind="turn-max-tokens"]{
+      display:none !important;
+      height:0 !important;
+      min-height:0 !important;
+      max-height:0 !important;
+      margin:0 !important;
+      padding:0 !important;
+      border:0 !important;
+      outline:0 !important;
+      flex:0 0 0 !important;
+      flex-basis:0 !important;
+      flex-grow:0 !important;
+      grid-area:auto !important
+    }
+    ```
+  - **兼容性**：纯 CSS 加固，所有类名 / ID / attribute / localStorage key 不动；`display:none` 之外的所有新规则只是把"display:none 没杀干净的残余布局"显式归零，对 DSH 正常路径（无 simple-mode）零影响
+  - **诊断**：DevTools inspect 任一 hidden block（如 `[data-variant="think"]`）的 Computed 面板——`display` 应是 `none`、`height` / `min-height` / `max-height` / `margin` / `padding` / `border` 全部应是 `0px`、`flex-basis` 应是 `0px`
+  - **回退路径**：如果 v0.9.11 防御性 layout zero 仍不够（比如 DSH 用 JS 计算 inline style 的 min-height 而不是 CSS），下一步走 JS 路径——在 simple-mode 启用时遍历 hidden block 的所有祖先节点，用 `element.style.minHeight = '0'` 显式覆盖 inline style
+  - **改动文件**：`lib/client-src/25-tweaks.js` 的 simple-mode buildCSS（隐藏规则合并成一条 + 加 12 条防御性规则）；`lib/client-src/00-banner.js` 加 v0.9.11 banner 段；`20-constants.js` VERSION 0.9.10 → 0.9.11；`package.json` version 同步；走 `npm run build:client` + `node --check lib/client.js` 语法校验
+
 ### 修复（v0.9.10）
 
 - **`simple-mode` 状态行 v0.9.8 reset 不彻底**（v0.9.10）：用户反馈"底部的 正在思考 还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"——v0.9.8 整容器接管只 reset 了 `animation` / `background` / `background-clip` 三个属性，没覆盖 DSH 可能用 animation 之外方式做的 shimmer。**根因诊断**：
