@@ -8,6 +8,15 @@
 
 ### 修复
 
+- **`simple-mode` 状态行工具名识别修复**（v0.9.5）：v0.9.3 美术度升级（8 类活动语义色：think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 / plan 绿 / goal 粉 / git 石板）**从发布起就未生效**——所有活动都 fallback 到 "正在处理…" / generic 灰。两处根因同时修：
+  - **`simplePickToolNameFromDom` 错属性**：之前查 `[data-tool-name]`，但 DSH `dsh-client-ui-tool/lib/client.js` ToolRow 实际渲染的是 `[data-tool] = toolName`（`"data-tool": toolName`）。v0.9.3 升级时命名错误，从 v0.9.3 commit `03a71c1` 起 simplePickToolNameFromDom 返回 null 100%，simpleActivityText(null) 永远 "正在处理…"。修法：主路径改为 `[data-tool]`；保留 `[data-name]` / `[class*="toolName"]` / `[class*="toolLabel"]` 作 fallback（与 v0.7.3 hide-sidebar-tooltip 的 substring 策略一致——DSH 升级切属性约定仍能命中）。
+  - **think / reasoning block 不在 tool-call 容器里**：模型思考时，DSH 渲染 `<div data-chat-flow-kind="assistant-step">` 内含 `<div data-variant="think" data-state="running">`（`dsh-client-ui-conversation/lib/client.js` ReasoningRow）——即使修了 data-tool 也识别不到。新增 `simpleIsThinkingFromDom()` 单独探测 `[data-state="running"]` 的 think 块；新增 `simplePickActivityName()` 统一入口——think 优先 → tool-call → fallback（generic）。tick() 改用 `simplePickActivityName()`。
+  - **`simpleActivityCategory` / `simpleActivityText` 扩展**：覆盖 DSH 全部内置工具——`bash_persistent` / `pwsh_persistent` / `read_image` 归读 / 写 / shell；`todo_write` 取代 v0.9.3 错写的 `todo`（DSH 实际是 `todo_write`）；`get_goal` / `create_goal` / `update_goal` 归 goal；`subagent` / `workflow` / `ralph` / `ask_user_question` / `job_output` / `job_list` / `job_kill` / `send_message` / `interrupt_agent` / `list_agents` / `skill` 归 task；`cordis_*` 走 prefix 匹配（DSH 注册名 `cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine` / `cordis_package_inspect` / `cordis_runtime_inspect`）。`run_code` 仍归 bash（执行类）——为不引入第 9 色。
+  - **不变**：`.dsh-ui-tweaks-status` 类名 / `dsh-ui-tweaks-status-row` ID / `[data-dsh-activity]` attr / CSS 8 类活动色 / lastKey 节流 / `visibility:visible !important` 兜底 / `prefers-reduced-motion` 关呼吸——纯逻辑修复，UI 形态不变
+  - **验证**：浏览器控制台 `window.__dshUiTweaks.simpleController`（v0.9.5 起的调试 API，如未暴露调 `getState()` 看 `lastActivity` 字段确认 tick() 切换）—— bash / read / write / edit / think 时分别显示对应色与文案
+
+### 修复
+
 - **`first-message-jump` step-by-step 上一条 / 下一条 跳过 hidden row**（v0.9.4）：v0.9.3 之前 `jumpFindPrevUserRow` / `jumpFindNextUserRow` 拿到 `topVisible` 的 DOM 索引后直接返回 `rows[i-1]` / `rows[i+1]`，**没有再检查目标行是否实际可见**。当 simple-mode（默认 ON）把会话顶部的 compaction 块 `display:none` 隐藏时，里面的旧 user 行（rows[0..K-1]）仍然在 DOM 里、`jumpAllUserRows` 仍会返回——而 `jumpFindTopVisibleUserRow` 已经正确跳过了 height<=0 的行，所以锚点（topVisible）通常是 rows[K]。但再点一次"上一条"，`jumpFindPrevUserRow` 直接返回 rows[K-1]（hidden 的旧 compaction user 行），`jumpToPrev` 滚到了一个 `height=0` 的位置 → 用户看不到任何视觉变化，按钮看起来"卡死"在该行，再点也无反应（直到下次 compact 边界变化或 simple-mode 切换）。同样的问题在 `jumpFindNextUserRow`（罕见但若 hidden 行不在顶部而是夹在中间会触发）。修法：拿到 topVisible 索引后，prev / next 各自向前 / 向后找第一个 `getBoundingClientRect().height > 0` 的 row；找不到就返回 null（与"上一条 step 到边界后按钮看似还在但 Shift+点击仍能直达第一行"的语义一致——v0.9.2 可见性放宽后的视觉提示不变）。区别于 v0.9.2 的 Shift+点击用 `jumpIsRowInCompaction` 沿父链检查 `data-chat-flow-kind` attribute：v0.9.4 用 DOM 渲染高度（`getBoundingClientRect().height > 0`）做"可见性"判断，更通用——simple-mode 隐藏、自定义 CSS 隐藏等任何 `display:none` 的 user 行都会跳过；simple-mode OFF 时所有行可见，行为不变（compaction 行仍可逐条 step 进去）。
 
 ### 优化（v0.9.3）

@@ -1,5 +1,12 @@
     // ===== constants =====
-        var VERSION = "0.9.2";
+        // v0.9.5：simple-mode 状态行工具名识别修复——simplePickToolNameFromDom
+        // 之前查 [data-tool-name]（错属性），DSH 实际渲染 [data-tool]（见
+        // dsh-client-ui-tool ToolRow.js）；同时新增 simpleIsThinkingFromDom
+        // 识别 reasoning block（不在 tool-call 容器里，assistant-step
+        // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
+        // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
+        // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
+        var VERSION = "0.9.5";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

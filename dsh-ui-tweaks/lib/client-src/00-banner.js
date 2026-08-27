@@ -1,6 +1,20 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.5：`simple-mode` 状态行工具名识别修复——`simplePickToolNameFromDom`
+ *   之前查 `[data-tool-name]`（错属性），DSH `dsh-client-ui-tool/lib/client.js`
+ *   ToolRow 实际渲染的是 `[data-tool] = toolName`；同时新增
+ *   `simpleIsThinkingFromDom` 识别 reasoning block（不在 tool-call 容器里，
+ *   在 `assistant-step` 的 `data-variant="think" data-state="running"` 上）。
+ *   两处修复让 v0.9.3 美术度升级的 8 类活动语义色真正生效——v0.9.3 commit
+ *   `03a71c1` 起就未生效，所有活动一直 fallback 到 "正在处理…" / generic 灰。
+ *   tick() 改用 `simplePickActivityName()` 统一入口：think 优先 → tool-call
+ *   → fallback。`simpleActivityCategory` / `simpleActivityText` 扩展覆盖 DSH
+ *   真实工具名（`bash_persistent` / `pwsh_persistent` / `read_image` /
+ *   `todo_write` / `*_goal` / `subagent` / `workflow` / `ralph` / `skill` /
+ *   `ask_user_question` / `job_*` / `send_message` / `interrupt_agent` /
+ *   `list_agents` / `cordis_*`）。
+ *
  * v0.9.4：`first-message-jump` step-by-step 跳过 hidden row 修复：
  *   - 根因：v0.9.3 之前 `jumpFindPrevUserRow` / `jumpFindNextUserRow` 拿到
  *     `topVisible` 的 DOM 索引后直接返回 `rows[i-1]` / `rows[i+1]`，没再

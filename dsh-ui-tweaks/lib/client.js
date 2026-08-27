@@ -1,6 +1,20 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.5：`simple-mode` 状态行工具名识别修复——`simplePickToolNameFromDom`
+ *   之前查 `[data-tool-name]`（错属性），DSH `dsh-client-ui-tool/lib/client.js`
+ *   ToolRow 实际渲染的是 `[data-tool] = toolName`；同时新增
+ *   `simpleIsThinkingFromDom` 识别 reasoning block（不在 tool-call 容器里，
+ *   在 `assistant-step` 的 `data-variant="think" data-state="running"` 上）。
+ *   两处修复让 v0.9.3 美术度升级的 8 类活动语义色真正生效——v0.9.3 commit
+ *   `03a71c1` 起就未生效，所有活动一直 fallback 到 "正在处理…" / generic 灰。
+ *   tick() 改用 `simplePickActivityName()` 统一入口：think 优先 → tool-call
+ *   → fallback。`simpleActivityCategory` / `simpleActivityText` 扩展覆盖 DSH
+ *   真实工具名（`bash_persistent` / `pwsh_persistent` / `read_image` /
+ *   `todo_write` / `*_goal` / `subagent` / `workflow` / `ralph` / `skill` /
+ *   `ask_user_question` / `job_*` / `send_message` / `interrupt_agent` /
+ *   `list_agents` / `cordis_*`）。
+ *
  * v0.9.4：`first-message-jump` step-by-step 跳过 hidden row 修复：
  *   - 根因：v0.9.3 之前 `jumpFindPrevUserRow` / `jumpFindNextUserRow` 拿到
  *     `topVisible` 的 DOM 索引后直接返回 `rows[i-1]` / `rows[i+1]`，没再
@@ -236,7 +250,14 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
-        var VERSION = "0.9.2";
+        // v0.9.5：simple-mode 状态行工具名识别修复——simplePickToolNameFromDom
+        // 之前查 [data-tool-name]（错属性），DSH 实际渲染 [data-tool]（见
+        // dsh-client-ui-tool ToolRow.js）；同时新增 simpleIsThinkingFromDom
+        // 识别 reasoning block（不在 tool-call 容器里，assistant-step
+        // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
+        // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
+        // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
+        var VERSION = "0.9.5";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -1190,24 +1211,46 @@ window.__ModuleLoader__.load({
     // ====================================================================
     // 简洁模式：状态行 DOM controller（从原 dsh-simple-mode/lib/client.js 移植）
     // ====================================================================
+    //
+    // v0.9.5 关键修复：`simplePickToolNameFromDom` 之前查 `[data-tool-name]`
+    // 找不到任何工具名——DSH 实际渲染的是 `data-tool`（见 dsh-client-ui-tool
+    // lib/client.js ToolRow：`"data-tool": toolName`）。这导致 v0.9.3 起的 8 类
+    // 语义色（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 / plan
+    // 绿 / goal 粉 / git 石板）**全部从 v0.9.3 发布起就未生效过**——所有活动
+    // 都 fallback 到 "正在处理…" / generic 灰。同时 think / reasoning block
+    // 不在 tool-call 容器里（它在 assistant-step 的 data-variant="think"
+    // 上），即使修了 data-tool 也识别不到。新增 simpleIsThinkingFromDom +
+    // simplePickActivityName 统一入口：think 优先 → tool-call → fallback。
+    // 真实工具名映射扩展覆盖 DSH 全部内置工具（bash / pwsh / *_persistent /
+    // read_image / todo_write / *_goal / subagent / workflow / ralph / skill /
+    // ask_user_question / job_* / send_message / interrupt_agent / list_agents
+    // / cordis_* 等）——见 simpleActivityCategory / simpleActivityText 注释。
 
     function simpleActivityText(name) {
       if (!name) return "正在处理…";
+      // think / reason——reasoning block（data-variant="think"）不在 tool-call
+      // 容器里，由 simpleIsThinkingFromDom 提前返回 "think"
       if (name === "think" || (typeof name === "string" && name.indexOf("reason") === 0)) return "正在思考…";
-      if (name === "read" || name === "web_fetch") return "正在阅读…";
+      // 文件系统读取类（含 read_image）
+      if (name === "read" || name === "read_image" || name === "web_fetch") return "正在阅读…";
       if (name === "web_search") return "正在搜索…";
-      if (name === "edit" || name === "write") return "正在修改文件…";
       if (name === "grep" || name === "glob") return "正在查找…";
-      if (name === "bash" || name === "pwsh" || name === "run_code") return "正在执行命令…";
-      // 子 agent / 任务调度——不细分工具名（task / subagent / agent），统一文案即可
-      if (name === "task" || name === "subagent" || name === "agent") return "正在调度子任务…";
-      // 待办 / 计划类（todo / plan / update_plan）——内部细节差异不影响用户视角
-      if (name === "todo" || name === "plan" || name === "update_plan") return "正在整理计划…";
-      // 代码智能查询——LSP 类工具用户能识别即可
+      // 文件编辑类
+      if (name === "edit" || name === "write") return "正在修改文件…";
+      // shell / 代码执行
+      if (name === "bash" || name === "bash_persistent" || name === "pwsh" || name === "pwsh_persistent" || name === "run_code") return "正在执行命令…";
+      // 任务调度——subagent / workflow / ralph / agent 控制 / 消息
+      if (name === "subagent" || name === "workflow" || name === "ralph" || name === "task" || name === "agent") return "正在调度子任务…";
+      if (name === "send_message" || name === "interrupt_agent" || name === "list_agents") return "正在协调子任务…";
+      if (name === "ask_user_question") return "等待你回答…";
+      // 任务清单 / 计划——DSH 实际是 todo_write（v0.9.3 之前错把 todo 写这里）
+      if (name === "todo_write" || name === "todo" || name === "plan" || name === "update_plan") return "正在整理计划…";
+      // 目标跟踪
+      if (name === "get_goal" || name === "create_goal" || name === "update_goal" || name === "goal" || name === "objective") return "正在处理目标…";
+      // jobs / skill 类轻量
+      if (name === "job_output" || name === "job_list" || name === "job_kill" || name === "skill") return "正在调度…";
+      // 历史扩展名——保留兼容（新工具未必启用，但 fallback 不至于坏）
       if (name === "lsp" || name === "intellisense") return "正在查询代码…";
-      // goal / objective 类工具（DSH 目标/任务跟踪）
-      if (name === "goal" || name === "objective") return "正在处理目标…";
-      // git / commit / push ——代码版本控制
       if (name === "commit" || name === "git") return "正在提交代码…";
       if (name === "push") return "正在推送…";
       return "正在处理…";
@@ -1216,40 +1259,89 @@ window.__ModuleLoader__.load({
     // v0.9.3：simpleActivityCategory(name) 返回活动类目（think / read / write /
     // bash / task / plan / goal / git / generic）。simpleActivityText 给出文案，
     // 这个给出颜色——两个轴解耦，新增工具只需在这里加一行 + CSS 加一条着色规则。
+    //
+    // v0.9.5 扩展：覆盖 DSH 实际工具名。`run_code` 从 bash 移到 code 单独类目
+    // ——但 CSS 当前只支持 8 类（think/read/write/bash/task/plan/goal/git），
+    // 为了不引入第 9 色，run_code 仍归 bash（执行类）。`todo_write` 取代
+    // v0.9.3 写错的 `todo`（DSH 实际是 `todo_write`，`todo` 永远查不到）。
+    // `subagent` / `workflow` / `ralph` / `job_*` / `ask_user_question` /
+    // `send_message` / `interrupt_agent` / `list_agents` / `skill` 归 task。
+    // cordis_* 走 prefix 匹配（DSH 注册名 `cordis_define` / `cordis_run` 等）。
     function simpleActivityCategory(name) {
       if (!name) return "generic";
       if (name === "think" || (typeof name === "string" && name.indexOf("reason") === 0)) return "think";
-      if (name === "read" || name === "web_fetch" || name === "web_search") return "read";
+      if (name === "read" || name === "read_image" || name === "web_fetch" || name === "web_search" || name === "grep" || name === "glob") return "read";
       if (name === "edit" || name === "write") return "write";
-      if (name === "bash" || name === "pwsh" || name === "run_code") return "bash";
-      if (name === "task" || name === "subagent" || name === "agent") return "task";
-      if (name === "todo" || name === "plan" || name === "update_plan") return "plan";
-      if (name === "goal" || name === "objective") return "goal";
-      if (name === "git" || name === "commit" || name === "push") return "git";
+      if (name === "bash" || name === "bash_persistent" || name === "pwsh" || name === "pwsh_persistent" || name === "run_code") return "bash";
+      if (name === "subagent" || name === "workflow" || name === "ralph" || name === "task" || name === "agent" || name === "send_message" || name === "interrupt_agent" || name === "list_agents" || name === "ask_user_question" || name === "job_output" || name === "job_list" || name === "job_kill" || name === "skill" || (typeof name === "string" && name.indexOf("cordis_") === 0)) return "task";
+      if (name === "todo_write" || name === "todo" || name === "plan" || name === "update_plan") return "plan";
+      if (name === "get_goal" || name === "create_goal" || name === "update_goal" || name === "goal" || name === "objective") return "goal";
+      if (name === "commit" || name === "git" || name === "push") return "git";
       return "generic";
     }
 
+    // v0.9.5：simplePickToolNameFromDom 改查 `[data-tool]`（DSH 实际渲染的
+    // 属性名，见 dsh-client-ui-tool/lib/client.js ToolRow：`"data-tool": toolName`）。
+    // 旧路径 `[data-tool-name]` 是命名错误——v0.9.3 美术度升级时
+    // 写错了 selector，从 v0.9.3 发布起 8 类语义色**全部未生效**。
+    // 保留 `[data-name]` / `[class*="toolName"]` / `[class*="toolLabel"]`
+    // 作 fallback——以防 DSH 未来切换到不同的属性约定（substring match 不依赖 hash，
+    // 与 v0.7.3 hide-sidebar-tooltip CSS 的 substring 策略一致）。
     function simplePickToolNameFromDom() {
       if (typeof document === "undefined") return null;
       var nodes = document.querySelectorAll('[data-chat-flow-kind="tool-call"]');
       if (nodes.length === 0) return null;
       var last = nodes[nodes.length - 1];
-      var named = last.querySelector("[data-tool-name]");
+      // 主路径：DSH ToolRow 渲染的 data-tool 属性（v0.9.5 起）
+      var named = last.querySelector("[data-tool]");
       if (named) {
-        var dn = named.getAttribute("data-tool-name");
+        var dn = named.getAttribute("data-tool");
         if (dn) return dn;
       }
+      // 兜底 1：data-name——历史 DSH 早期可能用过
       var named2 = last.querySelector("[data-name]");
       if (named2) {
         var dn2 = named2.getAttribute("data-name");
         if (dn2) return dn2;
       }
+      // 兜底 2：CSS module hash class 子串匹配（DSH 升级换 hash 仍命中）
       var labels = last.querySelectorAll('[class*="toolName"], [class*="toolLabel"]');
       for (var i = 0; i < labels.length; i++) {
         var t = (labels[i].textContent || "").trim();
         if (t) return t;
       }
       return null;
+    }
+
+    // v0.9.5：reasoning / think block 渲染在 assistant-step 节点的
+    // `[data-variant="think"]` 上（见 dsh-client-ui-conversation/lib/client.js
+    // ReasoningRow：`"data-variant": "think"` + `"data-state": "running"`），
+    // 不在 tool-call 容器里——simplePickToolNameFromDom 找不到。
+    // 单独探测 `[data-state="running"]` 的 think block，存在即认为正在思考。
+    // 注意 simple-mode 已把 `[data-variant="think"]` 整行 display:none，但
+    // querySelectorAll 不看渲染状态——DOM 里有就能命中。
+    function simpleIsThinkingFromDom() {
+      if (typeof document === "undefined") return false;
+      // 只在当前有 assistant-step 节点（最近的一批）里查——性能优化，避免每次
+      // 250ms tick 扫整个 DOM。`[data-chat-flow-kind="assistant-step"]` 与
+      // `simplePickToolNameFromDom` 的 `[data-chat-flow-kind="tool-call"]` 对称。
+      var steps = document.querySelectorAll('[data-chat-flow-kind="assistant-step"]');
+      if (steps.length === 0) return false;
+      // 取最后一个（最新）assistant-step 内的 think block
+      var last = steps[steps.length - 1];
+      // 找 data-state="running" 的 think 块——reasoning 正在流式输出
+      var running = last.querySelector('[data-variant="think"][data-state="running"]');
+      return running !== null;
+    }
+
+    // v0.9.5：simplePickActivityName 统一入口。think（reasoning 流式）优先于
+    // tool-call——因为模型先 think 再调工具，think 状态先出现时还没 tool-call
+    // 节点；tool-call 出现后由 simplePickToolNameFromDom 接替。返回 "think" /
+    // "toolName" / null（generic fallback）三种。
+    // 性能：两个 querySelector 各自 250ms 一次，单次 0.5ms 量级，可忽略。
+    function simplePickActivityName() {
+      if (simpleIsThinkingFromDom()) return "think";
+      return simplePickToolNameFromDom();
     }
 
     function simpleIsRunningFromDom() {
@@ -1347,7 +1439,11 @@ window.__ModuleLoader__.load({
         attach();
         var span = document.getElementById(SIMPLE_STATUS_ID);
         if (span === null) return;
-        var name = simplePickToolNameFromDom();
+        // v0.9.5：simplePickActivityName 统一入口——think 优先于 tool-call。
+        // 之前直接调 simplePickToolNameFromDom 时，think 状态返回 null →
+        // "正在处理…"（generic 灰）；reasoning block 不在 tool-call 容器里
+        // 这件事从 v0.9.3 美术度升级起就一直没解决。
+        var name = simplePickActivityName();
         var text = simpleActivityText(name);
         // v0.9.3：category 给 CSS 着色用（[data-dsh-activity]），与 text 同步写。
         // 合并 key = category + "\u0000" + text——任一变化才走 DOM 写，避免 250ms
