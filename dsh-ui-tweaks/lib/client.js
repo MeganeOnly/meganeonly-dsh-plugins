@@ -1,6 +1,36 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
+ *   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
+ *   根因诊断：v0.9.8 只 reset 了容器本身的 animation / background / background-clip
+ *   三个属性，但 DSH 完全可能用 animation 之外的方式做 shimmer：
+ *     - **transition + mask-image linear-gradient 模式**：mask 是一个 110deg 渐变
+ *       （透明 → 实 → 透明），transition 让 mask-position 从 0% 移到 100%——
+ *       在文字形状里形成移动的"光带"。animation:none 完全杀不掉，因为是 transition
+ *       驱动的
+ *     - **新加 child 元素做动画**：DSH 完全可能在容器里多塞 <div class="turnStatusLoader">
+ *       之类做动画。容器 reset 不影响嵌套子元素
+ *     - **::before / ::after 伪元素**：容器 animation:none 不传递到伪元素的具体
+ *       background / 自身 animation
+ *   位置依赖（最左侧不闪 / 右移一点闪）的合理解释：shimmer / loader 区间在容器
+ *   内某段，文字在容器内某位置——两者重叠时 shimmer 可见，不重叠时不闪。
+ *
+ *   三层防线（纯 CSS 加固，不动类名 / ID / attribute / localStorage key）：
+ *     - **第 1 层**：容器 reset 升级——在 v0.9.8 基础上加 transition / text-shadow /
+ *       box-shadow / filter / -webkit-mask-image / mask-image / -webkit-mask-* /
+ *       transform / text-indent / letter-spacing / word-spacing / text-decoration /
+ *       overflow:hidden 等"非 animation 但能产生 shimmer 视觉效果"的属性全部杀掉
+ *     - **第 2 层**：伪元素 ::before / ::after 显式 display:none + content:none +
+ *       详细 background / mask reset——DSH 经常在伪元素上放 spinner / shimmer 装饰
+ *     - **第 3 层**：直接子元素 [class*="turnStatus"] > * 除我们 span 和 clock 外
+ *       全部 display:none——任何 DSH 新加的 child loader / shimmer 都干掉
+ *   clock 也加防御性 reset（animation / shadow / filter / mask 等）。
+ *
+ *   保留：v0.9.7 引入的 transition:color .4s ease（活动色平滑过渡）；
+ *     visibility:visible !important（v0.7.1 起的祖先 display:none 兜底）。
+ *   见 25-tweaks.js simple-mode buildCSS。
+ *
  * v0.9.9：新增 sidebar-match-conversation-bg「侧栏背景与对话一致」tweak。
  *   用户反馈 DSH 默认侧栏（data-pane="sidebar"，展示会话列表的区域）
  *   有独立背景色，与对话区（data-pane="conversation"）的 --dsw-alias-bg-base
@@ -310,6 +340,16 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
+        // v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
+        //   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
+        //   v0.9.8 只 reset 了 animation / background / background-clip，DSH 可能用
+        //   transition + mask-image linear-gradient 替代 animation 做 shimmer（animation:none
+        //   杀不掉 transition 驱动的效果）；也可能在容器里多塞新 child 做动画 / 在 ::before
+        //   上放 spinner。v0.9.10 三层防线：1) 容器升级 reset（+ transition / text-shadow /
+        //   box-shadow / filter / mask-image / transform / overflow 等）2) 伪元素
+        //   ::before / ::after 显式 display:none 3) 直接子元素除我们 span 和 clock 外
+        //   全部 display:none。clock 也加防御性 reset。兼容性：纯 CSS 加固，所有类名 /
+        //   ID / attribute / localStorage key 不动。
         // v0.9.9：新增 sidebar-match-conversation-bg tweak——DSH 默认侧栏（data-pane="sidebar"）
         //   有独立背景色，与对话区（data-pane="conversation"）的 --dsw-alias-bg-base
         //   不同。开启后把侧栏列容器的背景设为对话区同款，让两个区域在背景色上融合。
@@ -344,7 +384,7 @@ window.__ModuleLoader__.load({
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.9";
+        var VERSION = "0.9.10";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -482,49 +522,121 @@ window.__ModuleLoader__.load({
             '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
-            // —— v0.9.8 status row —— 接管 DSH 原生 turnStatus 视觉呈现。
-            //   v0.9.7 只撤了自家 ::before pulse；用户反馈"正在处理 还在闪"
-            //   根因是 DSH 原生 TurnStatus（dsh-client-ui-conversation/lib/
-            //   client.js:5591）的 `linear-gradient + background-clip:text +
-            //   animation:1.8s linear infinite dsh-turn-status-shimmer`
-            //   shimmer——gradient 在文字形状里平移。我们的 span 是 appendChild
-            //   到这个 <div class="turnStatus"> 里的，shimmer 渲染整容器。
-            //   v0.9.8 整容器接管：
-            //   1) 杀 DSH shimmer：见 [class*="turnStatus"] 块 reset
-            //   2) 抹 DSH "Deep diving..." 文字节点：父级 color:transparent
-            //      + font-size:0 + 子级 override
-            //   3) 容器 26px → 18px：之前 18px text 在 26px 容器居中空白太多
-            //   4) DSH .turnStatusClock flex order:2 排到我们 span 后——
-            //      "时间出现在 正在处理 的后面"用 CSS 解决，无新 DOM
-            //   最终视觉：`[● 正在查找...  5s]`，无任何动画、无 shimmer。
-            //   v0.9.7 两层「去装饰」（历史）回顾：
-            //   - 去背景：用户反馈简洁模式不需要 badge 铺底，"正在查找…"
-            //     那种 `read` 类着色 #475569 中性灰，8% tint 出图就是明显
-            //     的灰色色块，看着多余。去掉 background / border-radius:999px
-            //     / 水平 padding，圆角胶囊外壳彻底消失。
-            //   - 去脉动：用户反馈 2.4s 周期 opacity .6↔.9 持续闪烁（"一闪
-            //     一闪"）比活动切换的"现在还在跑"信号更强，反客为主——
-            //     用户表态宁可切换不那么准确、过渡缓慢，也不能接受脉动。
-            //     撤掉 @keyframes dsh-status-pulse + ::before 上的 animation
-            //     + 配套 @media (prefers-reduced-motion:reduce)。圆点保留为
-            //     静态视觉锚（见下面 ::before 段），活动切换的色变走 status
-            //     上的 transition:color .4s ease 平滑过渡（".4s 慢切换但不闪烁"
-            //     ——满足"宁可切换慢"的要求）。
-            //   现在形态 = 6×6 静态圆点 + 当前活动色文字 + margin-left:10px，
-            //   与前面 DSH 原生 turnStatus 文案（如「Deep diving...」）天然分隔，
-            //   像一条带状态前缀的普通文字，不像 badge。
+            // —— v0.9.10 status row —— 接管 DSH 原生 turnStatus 视觉呈现。
+            //   v0.9.8 整容器接管：杀 DSH animation / background / background-clip /
+            //   -webkit-text-fill-color / color:transparent / font-size:0 抹 DSH 文字 /
+            //   容器 26px → 18px / flex order 重排 clock。
+            //   v0.9.10 用户反馈"底部的 正在思考 还是会一闪一闪的 而且位置依赖
+            //   （最左侧不闪，右移一点开始闪）"——v0.9.8 的 reset 不够彻底。三层防线：
+            //
+            //   **第 1 层**：容器本身的 reset 升级——v0.9.8 只 reset 了 animation /
+            //     background / background-clip。v0.9.10 加 transition / text-shadow /
+            //     box-shadow / filter / -webkit-mask-image / mask-image / transform
+            //     等"非 animation 但能产生 shimmer 视觉效果"的属性全部杀掉——
+            //     DSH 完全可能用 `transition + mask-image linear-gradient` 替代
+            //     animation 做 shimmer（animation:none 杀不掉 transition 驱动的效果）。
+            //     加 background-image / background-size / background-position 等
+            //     详细 background 子属性 reset（background:none 不一定覆盖 background-image:
+            //     linear-gradient / -webkit-mask-image 等）。加 overflow:hidden
+            //     裁掉任何超出容器宽度的子元素视觉溢出。
+            //
+            //   **第 2 层**：伪元素 ::before / ::after 显式杀掉——v0.9.8 容器 reset 不
+            //     传递到伪元素的具体 background / animation。DSH 完全可能在 ::before
+            //     上放 spinner / shimmer 装饰元素。display:none + content:none 双保险。
+            //
+            //   **第 3 层**：直接子元素除我们 span 和 clock 外全部 display:none——
+            //     DSH 完全可能在容器里多塞 <div class="turnStatusLoader"> 之类的新
+            //     child 做动画。子元素选择器（[class*="turnStatus"] > *）不依赖 hash，
+            //     DSH 升级换 class 名 / 加新 child 都一律干掉。
+            //   child 隐藏的副作用：DSH "Deep diving..." 文字节点是 text node 不是
+            //     element，CSS selector 命中不到——但 v0.9.8 起父级 color:transparent +
+            //     font-size:0 已让它无形 + 零宽，足够；第 3 层只防 DSH 新加 element child。
+            //
+            //   关于位置依赖（最左侧不闪 / 右移一点闪）：最可能是 mask-image +
+            //     background-position + transition 驱动的 shimmer（gradient 范围在容器
+            //     内某段，文字在容器内某位置，两者重叠时 shimmer 可见，不重叠时不闪），
+            //     也可能是 DSH 新加的 child loader（位于容器左侧，文字右移到 loader
+            //     区域就闪）。两层 reset + child 隐藏覆盖两种可能。
+            //
+            //   保留：v0.9.7 引入的 transition:color .4s ease（活动色平滑过渡）；
+            //     visibility:visible !important（v0.7.1 起的祖先 display:none 兜底）。
+            //
+            //   兼容性：[class*="turnStatus"] / [class*="turnStatusClock"] / .dsh-ui-tweaks-status
+            //     类名 / ID / attribute / localStorage key 全不动——纯 CSS 加固。
             // visibility:visible !important 仍保留（v0.7.1 起的祖先 display:none 兜底）
             "[class*=\"turnStatus\"]{" +
+              // 容器 reset——v0.9.8 起的基础 + v0.9.10 增量
               "animation:none !important;" +
               "background:none !important;" +
+              "background-image:none !important;" +
               "background-clip:border-box !important;" +
+              "background-attachment:initial !important;" +
+              "background-blend-mode:initial !important;" +
+              "background-origin:initial !important;" +
+              "background-position:initial !important;" +
+              "background-repeat:initial !important;" +
+              "background-size:initial !important;" +
               "-webkit-background-clip:border-box !important;" +
               "-webkit-text-fill-color:initial !important;" +
               "color:transparent !important;" +
               "font-size:0 !important;" +
+              "line-height:0 !important;" +
               "height:18px !important;" +
-              "align-items:center !important" +
+              "align-items:center !important;" +
+              // v0.9.10 新增——杀 transition / shadow / filter / mask 等 animation 之外的
+              //   视觉动效源（DSH 完全可能用 transition + mask-position 做 shimmer）
+              "transition:none !important;" +
+              "text-shadow:none !important;" +
+              "box-shadow:none !important;" +
+              "filter:none !important;" +
+              "-webkit-mask-image:none !important;" +
+              "mask-image:none !important;" +
+              "-webkit-mask-size:initial !important;" +
+              "mask-size:initial !important;" +
+              "-webkit-mask-position:initial !important;" +
+              "mask-position:initial !important;" +
+              "-webkit-mask-repeat:initial !important;" +
+              "mask-repeat:initial !important;" +
+              "transform:none !important;" +
+              "opacity:1 !important;" +
+              "text-indent:0 !important;" +
+              "letter-spacing:normal !important;" +
+              "word-spacing:normal !important;" +
+              "text-decoration:none !important;" +
+              // 裁掉任何超出容器宽度的子元素视觉溢出（DSH loader / shimmer 即使没被 child
+              //   选择器命中也可能溢出到容器外）
+              "overflow:hidden !important" +
             "}\n" +
+            // v0.9.10：伪元素显式杀掉——DSH 经常在 ::before / ::after 上放 spinner / shimmer
+            //   装饰，容器 animation:none 不传递到伪元素的具体 background / 自身 animation
+            "[class*=\"turnStatus\"]::before," +
+            "[class*=\"turnStatus\"]::after{" +
+              "animation:none !important;" +
+              "background:none !important;" +
+              "background-image:none !important;" +
+              "-webkit-background-clip:border-box !important;" +
+              "-webkit-text-fill-color:initial !important;" +
+              "color:transparent !important;" +
+              "content:none !important;" +
+              "display:none !important;" +
+              "height:0 !important;" +
+              "width:0 !important;" +
+              "margin:0 !important;" +
+              "padding:0 !important;" +
+              "transition:none !important;" +
+              "transform:none !important;" +
+              "filter:none !important;" +
+              "-webkit-mask-image:none !important;" +
+              "mask-image:none !important;" +
+              "text-shadow:none !important;" +
+              "box-shadow:none !important" +
+            "}\n" +
+            // v0.9.10：直接子元素除我们 span 和 clock 外全部隐藏——DSH 完全可能在容器里
+            //   多塞新 child（<div class="turnStatusLoader"> 等）做动画。substring selector
+            //   不依赖 hash，DSH 升级换 class 名 / 加新 child 一律干掉。text node 不是
+            //   element 命中不到，但 v0.9.8 起父级 color:transparent + font-size:0 已让它
+            //   无形 + 零宽
+            "[class*=\"turnStatus\"] > *:not(.dsh-ui-tweaks-status):not([class*=\"turnStatusClock\"]){display:none !important}\n" +
             ".dsh-ui-tweaks-status{" +
               "display:inline-flex !important;" +
               "align-items:center;" +
@@ -570,6 +682,8 @@ window.__ModuleLoader__.load({
             //   始终 tertiary，不跟活动色走（时间应该是中性信息，不抢戏）。
             //   font-variant-numeric:tabular-nums 让数字宽度一致（"5s"→"10s"
             //   切换时数字部分不抖）。
+            //   v0.9.10：clock 加防御性 reset——DSH clock 自己可能有 shadow /
+            //   filter / mask 等 animation 之外的视觉效果
             "[class*=\"turnStatusClock\"]{" +
               "order:2;" +
               "margin-left:8px;" +
@@ -577,7 +691,18 @@ window.__ModuleLoader__.load({
               "color:var(--dsw-alias-label-tertiary);" +
               "-webkit-text-fill-color:var(--dsw-alias-label-tertiary);" +
               "font-variant-numeric:tabular-nums;" +
-              "font-weight:400" +
+              "font-weight:400;" +
+              "animation:none !important;" +
+              "background:none !important;" +
+              "background-image:none !important;" +
+              "-webkit-background-clip:border-box !important;" +
+              "transition:none !important;" +
+              "text-shadow:none !important;" +
+              "box-shadow:none !important;" +
+              "filter:none !important;" +
+              "-webkit-mask-image:none !important;" +
+              "mask-image:none !important;" +
+              "visibility:visible !important" +
             "}\n" +
             // —— 8 类活动语义色 —— JS tick() 给 span setAttribute("data-dsh-activity", ...)
             // 顺序：think (思辨) / read (输入) / write (变更) / bash (执行) /

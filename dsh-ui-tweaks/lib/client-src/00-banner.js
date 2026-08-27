@@ -1,6 +1,36 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
+ *   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
+ *   根因诊断：v0.9.8 只 reset 了容器本身的 animation / background / background-clip
+ *   三个属性，但 DSH 完全可能用 animation 之外的方式做 shimmer：
+ *     - **transition + mask-image linear-gradient 模式**：mask 是一个 110deg 渐变
+ *       （透明 → 实 → 透明），transition 让 mask-position 从 0% 移到 100%——
+ *       在文字形状里形成移动的"光带"。animation:none 完全杀不掉，因为是 transition
+ *       驱动的
+ *     - **新加 child 元素做动画**：DSH 完全可能在容器里多塞 <div class="turnStatusLoader">
+ *       之类做动画。容器 reset 不影响嵌套子元素
+ *     - **::before / ::after 伪元素**：容器 animation:none 不传递到伪元素的具体
+ *       background / 自身 animation
+ *   位置依赖（最左侧不闪 / 右移一点闪）的合理解释：shimmer / loader 区间在容器
+ *   内某段，文字在容器内某位置——两者重叠时 shimmer 可见，不重叠时不闪。
+ *
+ *   三层防线（纯 CSS 加固，不动类名 / ID / attribute / localStorage key）：
+ *     - **第 1 层**：容器 reset 升级——在 v0.9.8 基础上加 transition / text-shadow /
+ *       box-shadow / filter / -webkit-mask-image / mask-image / -webkit-mask-* /
+ *       transform / text-indent / letter-spacing / word-spacing / text-decoration /
+ *       overflow:hidden 等"非 animation 但能产生 shimmer 视觉效果"的属性全部杀掉
+ *     - **第 2 层**：伪元素 ::before / ::after 显式 display:none + content:none +
+ *       详细 background / mask reset——DSH 经常在伪元素上放 spinner / shimmer 装饰
+ *     - **第 3 层**：直接子元素 [class*="turnStatus"] > * 除我们 span 和 clock 外
+ *       全部 display:none——任何 DSH 新加的 child loader / shimmer 都干掉
+ *   clock 也加防御性 reset（animation / shadow / filter / mask 等）。
+ *
+ *   保留：v0.9.7 引入的 transition:color .4s ease（活动色平滑过渡）；
+ *     visibility:visible !important（v0.7.1 起的祖先 display:none 兜底）。
+ *   见 25-tweaks.js simple-mode buildCSS。
+ *
  * v0.9.9：新增 sidebar-match-conversation-bg「侧栏背景与对话一致」tweak。
  *   用户反馈 DSH 默认侧栏（data-pane="sidebar"，展示会话列表的区域）
  *   有独立背景色，与对话区（data-pane="conversation"）的 --dsw-alias-bg-base

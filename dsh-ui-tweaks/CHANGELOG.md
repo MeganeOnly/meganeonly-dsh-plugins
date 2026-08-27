@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+### 修复（v0.9.10）
+
+- **`simple-mode` 状态行 v0.9.8 reset 不彻底**（v0.9.10）：用户反馈"底部的 正在思考 还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"——v0.9.8 整容器接管只 reset 了 `animation` / `background` / `background-clip` 三个属性，没覆盖 DSH 可能用 animation 之外方式做的 shimmer。**根因诊断**：
+  - **transition + mask-image linear-gradient 模式**：mask 是 110deg 渐变（透明 → 实 → 透明），transition 让 `mask-position` 从 0% 移到 100%——在文字形状里形成移动的"光带"。`animation:none` 杀不掉这种 shimmer，因为是 transition 驱动的（不是 keyframes）
+  - **新加 child 元素做动画**：DSH 完全可能在容器里多塞 `<div class="turnStatusLoader">` 之类做动画——容器 reset 不影响嵌套子元素
+  - **::before / ::after 伪元素**：容器 `animation:none` 不传递到伪元素的具体 background / 自身 animation
+  - **位置依赖的合理解释**：shimmer / loader 区间在容器内某段，文字在容器内某位置——两者重叠时 shimmer 可见，不重叠时不闪
+- **三层防线**（纯 CSS 加固，不动类名 / ID / attribute / localStorage key）：
+  - **第 1 层**：容器 `[class*="turnStatus"]` reset 升级——在 v0.9.8 基础上加 `transition:none` / `text-shadow:none` / `box-shadow:none` / `filter:none` / `-webkit-mask-image:none` / `mask-image:none` / `-webkit-mask-*` 全套 / `transform:none` / `text-indent:0` / `letter-spacing:normal` / `word-spacing:normal` / `text-decoration:none` / `overflow:hidden`——杀尽"非 animation 但能产生 shimmer 视觉效果"的属性
+  - **第 2 层**：伪元素 `[class*="turnStatus"]::before, ::after` 显式 `display:none` + `content:none` + 详细 background / mask reset——DSH 经常在伪元素上放 spinner / shimmer 装饰
+  - **第 3 层**：直接子元素 `[class*="turnStatus"] > *:not(.dsh-ui-tweaks-status):not([class*="turnStatusClock"])` 全部 `display:none !important`——任何 DSH 新加的 child loader / shimmer 一律干掉
+  - **clock 防御性 reset**：`[class*="turnStatusClock"]` 加 `animation:none` / `transition:none` / `text-shadow:none` / `box-shadow:none` / `filter:none` / `-webkit-mask-image:none` / `mask-image:none`——DSH clock 自己可能有 shadow / filter / mask 等 animation 之外的视觉效果
+- **保留**：v0.9.7 引入的 `transition:color .4s ease`（活动色平滑过渡）；`visibility:visible !important`（v0.7.1 起的祖先 display:none 兜底）。
+- **兼容性**：所有 tweak id / 类名 / ID / attribute / localStorage key 全不动；纯 CSS 加固，浏览器中观察到的视觉差异（DSH 原生 shimmer / loader 装饰全部消失）。
+- **诊断**：浏览器 DevTools inspect `[class*="turnStatus"]` 元素 Computed 面板——`animation` / `transition` / `background-image` / `-webkit-mask-image` / `box-shadow` / `text-shadow` / `filter` / `transform` 全部应是 `none` / `initial`；`overflow` 应是 `hidden`；伪元素 `display:none`；直接子元素（除 span 和 clock）`display:none`。
+- **改动文件**：`lib/client-src/25-tweaks.js` 的 simple-mode buildCSS（+~1.5 KB CSS 含 25+ 行注释）；`lib/client-src/00-banner.js` 加 v0.9.10 banner 段；`20-constants.js` VERSION 0.9.9 → 0.9.10；`package.json` version 同步；走 `npm run build:client` + `node --check lib/client.js` 语法校验。
+- **回退路径**：如果 v0.9.10 三层防线仍漏掉某个 DSH 视觉效果，下一步走 JS 路径——`createSimpleModeStatusController` 的 `attach()` 里在 append 我们 span 前先 `while (turnStatus.firstChild) turnStatus.removeChild(turnStatus.firstChild);` 清空容器再 append（保留 clock 用 querySelector 找回再追加）。
+
 ### 新增（v0.9.9）
 
 - **`sidebar-match-conversation-bg` 侧栏背景与对话一致**（v0.9.9）：DSH 默认左侧栏（展示会话列表的区域，`data-pane="sidebar"`）有独立背景色，与对话区（`data-pane="conversation"`）的 `--dsw-alias-bg-base` 不同——视觉上有明显的边界分割。开启后把侧栏列容器背景设为对话区同款，让两个区域在背景色上融合。

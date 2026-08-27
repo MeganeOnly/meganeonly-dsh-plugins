@@ -1,4 +1,14 @@
     // ===== constants =====
+        // v0.9.10：simple-mode 状态行 v0.9.8 reset 不彻底——用户反馈"底部的 正在思考
+        //   还是会一闪一闪的 而且位置依赖（最左侧不闪，右移一点开始闪）"。
+        //   v0.9.8 只 reset 了 animation / background / background-clip，DSH 可能用
+        //   transition + mask-image linear-gradient 替代 animation 做 shimmer（animation:none
+        //   杀不掉 transition 驱动的效果）；也可能在容器里多塞新 child 做动画 / 在 ::before
+        //   上放 spinner。v0.9.10 三层防线：1) 容器升级 reset（+ transition / text-shadow /
+        //   box-shadow / filter / mask-image / transform / overflow 等）2) 伪元素
+        //   ::before / ::after 显式 display:none 3) 直接子元素除我们 span 和 clock 外
+        //   全部 display:none。clock 也加防御性 reset。兼容性：纯 CSS 加固，所有类名 /
+        //   ID / attribute / localStorage key 不动。
         // v0.9.9：新增 sidebar-match-conversation-bg tweak——DSH 默认侧栏（data-pane="sidebar"）
         //   有独立背景色，与对话区（data-pane="conversation"）的 --dsw-alias-bg-base
         //   不同。开启后把侧栏列容器的背景设为对话区同款，让两个区域在背景色上融合。
@@ -33,7 +43,7 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.9";
+        var VERSION = "0.9.10";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
