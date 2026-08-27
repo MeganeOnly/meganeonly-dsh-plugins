@@ -73,38 +73,48 @@
             '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
-            // —— v0.9.3 status row chip —— 取代 v0.9.2 的裸灰文字
-            // 总高严格 18px（padding:0 + line-height:18px，无 box-sizing 影响——
-            //   inline-flex 的 align-items:center 让 6px 圆点视觉居中），
-            //   与 DSH 原生 turnStatus 文案（如「Deep diving...」）严格同高。
-            // visibility:visible !important 保留（v0.7.1 起的祖先 display:none 兜底）
-            // color-mix(in srgb, currentColor 8%, transparent) 跟随 accent 色淡出
-            // — DSH Electron Chromium 111+ 支持，主题变量缺失不影响
+            // —— v0.9.7 status row —— 撤掉 v0.9.3–0.9.6 的圆角胶囊灰底 + 呼吸脉动动画
+            //   两层「去装饰」：
+            //   - 去背景：用户反馈简洁模式不需要 badge 铺底，"正在查找…"
+            //     那种 `read` 类着色 #475569 中性灰，8% tint 出图就是明显
+            //     的灰色色块，看着多余。去掉 background / border-radius:999px
+            //     / 水平 padding，圆角胶囊外壳彻底消失。
+            //   - 去脉动：用户反馈 2.4s 周期 opacity .6↔.9 持续闪烁（"一闪
+            //     一闪"）比活动切换的"现在还在跑"信号更强，反客为主——
+            //     用户表态宁可切换不那么准确、过渡缓慢，也不能接受脉动。
+            //     撤掉 @keyframes dsh-status-pulse + ::before 上的 animation
+            //     + 配套 @media (prefers-reduced-motion:reduce)。圆点保留为
+            //     静态视觉锚（见下面 ::before 段），活动切换的色变走 status
+            //     上的 transition:color .4s ease 平滑过渡（".4s 慢切换但不闪烁"
+            //     ——满足"宁可切换慢"的要求）。
+            //   现在形态 = 6×6 静态圆点 + 当前活动色文字 + margin-left:10px，
+            //   与前面 DSH 原生 turnStatus 文案（如「Deep diving...」）天然分隔，
+            //   像一条带状态前缀的普通文字，不像 badge。
+            // visibility:visible !important 仍保留（v0.7.1 起的祖先 display:none 兜底）
             ".dsh-ui-tweaks-status{" +
               "display:inline-flex !important;" +
               "align-items:center;" +
               "gap:6px;" +
-              "padding:0 10px 0 8px;" +
+              "padding:0;" +
               "margin-left:10px;" +
-              "border-radius:999px;" +
-              "background:color-mix(in srgb, currentColor 8%, transparent);" +
               "color:var(--dsw-alias-label-tertiary);" +
               "font-size:13px;" +
               "line-height:18px;" +
               "vertical-align:middle;" +
               "flex:none;" +
               "white-space:nowrap;" +
+              "transition:color .4s ease;" +
               "visibility:visible !important" +
             "}\n" +
-            // —— 呼吸点 ::before —— "现在还活着" 的活性信号（hotfix：仅透明度，无 scale）
-            // 6×6 圆点；background:currentColor 继承 [data-dsh-activity] 着色
-            // opacity 范围 0.6↔0.9（变化幅度小，不算"闪烁"），周期 2.4s（柔和）
-            // 删 v0.9.3 首版的 scale(.85↔1)：scale 会让圆点几何尺寸变化，
-            //   与字体的稳定尺寸冲突，看上去像"在抖"
-            "@keyframes dsh-status-pulse{" +
-              "0%,100%{opacity:.6}" +
-              "50%{opacity:.9}" +
-            "}\n" +
+            // —— 静态点 ::before —— v0.9.7 撤掉 v0.9.3–v0.9.6 的呼吸动画
+            //   （用户反馈：2.4s 周期 opacity .6↔.9 持续闪烁太难受——
+            //   "一闪一闪"的感觉比活动切换的"现在还在跑"信号更强，反客为主。
+            //   用户表态宁可切换不那么准确、过渡缓慢，也不能接受脉动）。
+            //   保留 6×6 圆点作为"当前有一个活动"的视觉锚，颜色继承
+            //   currentColor 跟着文字的 8 类活动色一起平滑过渡（.4s ease），
+            //   opacity 0.7 不抢戏。无 animation / 无 transition，完全静态。
+            //   活动色变化在 .dsh-ui-tweaks-status 上 transition:color .4s ease
+            //   接管——text + ::before dot 都跟着平滑过渡。
             ".dsh-ui-tweaks-status::before{" +
               "content:\"\";" +
               "width:6px;" +
@@ -112,8 +122,7 @@
               "border-radius:50%;" +
               "background:currentColor;" +
               "opacity:.7;" +
-              "flex:none;" +
-              "animation:dsh-status-pulse 2.4s ease-in-out infinite" +
+              "flex:none" +
             "}\n" +
             // —— 8 类活动语义色 —— JS tick() 给 span setAttribute("data-dsh-activity", ...)
             // 顺序：think (思辨) / read (输入) / write (变更) / bash (执行) /
@@ -127,11 +136,7 @@
             ".dsh-ui-tweaks-status[data-dsh-activity=\"plan\"]    {color:#059669}" +
             ".dsh-ui-tweaks-status[data-dsh-activity=\"goal\"]    {color:#db2777}" +
             ".dsh-ui-tweaks-status[data-dsh-activity=\"git\"]     {color:#64748b}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary)}" +
-            // —— 无障碍：动效敏感用户关掉呼吸 —— 静态圆点保留（仍是 chip 形态）
-            "@media (prefers-reduced-motion:reduce){" +
-              ".dsh-ui-tweaks-status::before{animation:none;opacity:.7}" +
-            "}";
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary)}";
         }
       },
       {
@@ -274,6 +279,56 @@
           if (!state.hideChatTab) return null;
           return "/* === hide-chat-tab v0.7.2 : JS-side MutationObserver 给 \"对话\"/\"Chat\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"chat\"，CSS 命中隐藏 === */\n" +
             "[data-dsh-ui-tweaks-hidden-tab=\"chat\"]{display:none!important}";
+        }
+      },
+      {
+        // v0.9.6 新增：折叠块末尾收起按钮。DSH 用 DisclosureRow 渲染三类可展开块——
+        //   ReasoningRow (data-variant="think") / GenericCommandCard (data-variant="others")
+        //   / ContextInjectionRow (class 含 _root 且 data-open)。展开后阅读完毕想收起时
+        //   必须滚回头部点行——长 Think 内容滚回很烦。
+        // 解决：在每个展开后 body 末尾追加一个"收起 ▴"按钮（仅当 expanded 时 body 才会
+        //   在 DOM 里），点击调用 row.click() 触发 DSH React onToggle 折叠。
+        // 默认 ON——本 tweak 是 v0.9.6 新引入，无 backward compat 顾虑。
+        // CSS 输出：按钮 wrapper 强制 display:block 独占一行，按钮 chip 形态（边框 + 圆角 +
+        //   hover 背景）；DSH 主题变量 fallback 链防止主题切到没有这些变量的仍可见。
+        id: "disclosure-end-collapse",
+        name: "展开块末尾收起按钮",
+        description: "Think / 工具调用 / 上下文注入等折叠块展开后，末尾追加一个\"收起\"按钮——阅读到底部能直接收起，不用滚回头部再点行。",
+        // 仅开关型 tweak：enabled 和 value 复用同一 key（与 simple-mode 同模式），
+        //   localStorage 只存一个布尔字段；TweakRow 通过 k2===k1 检测不渲染数字框。
+        configKeys: { enabled: "disclosureEndCollapse", value: "disclosureEndCollapse" },
+        defaults: { enabled: true, value: true },
+        buildCSS: function (state) {
+          if (!state.disclosureEndCollapse) return null;
+          return "/* === disclosure-end-collapse v0.9.6 : DisclosureRow 展开后 body 末尾追加\"收起\"按钮 (Think / 工具调用输出 / 上下文注入) === */\n" +
+            // wrapper div 强制 display:block 让按钮独占一行——不被 pre-wrap 文本内联吃掉
+            "[data-dsh-ui-tweaks-disclosure-collapse-wrap]{display:block;margin:6px 0 2px 0}\n" +
+            // 按钮 chip 形态：边框 + 圆角 + hover 背景；DSH 主题变量 fallback 链
+            "[data-dsh-ui-tweaks-disclosure-collapse]{" +
+              "display:inline-flex;" +
+              "align-items:center;" +
+              "gap:4px;" +
+              "padding:3px 10px;" +
+              "border:1px solid var(--dsw-alias-border-l1,#e5e7eb);" +
+              "border-radius:6px;" +
+              "background:var(--dsw-alias-bg-layer-1,#ffffff);" +
+              "color:var(--dsw-alias-label-tertiary,#6b7280);" +
+              "font-size:12px;" +
+              "line-height:16px;" +
+              "cursor:pointer;" +
+              "user-select:none;" +
+              "font-family:inherit;" +
+              "transition:background .12s ease,color .12s ease,border-color .12s ease" +
+            "}\n" +
+            "[data-dsh-ui-tweaks-disclosure-collapse]:hover{" +
+              "background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.04));" +
+              "color:var(--dsw-alias-label-secondary,#374151);" +
+              "border-color:var(--dsw-alias-border-l2,#d0d5dd)" +
+            "}\n" +
+            "[data-dsh-ui-tweaks-disclosure-collapse]:focus-visible{" +
+              "outline:2px solid var(--dsw-alias-state-business-primary,#2563eb);" +
+              "outline-offset:2px" +
+            "}";
         }
       },
       {

@@ -1,6 +1,38 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.7：simple-mode 状态行两轮「去装饰」——
+ *   - 去圆角胶囊灰底：用户反馈简洁模式不需要 badge 铺底，"正在查找…"
+ *     那种 `read` 类着色 #475569 中性灰 8% tint 出图明显的灰色色块多余。
+ *     撤掉 `.dsh-ui-tweaks-status` 的 `background:color-mix(...)` /
+ *     `border-radius:999px` / 水平 padding——圆角胶囊外壳不再。
+ *   - 去呼吸脉动动画：用户反馈 2.4s 周期 opacity .6↔.9 的 `@keyframes
+ *     dsh-status-pulse` 持续闪烁（"一闪一闪"）比活动切换的"现在还在跑"
+ *     信号更抢戏，反客为主。用户表态宁可切换不那么准确、过渡缓慢，
+ *     也不能接受脉动。撤掉 `@keyframes dsh-status-pulse` + `::before`
+ *     上的 animation，去掉相应的 `@media (prefers-reduced-motion:reduce)`
+ *     规则。圆点保留为静态 6×6（颜色继承 currentColor，opacity 0.7，
+ *     无任何动画/过渡）；活动切换的色变靠 `.dsh-ui-tweaks-status` 上的
+ *     `transition:color .4s ease` 让 text + ::before dot 一起平滑过渡——
+ *     满足"宁可切换慢一点"的要求，视觉平滑无闪烁。
+ *   - 最终形态：`[● 正在查找…]` 极简文字行（静态圆点 + 8 类活动色 text +
+ *     margin-left:10px），与 DSH 原生 turnStatus 文案（如「Deep diving...」）
+ *     同层内联，更像带状态前缀的一条普通文字而非 badge。
+ *   - 兼容性：`.dsh-ui-tweaks-status` 类名 / `dsh-ui-tweaks-status-row`
+ *     ID / `[data-dsh-activity]` attr / `localStorage simpleModeEnabled` /
+ *     调试 API `window.__dshUiTweaks` 全不动；状态行总高仍 18px（line-height
+ *     不变，与原 turnStatus 文案同高）。
+ *
+ * v0.9.6：折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾追加
+ *   "收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。覆盖三类
+ *   DisclosureRow：ReasoningRow (Think, data-variant="think") / GenericCommandCard
+ *   (工具调用输出, data-variant="others") / ContextInjectionRow (上下文注入,
+ *   class 含 _root 且 data-open)。JS MutationObserver 巡检 body 元素（仅
+ *   expanded 时 body 在 DOM）给每个 body 末尾注入 wrapper div + "收起 ▴" 按钮；
+ *   点击调用 row.click() 触发 DSH React onToggle → setExpanded(false) 折叠，
+ *   body 与按钮一起被卸载。新增 `disclosure-end-collapse` tweak（默认 ON），
+ *   见 `lib/client-src/67-disclosure-end-collapse.js`。
+ *
  * v0.9.5：`simple-mode` 状态行工具名识别修复——`simplePickToolNameFromDom`
  *   之前查 `[data-tool-name]`（错属性），DSH `dsh-client-ui-tool/lib/client.js`
  *   ToolRow 实际渲染的是 `[data-tool] = toolName`；同时新增
@@ -250,6 +282,15 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
+        // v0.9.7：simple-mode 状态行两轮「去装饰」——
+        //   1) 去圆角胶囊灰底：撤掉 background:color-mix(...) / border-radius:999px /
+        //      水平 padding（用户反馈简洁模式不需要 badge 铺底）。
+        //   2) 去呼吸脉动动画：撤掉 @keyframes dsh-status-pulse 与 ::before 上的
+        //      animation（用户反馈 2.4s 周期 opacity .6↔.9 持续闪烁反客为主，
+        //      可接受切换缓慢但不能接受一闪一闪）。圆点保留为静态视觉锚。
+        //   活动色切换走 `.dsh-ui-tweaks-status` 上新增的 transition:color .4s ease，
+        //   text + ::before dot 一起平滑过渡。
+        //   其它不动的 ID/class/attribute/localStorage key / debug API 全保留。
         // v0.9.5：simple-mode 状态行工具名识别修复——simplePickToolNameFromDom
         // 之前查 [data-tool-name]（错属性），DSH 实际渲染 [data-tool]（见
         // dsh-client-ui-tool ToolRow.js）；同时新增 simpleIsThinkingFromDom
@@ -257,7 +298,7 @@ window.__ModuleLoader__.load({
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.5";
+        var VERSION = "0.9.7";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -279,6 +320,23 @@ window.__ModuleLoader__.load({
         var SIMPLE_STATUS_ACTIVITY_ATTR = "data-dsh-activity";
         var SIMPLE_TURN_STATUS_SEL = '[class*="turnStatus"]';
         var SIMPLE_POLL_MS = 250;
+        // v0.9.6：折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾
+        //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。
+        //   目标三类 DisclosureRow：ReasoningRow（Think, data-variant="think"）、
+        //   GenericCommandCard（工具调用输出, data-variant="others"）、
+        //   ContextInjectionRow（上下文注入, class 含 _root 且 data-open）。
+        //   button 在 body 元素里（wrapper div + button），点击时找 body 父元素
+        //   里 rowClassName 那行调 .click()——DSH React onToggle 触发折叠，body 与
+        //   按钮一起被卸载；stopPropagation 避免冒泡到 row（虽然 row 是 body 兄弟
+        //   不是祖先，但 click 也会途经 DisclosureRow wrapper——保险起见 stop）。
+        var DISCLOSURE_END_COLLAPSE_WRAP_ATTR = "data-dsh-ui-tweaks-disclosure-collapse-wrap";
+        var DISCLOSURE_END_COLLAPSE_ATTR = "data-dsh-ui-tweaks-disclosure-collapse";
+        // 三大 DisclosureRow 的 body 选择器（暴露给 controller 复用）
+        var DISCLOSURE_BODY_SELECTORS = [
+          '[data-variant="think"] [class*="thinkBody"]',
+          '[data-variant="others"] [class*="_body"]',
+          '[class*="_root"][data-open] [class*="_body"]'
+        ].join(", ");
         // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
         var SHIFT_TARGET_ATTR = "data-dsh-ui-tweaks-shift-target";
         var SHIFT_TARGET_CHATFLOW = "chatflow";
@@ -378,38 +436,48 @@ window.__ModuleLoader__.load({
             '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
-            // —— v0.9.3 status row chip —— 取代 v0.9.2 的裸灰文字
-            // 总高严格 18px（padding:0 + line-height:18px，无 box-sizing 影响——
-            //   inline-flex 的 align-items:center 让 6px 圆点视觉居中），
-            //   与 DSH 原生 turnStatus 文案（如「Deep diving...」）严格同高。
-            // visibility:visible !important 保留（v0.7.1 起的祖先 display:none 兜底）
-            // color-mix(in srgb, currentColor 8%, transparent) 跟随 accent 色淡出
-            // — DSH Electron Chromium 111+ 支持，主题变量缺失不影响
+            // —— v0.9.7 status row —— 撤掉 v0.9.3–0.9.6 的圆角胶囊灰底 + 呼吸脉动动画
+            //   两层「去装饰」：
+            //   - 去背景：用户反馈简洁模式不需要 badge 铺底，"正在查找…"
+            //     那种 `read` 类着色 #475569 中性灰，8% tint 出图就是明显
+            //     的灰色色块，看着多余。去掉 background / border-radius:999px
+            //     / 水平 padding，圆角胶囊外壳彻底消失。
+            //   - 去脉动：用户反馈 2.4s 周期 opacity .6↔.9 持续闪烁（"一闪
+            //     一闪"）比活动切换的"现在还在跑"信号更强，反客为主——
+            //     用户表态宁可切换不那么准确、过渡缓慢，也不能接受脉动。
+            //     撤掉 @keyframes dsh-status-pulse + ::before 上的 animation
+            //     + 配套 @media (prefers-reduced-motion:reduce)。圆点保留为
+            //     静态视觉锚（见下面 ::before 段），活动切换的色变走 status
+            //     上的 transition:color .4s ease 平滑过渡（".4s 慢切换但不闪烁"
+            //     ——满足"宁可切换慢"的要求）。
+            //   现在形态 = 6×6 静态圆点 + 当前活动色文字 + margin-left:10px，
+            //   与前面 DSH 原生 turnStatus 文案（如「Deep diving...」）天然分隔，
+            //   像一条带状态前缀的普通文字，不像 badge。
+            // visibility:visible !important 仍保留（v0.7.1 起的祖先 display:none 兜底）
             ".dsh-ui-tweaks-status{" +
               "display:inline-flex !important;" +
               "align-items:center;" +
               "gap:6px;" +
-              "padding:0 10px 0 8px;" +
+              "padding:0;" +
               "margin-left:10px;" +
-              "border-radius:999px;" +
-              "background:color-mix(in srgb, currentColor 8%, transparent);" +
               "color:var(--dsw-alias-label-tertiary);" +
               "font-size:13px;" +
               "line-height:18px;" +
               "vertical-align:middle;" +
               "flex:none;" +
               "white-space:nowrap;" +
+              "transition:color .4s ease;" +
               "visibility:visible !important" +
             "}\n" +
-            // —— 呼吸点 ::before —— "现在还活着" 的活性信号（hotfix：仅透明度，无 scale）
-            // 6×6 圆点；background:currentColor 继承 [data-dsh-activity] 着色
-            // opacity 范围 0.6↔0.9（变化幅度小，不算"闪烁"），周期 2.4s（柔和）
-            // 删 v0.9.3 首版的 scale(.85↔1)：scale 会让圆点几何尺寸变化，
-            //   与字体的稳定尺寸冲突，看上去像"在抖"
-            "@keyframes dsh-status-pulse{" +
-              "0%,100%{opacity:.6}" +
-              "50%{opacity:.9}" +
-            "}\n" +
+            // —— 静态点 ::before —— v0.9.7 撤掉 v0.9.3–v0.9.6 的呼吸动画
+            //   （用户反馈：2.4s 周期 opacity .6↔.9 持续闪烁太难受——
+            //   "一闪一闪"的感觉比活动切换的"现在还在跑"信号更强，反客为主。
+            //   用户表态宁可切换不那么准确、过渡缓慢，也不能接受脉动）。
+            //   保留 6×6 圆点作为"当前有一个活动"的视觉锚，颜色继承
+            //   currentColor 跟着文字的 8 类活动色一起平滑过渡（.4s ease），
+            //   opacity 0.7 不抢戏。无 animation / 无 transition，完全静态。
+            //   活动色变化在 .dsh-ui-tweaks-status 上 transition:color .4s ease
+            //   接管——text + ::before dot 都跟着平滑过渡。
             ".dsh-ui-tweaks-status::before{" +
               "content:\"\";" +
               "width:6px;" +
@@ -417,8 +485,7 @@ window.__ModuleLoader__.load({
               "border-radius:50%;" +
               "background:currentColor;" +
               "opacity:.7;" +
-              "flex:none;" +
-              "animation:dsh-status-pulse 2.4s ease-in-out infinite" +
+              "flex:none" +
             "}\n" +
             // —— 8 类活动语义色 —— JS tick() 给 span setAttribute("data-dsh-activity", ...)
             // 顺序：think (思辨) / read (输入) / write (变更) / bash (执行) /
@@ -432,11 +499,7 @@ window.__ModuleLoader__.load({
             ".dsh-ui-tweaks-status[data-dsh-activity=\"plan\"]    {color:#059669}" +
             ".dsh-ui-tweaks-status[data-dsh-activity=\"goal\"]    {color:#db2777}" +
             ".dsh-ui-tweaks-status[data-dsh-activity=\"git\"]     {color:#64748b}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary)}" +
-            // —— 无障碍：动效敏感用户关掉呼吸 —— 静态圆点保留（仍是 chip 形态）
-            "@media (prefers-reduced-motion:reduce){" +
-              ".dsh-ui-tweaks-status::before{animation:none;opacity:.7}" +
-            "}";
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary)}";
         }
       },
       {
@@ -579,6 +642,56 @@ window.__ModuleLoader__.load({
           if (!state.hideChatTab) return null;
           return "/* === hide-chat-tab v0.7.2 : JS-side MutationObserver 给 \"对话\"/\"Chat\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"chat\"，CSS 命中隐藏 === */\n" +
             "[data-dsh-ui-tweaks-hidden-tab=\"chat\"]{display:none!important}";
+        }
+      },
+      {
+        // v0.9.6 新增：折叠块末尾收起按钮。DSH 用 DisclosureRow 渲染三类可展开块——
+        //   ReasoningRow (data-variant="think") / GenericCommandCard (data-variant="others")
+        //   / ContextInjectionRow (class 含 _root 且 data-open)。展开后阅读完毕想收起时
+        //   必须滚回头部点行——长 Think 内容滚回很烦。
+        // 解决：在每个展开后 body 末尾追加一个"收起 ▴"按钮（仅当 expanded 时 body 才会
+        //   在 DOM 里），点击调用 row.click() 触发 DSH React onToggle 折叠。
+        // 默认 ON——本 tweak 是 v0.9.6 新引入，无 backward compat 顾虑。
+        // CSS 输出：按钮 wrapper 强制 display:block 独占一行，按钮 chip 形态（边框 + 圆角 +
+        //   hover 背景）；DSH 主题变量 fallback 链防止主题切到没有这些变量的仍可见。
+        id: "disclosure-end-collapse",
+        name: "展开块末尾收起按钮",
+        description: "Think / 工具调用 / 上下文注入等折叠块展开后，末尾追加一个\"收起\"按钮——阅读到底部能直接收起，不用滚回头部再点行。",
+        // 仅开关型 tweak：enabled 和 value 复用同一 key（与 simple-mode 同模式），
+        //   localStorage 只存一个布尔字段；TweakRow 通过 k2===k1 检测不渲染数字框。
+        configKeys: { enabled: "disclosureEndCollapse", value: "disclosureEndCollapse" },
+        defaults: { enabled: true, value: true },
+        buildCSS: function (state) {
+          if (!state.disclosureEndCollapse) return null;
+          return "/* === disclosure-end-collapse v0.9.6 : DisclosureRow 展开后 body 末尾追加\"收起\"按钮 (Think / 工具调用输出 / 上下文注入) === */\n" +
+            // wrapper div 强制 display:block 让按钮独占一行——不被 pre-wrap 文本内联吃掉
+            "[data-dsh-ui-tweaks-disclosure-collapse-wrap]{display:block;margin:6px 0 2px 0}\n" +
+            // 按钮 chip 形态：边框 + 圆角 + hover 背景；DSH 主题变量 fallback 链
+            "[data-dsh-ui-tweaks-disclosure-collapse]{" +
+              "display:inline-flex;" +
+              "align-items:center;" +
+              "gap:4px;" +
+              "padding:3px 10px;" +
+              "border:1px solid var(--dsw-alias-border-l1,#e5e7eb);" +
+              "border-radius:6px;" +
+              "background:var(--dsw-alias-bg-layer-1,#ffffff);" +
+              "color:var(--dsw-alias-label-tertiary,#6b7280);" +
+              "font-size:12px;" +
+              "line-height:16px;" +
+              "cursor:pointer;" +
+              "user-select:none;" +
+              "font-family:inherit;" +
+              "transition:background .12s ease,color .12s ease,border-color .12s ease" +
+            "}\n" +
+            "[data-dsh-ui-tweaks-disclosure-collapse]:hover{" +
+              "background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.04));" +
+              "color:var(--dsw-alias-label-secondary,#374151);" +
+              "border-color:var(--dsw-alias-border-l2,#d0d5dd)" +
+            "}\n" +
+            "[data-dsh-ui-tweaks-disclosure-collapse]:focus-visible{" +
+              "outline:2px solid var(--dsw-alias-state-business-primary,#2563eb);" +
+              "outline-offset:2px" +
+            "}";
         }
       },
       {
@@ -1747,6 +1860,169 @@ window.__ModuleLoader__.load({
       };
     }
 
+    // ===== disclosure-end-collapse =====
+    // ====================================================================
+    // v0.9.6：折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾
+    //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点
+    // --------------------------------------------------------------------
+    // 背景：DSH 用 DisclosureRow 渲染三类可展开块——
+    //   1. ReasoningRow (data-variant="think"): Think 推理块——长内容最常见
+    //   2. GenericCommandCard (data-variant="others"): 工具调用输出（bash /
+    //      edit / read / grep / glob 等多行输出时 body 才会渲染）
+    //   3. ContextInjectionRow (class 含 _root 且 data-open): 上下文注入
+    // 全部 expandOnRowClick=true——点击头部行切换展开。展开后阅读完毕想收起
+    //   时必须滚回头部点行；长 Think 内容滚回很烦（尤其 reasoning 流式输出几 KB）。
+    //
+    // 解法：JS MutationObserver 巡检 body 元素（仅当 expanded 时 body 才在 DOM 里）
+    //   给每个 body 末尾注入 wrapper div + "收起 ▴" 按钮。点击时找 body 父元素
+    //   里 className 含 _row 的兄弟，调 .click() 触发 DSH React onToggle →
+    //   setExpanded(false) → row 折叠，body 与按钮一起被卸载。stopPropagation
+    //   防止冒泡——虽然 row 是 body 的兄弟不在祖先链上，但保险起见 stop。
+    //
+    // 兼容性：依赖 DSH row 元素接收 native click 事件并触发 React handler。
+    //   React 17+ 委托到 root container，row.click() 会冒泡触发 onToggle。
+    //   不修改 DSH 任何代码，纯附加层。
+    //
+    // v0.9.6 决策依据：之前反复考虑把按钮放在 body 内 vs body 外（兄弟）。
+    //   选 body 内（append）— 按钮随 body 一起出现/消失，无需复杂生命周期管理；
+    //   body 卸载时按钮自动 remove（React unmount 也会带走 wrapper div）；
+    //   inline 位置由 body padding-left/margin-left 决定（Think 22px / Command
+    //   16px / Context 22px），无需每个变体单独处理 indent。
+    // ====================================================================
+
+    /**
+     * 给定已展开的 body 元素，找它在 DisclosureRow 里的"点击行"——也就是
+     *   触发 setExpanded 反转的 row 元素。
+     *
+     * 布局：DisclosureRow 把 row（点击行）和 children（body）作为直接兄弟
+     *   放进同一个 wrapper 节点。body.parentElement 就是 wrapper。
+     *
+     * 找 row 策略：
+     *   1. 优先：在 wrapper.children 里找 className 含 `_row` 子串的——
+     *      DSH CSS module hash 约定（`QWLzlG_row` / `_Xvjua_row` 等），
+     *      ContextInjectionRow 不传 rowClassName 时用默认行类，子串匹配仍命中
+     *   2. 兜底：wrapper.firstElementChild 不是 body 时就是 row——
+     *      DisclosureRow 标准布局 row 在前 body 在后
+     */
+    function findRowForBody(bodyEl) {
+      var wrapper = bodyEl.parentElement;
+      if (!wrapper) return null;
+      var children = wrapper.children;
+      for (var i = 0; i < children.length; i++) {
+        var c = children[i];
+        if (c === bodyEl) continue;
+        if (c.className && typeof c.className === "string" &&
+            c.className.indexOf("_row") >= 0) {
+          return c;
+        }
+      }
+      if (wrapper.firstElementChild && wrapper.firstElementChild !== bodyEl) {
+        return wrapper.firstElementChild;
+      }
+      return null;
+    }
+
+    /**
+     * 给 body 末尾注入"收起"按钮。幂等——已注入则跳过。
+     *   注入结构：<body>...text...<wrap><button>收起 ▴</button></wrap></body>
+     *   wrap 强制 display:block 让按钮独占一行（不被 pre-wrap 文本内联吃掉）
+     */
+    function injectCollapseButton(bodyEl) {
+      if (typeof document === "undefined") return;
+      if (bodyEl.querySelector("[" + DISCLOSURE_END_COLLAPSE_WRAP_ATTR + "]")) return;
+
+      var wrap = document.createElement("div");
+      wrap.setAttribute(DISCLOSURE_END_COLLAPSE_WRAP_ATTR, "");
+
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute(DISCLOSURE_END_COLLAPSE_ATTR, "");
+      btn.textContent = "收起 ▴";
+      btn.title = "收起";
+      btn.setAttribute("aria-label", "收起");
+
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // row.click() 触发 DSH React 的 onToggle → setExpanded(false) →
+        //   body 与本按钮一起被卸载。无需手动 remove。
+        var row = findRowForBody(bodyEl);
+        if (row && typeof row.click === "function") {
+          row.click();
+        }
+      });
+
+      wrap.appendChild(btn);
+      bodyEl.appendChild(wrap);
+    }
+
+    /** 巡检所有展开的 DisclosureRow body，注入按钮。 */
+    function scanBodies() {
+      if (typeof document === "undefined") return;
+      var bodies = document.querySelectorAll(DISCLOSURE_BODY_SELECTORS);
+      for (var i = 0; i < bodies.length; i++) {
+        injectCollapseButton(bodies[i]);
+      }
+    }
+
+    /** stop 时清理所有已注入的按钮（防御性——正常情况下 button 随 body 卸载）。 */
+    function removeAllInjectedButtons() {
+      if (typeof document === "undefined") return;
+      var wraps = document.querySelectorAll("[" + DISCLOSURE_END_COLLAPSE_WRAP_ATTR + "]");
+      for (var i = 0; i < wraps.length; i++) {
+        var w = wraps[i];
+        if (w.parentNode) w.parentNode.removeChild(w);
+      }
+    }
+
+    /**
+     * v0.9.6：DisclosureRow 末尾收起按钮 controller。start 时挂 MutationObserver
+     *   观察 body subtree（DSH React 在 expand/collapse 时挂载/卸载 body）；
+     *   80ms throttle 同 v0.7.0 tab-hider / v0.6.2 hover-card-hider 节奏，
+     *   避免 DSH 高频重渲时反复探测。
+     *   立即跑一次 scanBodies()，确保首次启动时已展开的 block 立刻有按钮
+     *   （无需等下一次 mutation）。
+     */
+    function createDisclosureEndCollapseController() {
+      var observer = null;
+      var isRunning = false;
+
+      function start() {
+        if (isRunning) return;
+        if (typeof document === "undefined" || !document.body) return;
+        isRunning = true;
+        if (typeof MutationObserver === "undefined") {
+          scanBodies();
+          return;
+        }
+        observer = new MutationObserver(function () {
+          if (observer._pending) return;
+          observer._pending = true;
+          (typeof window !== "undefined" && window.setTimeout)
+            ? window.setTimeout(function () {
+                observer._pending = false;
+                scanBodies();
+              }, 80)
+            : scanBodies();
+        });
+        try {
+          observer.observe(document.body, { childList: true, subtree: true });
+        } catch (e) { /* 静默 */ }
+        scanBodies();
+      }
+
+      function stop() {
+        isRunning = false;
+        if (observer !== null) { observer.disconnect(); observer = null; }
+        removeAllInjectedButtons();
+      }
+
+      return {
+        start: start,
+        stop: stop,
+        get running() { return isRunning; }
+      };
+    }
 // ===== first-message-jump =====
     // ====================================================================
     // v0.9.1：上数第二条卡住 bug 修复 + Shift+点击一键极限（双按钮对称）：
@@ -2871,6 +3147,19 @@ window.__ModuleLoader__.load({
         };
       }
 
+      // 6f) v0.9.6：折叠块末尾收起按钮 controller（disclosure-end-collapse tweak）
+      //     覆盖三类 DisclosureRow 展开块：ReasoningRow (Think) / GenericCommandCard
+      //     （工具调用输出）/ ContextInjectionRow（上下文注入）。详见 67-...js 头部注释。
+      var disclosureEndCollapse = createDisclosureEndCollapseController();
+      if (initialState.disclosureEndCollapse) disclosureEndCollapse.start();
+
+      // 6g) v0.9.6：诊断挂到 window.__dshUiTweaks.disclosureEndCollapse() 看 running 状态
+      if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
+        window[DEBUG_API_KEY].disclosureEndCollapse = function () {
+          return { running: disclosureEndCollapse.running };
+        };
+      }
+
       // 7) 监听 UI 状态变化
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
@@ -2908,6 +3197,12 @@ window.__ModuleLoader__.load({
           if (!firstMessageJump.running) firstMessageJump.start();
         } else {
           if (firstMessageJump.running) firstMessageJump.stop();
+        }
+        // v0.9.6：disclosure-end-collapse controller 跟随开关
+        if (detail.disclosureEndCollapse) {
+          if (!disclosureEndCollapse.running) disclosureEndCollapse.start();
+        } else {
+          if (disclosureEndCollapse.running) disclosureEndCollapse.stop();
         }
       }
       if (typeof window !== "undefined" && window.addEventListener) {

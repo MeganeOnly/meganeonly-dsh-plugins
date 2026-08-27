@@ -6,6 +6,29 @@
 
 ## [Unreleased]
 
+### 优化（v0.9.7）
+
+- **`simple-mode` 状态行两轮「去装饰」**（v0.9.7）：用户对 v0.9.3 美术度升级的两层叠加装饰（圆角胶囊灰底 + 呼吸点闪烁）都反馈过剩——前者「简洁模式不需要 badge 铺底」，后者「一闪一闪比活动切换更抢戏，宁可切换慢也不能接受脉动」。
+  - **第 1 轮——去圆角胶囊灰底**：v0.9.3 给 `.dsh-ui-tweaks-status` 加的 `background:color-mix(in srgb, currentColor 8%, transparent)` 在 `read` 类（grep / glob「正在查找…」着色 `#475569`）这种基础色偏中性的活动下，8% tint 出图是明显的灰色色块；与「简洁模式」初衷冲突。撤掉三件套：`.dsh-ui-tweaks-status` 的 `background:color-mix(...)` + `border-radius:999px` + 水平 padding（`padding:0 10px 0 8px` → `padding:0`），圆角胶囊外壳彻底消失。
+  - **第 2 轮——去呼吸脉动动画**：v0.9.3 给 `.dsh-ui-tweaks-status::before` 加的 `@keyframes dsh-status-pulse`（2.4s 周期 opacity .6↔.9 循环）在简单思考 → 工具调用 → 工具调用 → ... 几秒钟的活动期内会重复跳多次，pulse 的「1-2 秒一次明暗交替」与活动切换的「文字内容/色变化」重叠叠加，用户报告视觉上是「一闪一闪」节奏感强的闪烁，比「现在还在跑」的信号更醒目——反客为主。用户表态宁可切换不那么准确、过渡缓慢，也不能接受脉动。撤掉 `@keyframes dsh-status-pulse` + `::before` 上的 `animation` + 配套 `@media (prefers-reduced-motion:reduce)` 媒体查询规则（animation 没了这条规则就剩空壳）。圆点保留为静态 6×6（颜色继承 `currentColor`、opacity 0.7、无 animation/transition）；活动切换的色变靠 `.dsh-ui-tweaks-status` 新增的 `transition:color .4s ease`——`text` + `::before dot` 都跟着平滑过渡。`.4s` 比 2.4s 慢切换但仅在变化瞬间，慢切换比持续脉动更不刺眼。
+  - **最终形态**：`[● 正在查找…]` 极简文字行（静态圆点 + 8 类活动色 text + `margin-left:10px`），与 DSH 原生 turnStatus 文案（如「Deep diving...」）同层内联——更像带状态前缀的一条普通文字而非 badge。
+  - **兼容性**：`.dsh-ui-tweaks-status` 类名 / `dsh-ui-tweaks-status-row` ID / `[data-dsh-activity]` attr / `[data-chat-flow-kind="tool-call"]{display:none}` 等隐藏规则 / `localStorage simpleModeEnabled` / 调试 API `window.__dshUiTweaks` 全不动；DSH 主题颜色变量缺失时硬值 fallback 不动；状态行总高仍 18px（`line-height:18px` 不变，与 DSH 原生 turnStatus 文案同高对齐）。仅在浏览器中观察到的视觉差异（灰底消失 + 脉动消失 + 颜色切换平滑）。
+  - **测试/构建**：`lib/client-src/25-tweaks.js` 的 simple-mode buildCSS 注释 + CSS 同步更新；`@keyframes` 与 `prefers-reduced-motion` 规则直接删除（不留死代码）；走 `npm run build:client`（无需重测，CSS-only） + `node --check lib/client.js` 语法校验
+  - **诊断**：`window.__dshUiTweaks.getInjectedCSS()` 返回的 CSS 仍命中 `.dsh-ui-tweaks-status` 选择器；用户在浏览器控制台跑 `document.querySelector('.dsh-ui-tweaks-status')` 检查 `getComputedStyle(.background)` 应为 `rgba(0, 0, 0, 0)` 而非 `color-mix(...)`；`getComputedStyle(.animation)` / `getComputedStyle(::before, '.animation')` 应为 `none`；`getComputedStyle(.transition)` 应含 `color 0.4s ease`
+
+### 新增（v0.9.6）
+
+- **`disclosure-end-collapse` 折叠块末尾收起按钮**（v0.9.6）：DSH 用 `DisclosureRow` 渲染三类可展开块——`ReasoningRow`（Think，模型推理块）/ `GenericCommandCard`（工具调用输出，bash / edit / read / grep 等多行输出时 body 才会渲染）/ `ContextInjectionRow`（上下文注入）。全部 `expandOnRowClick: true`——点击头部行切换展开，但展开后想收起必须滚回头部再点。长 Think 内容（几 KB reasoning）滚回非常烦。
+  - **解法**：JS `MutationObserver` 巡检 body 元素（仅当 `expanded === true` 时 body 才会出现在 DOM）给每个 body 末尾注入 wrapper div + "收起 ▴" 按钮。点击按钮 → `e.preventDefault() + e.stopPropagation()` → 找 body 父元素里 className 含 `_row` 的兄弟（DisclosureRow 标准布局 row 在前 body 在后），调 `.click()` 触发 DSH React `onToggle` → `setExpanded(false)` → row 折叠，body 与按钮一起被 React unmount，无需手动清理
+  - **DOM 选择器**（`20-constants.js` 的 `DISCLOSURE_BODY_SELECTORS` 单点拼接，三类变体一处维护）：`[data-variant="think"] [class*="thinkBody"]` + `[data-variant="others"] [class*="_body"]` + `[class*="_root"][data-open] [class*="_body"]`。substring match 不依赖 DSH CSS module hash，DSH 升级换 hash 仍命中
+  - **按钮 CSS**：wrapper `display:block` 强制独占一行（不被 pre-wrap 文本内联吃掉）；按钮 chip 形态（边框 + 圆角 + hover 背景），`var(--dsw-alias-*)` fallback 链防止主题切到没有这些变量时不可见。inline 位置由各 body 自身的 padding-left / margin-left 决定（Think 22px / Command 16px / Context 22px），无需按变体分别处理 indent
+  - **生命周期**：80ms throttle 同 `tab-hider` / `hover-card-hider` 节奏；首次 `start()` 立即跑一次 `scanBodies()`，已展开的 block 立刻有按钮；`stop()` 时防御性清理所有已注入按钮（正常路径下 React unmount 会带走）
+  - **默认 ON**：本 tweak v0.9.6 新引入，无 backward compat 顾虑；老用户升级后自动启用，若不需要可在设置页关闭
+  - **新增 tweak 项**：`{ id: "disclosure-end-collapse", name: "展开块末尾收起按钮", configKeys: { enabled: "disclosureEndCollapse", value: "disclosureEndCollapse" } }`——localStorage key `disclosureEndCollapse`
+  - **新增 section 文件**：`lib/client-src/67-disclosure-end-collapse.js`（`createDisclosureEndCollapseController` 工厂 + 4 个纯函数 `findRowForBody` / `injectCollapseButton` / `scanBodies` / `removeAllInjectedButtons`）
+  - **诊断**：`window.__dshUiTweaks.disclosureEndCollapse()` 返回 `{ running: bool }`
+  - **不修改 DSH 任何代码**——纯附加层；DSH 升级 DisclosureRow 内部结构变化（CSS module hash 变了 / rowClassName 命名规则变了）也不影响工作：button 通过 substring match `_row` 找 row，DSH CSS module hash 一直沿用 `_<name>_row` 约定，context 的默认 rowClassName 也含 `_row`
+
 ### 修复
 
 - **`simple-mode` 状态行工具名识别修复**（v0.9.5）：v0.9.3 美术度升级（8 类活动语义色：think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 / plan 绿 / goal 粉 / git 石板）**从发布起就未生效**——所有活动都 fallback 到 "正在处理…" / generic 灰。两处根因同时修：

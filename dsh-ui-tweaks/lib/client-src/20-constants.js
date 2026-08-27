@@ -1,4 +1,13 @@
     // ===== constants =====
+        // v0.9.7：simple-mode 状态行两轮「去装饰」——
+        //   1) 去圆角胶囊灰底：撤掉 background:color-mix(...) / border-radius:999px /
+        //      水平 padding（用户反馈简洁模式不需要 badge 铺底）。
+        //   2) 去呼吸脉动动画：撤掉 @keyframes dsh-status-pulse 与 ::before 上的
+        //      animation（用户反馈 2.4s 周期 opacity .6↔.9 持续闪烁反客为主，
+        //      可接受切换缓慢但不能接受一闪一闪）。圆点保留为静态视觉锚。
+        //   活动色切换走 `.dsh-ui-tweaks-status` 上新增的 transition:color .4s ease，
+        //   text + ::before dot 一起平滑过渡。
+        //   其它不动的 ID/class/attribute/localStorage key / debug API 全保留。
         // v0.9.5：simple-mode 状态行工具名识别修复——simplePickToolNameFromDom
         // 之前查 [data-tool-name]（错属性），DSH 实际渲染 [data-tool]（见
         // dsh-client-ui-tool ToolRow.js）；同时新增 simpleIsThinkingFromDom
@@ -6,7 +15,7 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.5";
+        var VERSION = "0.9.7";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -28,6 +37,23 @@
         var SIMPLE_STATUS_ACTIVITY_ATTR = "data-dsh-activity";
         var SIMPLE_TURN_STATUS_SEL = '[class*="turnStatus"]';
         var SIMPLE_POLL_MS = 250;
+        // v0.9.6：折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾
+        //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。
+        //   目标三类 DisclosureRow：ReasoningRow（Think, data-variant="think"）、
+        //   GenericCommandCard（工具调用输出, data-variant="others"）、
+        //   ContextInjectionRow（上下文注入, class 含 _root 且 data-open）。
+        //   button 在 body 元素里（wrapper div + button），点击时找 body 父元素
+        //   里 rowClassName 那行调 .click()——DSH React onToggle 触发折叠，body 与
+        //   按钮一起被卸载；stopPropagation 避免冒泡到 row（虽然 row 是 body 兄弟
+        //   不是祖先，但 click 也会途经 DisclosureRow wrapper——保险起见 stop）。
+        var DISCLOSURE_END_COLLAPSE_WRAP_ATTR = "data-dsh-ui-tweaks-disclosure-collapse-wrap";
+        var DISCLOSURE_END_COLLAPSE_ATTR = "data-dsh-ui-tweaks-disclosure-collapse";
+        // 三大 DisclosureRow 的 body 选择器（暴露给 controller 复用）
+        var DISCLOSURE_BODY_SELECTORS = [
+          '[data-variant="think"] [class*="thinkBody"]',
+          '[data-variant="others"] [class*="_body"]',
+          '[class*="_root"][data-open] [class*="_body"]'
+        ].join(", ");
         // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
         var SHIFT_TARGET_ATTR = "data-dsh-ui-tweaks-shift-target";
         var SHIFT_TARGET_CHATFLOW = "chatflow";

@@ -1,6 +1,38 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.7：simple-mode 状态行两轮「去装饰」——
+ *   - 去圆角胶囊灰底：用户反馈简洁模式不需要 badge 铺底，"正在查找…"
+ *     那种 `read` 类着色 #475569 中性灰 8% tint 出图明显的灰色色块多余。
+ *     撤掉 `.dsh-ui-tweaks-status` 的 `background:color-mix(...)` /
+ *     `border-radius:999px` / 水平 padding——圆角胶囊外壳不再。
+ *   - 去呼吸脉动动画：用户反馈 2.4s 周期 opacity .6↔.9 的 `@keyframes
+ *     dsh-status-pulse` 持续闪烁（"一闪一闪"）比活动切换的"现在还在跑"
+ *     信号更抢戏，反客为主。用户表态宁可切换不那么准确、过渡缓慢，
+ *     也不能接受脉动。撤掉 `@keyframes dsh-status-pulse` + `::before`
+ *     上的 animation，去掉相应的 `@media (prefers-reduced-motion:reduce)`
+ *     规则。圆点保留为静态 6×6（颜色继承 currentColor，opacity 0.7，
+ *     无任何动画/过渡）；活动切换的色变靠 `.dsh-ui-tweaks-status` 上的
+ *     `transition:color .4s ease` 让 text + ::before dot 一起平滑过渡——
+ *     满足"宁可切换慢一点"的要求，视觉平滑无闪烁。
+ *   - 最终形态：`[● 正在查找…]` 极简文字行（静态圆点 + 8 类活动色 text +
+ *     margin-left:10px），与 DSH 原生 turnStatus 文案（如「Deep diving...」）
+ *     同层内联，更像带状态前缀的一条普通文字而非 badge。
+ *   - 兼容性：`.dsh-ui-tweaks-status` 类名 / `dsh-ui-tweaks-status-row`
+ *     ID / `[data-dsh-activity]` attr / `localStorage simpleModeEnabled` /
+ *     调试 API `window.__dshUiTweaks` 全不动；状态行总高仍 18px（line-height
+ *     不变，与原 turnStatus 文案同高）。
+ *
+ * v0.9.6：折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾追加
+ *   "收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。覆盖三类
+ *   DisclosureRow：ReasoningRow (Think, data-variant="think") / GenericCommandCard
+ *   (工具调用输出, data-variant="others") / ContextInjectionRow (上下文注入,
+ *   class 含 _root 且 data-open)。JS MutationObserver 巡检 body 元素（仅
+ *   expanded 时 body 在 DOM）给每个 body 末尾注入 wrapper div + "收起 ▴" 按钮；
+ *   点击调用 row.click() 触发 DSH React onToggle → setExpanded(false) 折叠，
+ *   body 与按钮一起被卸载。新增 `disclosure-end-collapse` tweak（默认 ON），
+ *   见 `lib/client-src/67-disclosure-end-collapse.js`。
+ *
  * v0.9.5：`simple-mode` 状态行工具名识别修复——`simplePickToolNameFromDom`
  *   之前查 `[data-tool-name]`（错属性），DSH `dsh-client-ui-tool/lib/client.js`
  *   ToolRow 实际渲染的是 `[data-tool] = toolName`；同时新增

@@ -80,6 +80,19 @@
         };
       }
 
+      // 6f) v0.9.6：折叠块末尾收起按钮 controller（disclosure-end-collapse tweak）
+      //     覆盖三类 DisclosureRow 展开块：ReasoningRow (Think) / GenericCommandCard
+      //     （工具调用输出）/ ContextInjectionRow（上下文注入）。详见 67-...js 头部注释。
+      var disclosureEndCollapse = createDisclosureEndCollapseController();
+      if (initialState.disclosureEndCollapse) disclosureEndCollapse.start();
+
+      // 6g) v0.9.6：诊断挂到 window.__dshUiTweaks.disclosureEndCollapse() 看 running 状态
+      if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
+        window[DEBUG_API_KEY].disclosureEndCollapse = function () {
+          return { running: disclosureEndCollapse.running };
+        };
+      }
+
       // 7) 监听 UI 状态变化
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
@@ -117,6 +130,12 @@
           if (!firstMessageJump.running) firstMessageJump.start();
         } else {
           if (firstMessageJump.running) firstMessageJump.stop();
+        }
+        // v0.9.6：disclosure-end-collapse controller 跟随开关
+        if (detail.disclosureEndCollapse) {
+          if (!disclosureEndCollapse.running) disclosureEndCollapse.start();
+        } else {
+          if (disclosureEndCollapse.running) disclosureEndCollapse.stop();
         }
       }
       if (typeof window !== "undefined" && window.addEventListener) {
