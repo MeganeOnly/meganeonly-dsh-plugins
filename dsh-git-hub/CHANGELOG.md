@@ -33,7 +33,7 @@
 
 ### 修复
 
-- **配置保存写到错位置**：`POST /api/git-hub/config` 修改扫描根目录后，实际写入路径与读取路径不一致——写入到了源仓库根的 `.git-hub-config.json`，但读取时却到 web profile 根的 `.git-hub-config.json` 去找，导致下一次启动读到默认根列表而非用户上次保存的内容，前端表现为「保存按钮无效」。根因：`PROFILE_ROOT` 原本用 `import.meta.url` 上溯 3 层推导，但 DSH loader 会按 cordis patch id 在 `node_modules\<id>` 建 junction 指向源仓库目录，Node ESM 解析 junction 是透明的，`import.meta.url` 拿到的是真实源路径（源仓库内的 `dsh-git-hub/lib/index.js`），上溯 3 层落到源仓库根而非 web profile 根。Fix：改用 `ctx.baseUrl`（loader 注入的 `file://` profile 根 URL，`fileURLToPath` 直接拿到 profile 根），与 `dsh-peak-hour-lock/lib/index.js` 的 `profileRoot(ctx)` 同款。`PROFILE_ROOT` 顶层常量与 `configPath` 顶层常量一并删除；`loadConfig` / `saveConfig` 改在 `apply(ctx)` 闭包内按 `ctx` 构造（被 `getAllRepos` / `listChangedRepos` / `listMergeableRepos` / `/api/git-hub/config` handler 共用的 4 处调用方都在同一闭包，无需改调用代码）。修复后用户重启 DSH 即可。
+- **配置路径修复 + 修正此前的 ReferenceError**：上次的「配置保存写到错位置」修复（v0.5.x 早期实现）改用了 `ctx.baseUrl` 解析 profile 根（正确方向），但实现细节选错了层级——把 `loadConfig` / `saveConfig` 定义在 `apply(ctx)` 闭包内，遗漏了 `getAllRepos` / `listChangedRepos` / `listMergeableRepos` 这 3 个**模块顶层**声明的函数也在引用 `loadConfig`，结果 `apply` 闭包里的 `loadConfig` 对它们不可见，`/api/git-hub/repos` 等接口一调就抛 `ReferenceError: loadConfig is not defined`，前端看到「扫描失败 internal」，抽屉仓库列表为空。本条修正实现：保留 `ctx.baseUrl` 解析（不再 `import.meta.url` 上溯），`configPath` 改为模块级 `let` mutable 引用（取代原顶层 `const`），`apply(ctx)` 同步写入一次后供模块顶层共享；`loadConfig` / `saveConfig` 回归模块顶层，`getAllRepos` 等调用方零改动。两层互相矛盾的「修复」合在一起最终落地：路径正确 + 不再 ReferenceError。重启 DSH 即可看到仓库列表重新扫描成功。
 
 ### 维护
 

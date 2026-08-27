@@ -185,9 +185,48 @@ function isDirectory(p) {
  * 关键点：configPath 必须在 apply(ctx) 闭包里根据 ctx.baseUrl 计算
  * （不能在 module 顶层按 import.meta.url 上溯 N 层——junction 模式下
  * import.meta.url 是真实源路径，会上溯到错位置；详见 resolveProfileRoot 注释）。
+ *
+ * 实现：
+ *   - configPath 是模块级 mutable 引用（let），apply(ctx) 内一次性写入。
+ *   - loadConfig / saveConfig 定义在模块顶层（不在 apply 闭包内），
+ *     因为它们被模块顶层声明的 getAllRepos / listChangedRepos /
+ *     listMergeableRepos 引用——这些函数不能进 apply 闭包（apply
+ *     之外还有 module-init 阶段的早期调用是另一回事），放进 apply
+ *     闭包会让它们找不到 loadConfig（v0.5.x 引入过这个 ReferenceError，
+ *     见 CHANGELOG [Unreleased]）。
+ *   - configPath 由 apply 同步初始化；调用方拿到的永远是 apply 之后
+ *     写入的路径，不会触发"configPath 还没初始化"的中间态——DSH 进程
+ *     在所有 HTTP handler 注册完成后才接受请求，handler 调 loadConfig
+ *     时 apply 已跑过。
  * ------------------------------------------------------------------ */
 
-// 留空占位：loadConfig/saveConfig 实际定义在 apply(ctx) 闭包内（见下）
+let configPath = null // 由 apply(ctx) 初始化（按 ctx.baseUrl 解析 profile 根）
+
+async function loadConfig() {
+  if (!configPath) throw new Error('[dsh-git-hub] configPath not initialized; apply(ctx) must run first')
+  try {
+    const raw = await readFile(configPath, 'utf8')
+    const parsed = JSON.parse(raw)
+    const roots = Array.isArray(parsed.scanRoots)
+      ? parsed.scanRoots.map(normalizePath).filter(Boolean)
+      : []
+    return { scanRoots: roots.length > 0 ? roots : DEFAULT_SCAN_ROOTS }
+  } catch {
+    return { scanRoots: DEFAULT_SCAN_ROOTS }
+  }
+}
+
+async function saveConfig(scanRoots) {
+  if (!configPath) throw new Error('[dsh-git-hub] configPath not initialized; apply(ctx) must run first')
+  const cleaned = Array.isArray(scanRoots)
+    ? scanRoots.map(normalizePath).filter(Boolean)
+    : []
+  const next = { scanRoots: cleaned.length > 0 ? cleaned : DEFAULT_SCAN_ROOTS }
+  const tmp = configPath + '.tmp'
+  await writeFile(tmp, JSON.stringify(next, null, 2), 'utf8')
+  await rename(tmp, configPath)
+  return next
+}
 
 /* ------------------------------------------------------------------ *
  * RepoScanner：递归找 .git 目录（跳过白名单）
@@ -397,32 +436,11 @@ export function apply(ctx) {
   // 配置持久化路径（按 ctx.baseUrl 解析 profile 根；不能用 import.meta.url 上溯——
   // junction 模式下 Node ESM 透明，拿到的是真实源路径而非 node_modules 路径，
   // 会写错位置。详见 resolveProfileRoot 注释。）
-  const profileRoot = resolveProfileRoot(ctx)
-  const configPath = join(profileRoot, CONFIG_FILENAME)
-
-  async function loadConfig() {
-    try {
-      const raw = await readFile(configPath, 'utf8')
-      const parsed = JSON.parse(raw)
-      const roots = Array.isArray(parsed.scanRoots)
-        ? parsed.scanRoots.map(normalizePath).filter(Boolean)
-        : []
-      return { scanRoots: roots.length > 0 ? roots : DEFAULT_SCAN_ROOTS }
-    } catch {
-      return { scanRoots: DEFAULT_SCAN_ROOTS }
-    }
-  }
-
-  async function saveConfig(scanRoots) {
-    const cleaned = Array.isArray(scanRoots)
-      ? scanRoots.map(normalizePath).filter(Boolean)
-      : []
-    const next = { scanRoots: cleaned.length > 0 ? cleaned : DEFAULT_SCAN_ROOTS }
-    const tmp = configPath + '.tmp'
-    await writeFile(tmp, JSON.stringify(next, null, 2), 'utf8')
-    await rename(tmp, configPath)
-    return next
-  }
+  //
+  // 写入模块级 configPath（见上方配置持久化段注释），供模块顶层声明的
+  // loadConfig / saveConfig / getAllRepos / listChangedRepos /
+  // listMergeableRepos 共享同一个路径。
+  configPath = join(resolveProfileRoot(ctx), CONFIG_FILENAME)
 
   ctx.webServer.register({
     kind: 'exact',
