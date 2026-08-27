@@ -141,6 +141,16 @@
             //
             //   兼容性：[class*="turnStatus"] / [class*="turnStatusClock"] / .dsh-ui-tweaks-status
             //     类名 / ID / attribute / localStorage key 全不动——纯 CSS 加固。
+            //
+            //   v0.9.12 增量（补 v0.9.10 / v0.9.11 还没修干净的症状）：
+            //   - 用户反馈"几次 think / 工具调用穿插后状态行像是首行缩进"——
+            //     DSH 在 assistant-step 节点累加后会沿父链逐步加上 padding-left
+            //     缩进，CSS reset 作用在 `[class*="turnStatus"]` 节点本身不够（祖先
+            //     链上的 padding 才能视觉上把 status 推右）。补 `padding-left:0 !important`
+            //     + `margin-left:0 !important` 让 status 始终贴容器左侧，配合
+            //     `55-simple-mode.js#purgeTurnStatus()` 走 inline `style.paddingLeft / marginLeft`
+            //     兜底 DSH 通过 inline style 设的 padding。flash 的彻底根治在 JS 层——见
+            //     `lib/client-src/55-simple-mode.js` v0.9.12 banner 段说明。
             // visibility:visible !important 仍保留（v0.7.1 起的祖先 display:none 兜底）
             "[class*=\"turnStatus\"]{" +
               // 容器 reset——v0.9.8 起的基础 + v0.9.10 增量
@@ -181,6 +191,13 @@
               "letter-spacing:normal !important;" +
               "word-spacing:normal !important;" +
               "text-decoration:none !important;" +
+              // v0.9.12：padding-left / margin-left 显式归零——用户反馈"几次穿插后像
+              //   首行缩进"——DSH 在 assistant-step 累加后给 turnStatus 父链加缩进
+              //   padding 是常见手法，我方 CSS reset 只作用当前节点不够。padding 归
+              //   零让状态行始终贴容器左侧。inline 兜底由 55-simple-mode.js 的
+              //   purgeTurnStatus() 同步保证。
+              "padding-left:0 !important;" +
+              "margin-left:0 !important;" +
               // 裁掉任何超出容器宽度的子元素视觉溢出（DSH loader / shimmer 即使没被 child
               //   选择器命中也可能溢出到容器外）
               "overflow:hidden !important" +

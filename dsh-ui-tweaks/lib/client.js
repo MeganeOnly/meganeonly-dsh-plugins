@@ -1,6 +1,18 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的
+ *   loader / shimmer child；走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的
+ *   JS 回退路径——`createSimpleModeStatusController#purgeTurnStatus()` 在
+ *   appendChild 之前清空容器并保留 clock，`watchTurnStatus()` 升级观察
+ *   document.body subtree（含 DSH 重渲时新增的任何 turnStatus 立即 purge），
+ *   杀零 tick 250ms 间隔的闪援窗口。同时修"几次 think / 工具调用穿插后状态行
+ *   像是首行缩进"——CSS 加 `padding-left:0 !important` + `margin-left:0 !important`
+ *   让 status 始终贴容器左侧，JS 同步把 inline `style.paddingLeft / marginLeft`
+ *   归零作为 DSH 通过 inline style 缩进时的兜底。详情见
+ *   `55-simple-mode.js` v0.9.12 banner + `25-tweaks.js` simple-mode buildCSS
+ *   v0.9.12 增量段 + `20-constants.js` v0.9.12 VERSION 头注释。
+ *
  * v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
  *   但有时候会有时候不会"。根因：`display:none` 在某些 layout context 下不一定
  *   让元素彻底不占布局空间——
@@ -358,6 +370,15 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
+        // v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的
+        //   loader / shimmer 子元素；走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的
+        //   JS 回退路径——`createSimpleModeStatusController#purgeTurnStatus()` 在
+        //   appendChild 前清空容器并保留 clock；`watchTurnStatus()` 升级观察
+        //   document.body subtree（含 DSH 重渲时新增的任何 turnStatus 立即 purge），
+        //   杀零 tick 250ms 间隔的闪援窗口。同时修"几次穿插后像首行缩进"——CSS 加
+        //   `padding-left:0 !important` + `margin-left:0 !important`，JS 同步把 inline
+        //   `style.paddingLeft / marginLeft` 归零。详情见 `lib/client-src/55-simple-mode.js`
+        //   v0.9.12 banner 段 + `25-tweaks.js` simple-mode buildCSS v0.9.12 增量段。
         // v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
         //   但有时候会有时候不会"。根因：`display:none` 在某些 layout context（CSS Grid
         //   / React VirtualList fixed slot / React inline style min-height based on
@@ -410,7 +431,7 @@ window.__ModuleLoader__.load({
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.11";
+        var VERSION = "0.9.12";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -616,6 +637,16 @@ window.__ModuleLoader__.load({
             //
             //   兼容性：[class*="turnStatus"] / [class*="turnStatusClock"] / .dsh-ui-tweaks-status
             //     类名 / ID / attribute / localStorage key 全不动——纯 CSS 加固。
+            //
+            //   v0.9.12 增量（补 v0.9.10 / v0.9.11 还没修干净的症状）：
+            //   - 用户反馈"几次 think / 工具调用穿插后状态行像是首行缩进"——
+            //     DSH 在 assistant-step 节点累加后会沿父链逐步加上 padding-left
+            //     缩进，CSS reset 作用在 `[class*="turnStatus"]` 节点本身不够（祖先
+            //     链上的 padding 才能视觉上把 status 推右）。补 `padding-left:0 !important`
+            //     + `margin-left:0 !important` 让 status 始终贴容器左侧，配合
+            //     `55-simple-mode.js#purgeTurnStatus()` 走 inline `style.paddingLeft / marginLeft`
+            //     兜底 DSH 通过 inline style 设的 padding。flash 的彻底根治在 JS 层——见
+            //     `lib/client-src/55-simple-mode.js` v0.9.12 banner 段说明。
             // visibility:visible !important 仍保留（v0.7.1 起的祖先 display:none 兜底）
             "[class*=\"turnStatus\"]{" +
               // 容器 reset——v0.9.8 起的基础 + v0.9.10 增量
@@ -656,6 +687,13 @@ window.__ModuleLoader__.load({
               "letter-spacing:normal !important;" +
               "word-spacing:normal !important;" +
               "text-decoration:none !important;" +
+              // v0.9.12：padding-left / margin-left 显式归零——用户反馈"几次穿插后像
+              //   首行缩进"——DSH 在 assistant-step 累加后给 turnStatus 父链加缩进
+              //   padding 是常见手法，我方 CSS reset 只作用当前节点不够。padding 归
+              //   零让状态行始终贴容器左侧。inline 兜底由 55-simple-mode.js 的
+              //   purgeTurnStatus() 同步保证。
+              "padding-left:0 !important;" +
+              "margin-left:0 !important;" +
               // 裁掉任何超出容器宽度的子元素视觉溢出（DSH loader / shimmer 即使没被 child
               //   选择器命中也可能溢出到容器外）
               "overflow:hidden !important" +
@@ -1640,6 +1678,23 @@ window.__ModuleLoader__.load({
     // 简洁模式：状态行 DOM controller（从原 dsh-simple-mode/lib/client.js 移植）
     // ====================================================================
     //
+    // v0.9.12 关键修复：v0.9.10 三层 CSS reset 不够（用户反馈 v0.9.10 / v0.9.11
+    //   后底部状态行还是会一闪一闪的，且 think / 工具调用穿插几次后会"首行缩进"）。
+    //   走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的回退路径——
+    //   JS 路径接管容器：
+    //     1) `purgeTurnStatus()` 在 appendChild 之前先清空容器，保留 clock 再追加，
+    //        杀干净 DSH 原生的 loader / shimmer child（v0.9.10 CSS 第 3 层 `[class*
+    //        ="turnStatus"] > *:not(.dsh-ui-tweaks-status):not([class*="turnStatusClock"])`
+    //        没覆盖的子元素——例如 DSH 升级后改 class 名而 substring 失效的 loader，
+    //        或 React mount 后第一帧 CSS 还没应用时的瞬闪）
+    //     2) `watchTurnStatus()` 升级：观察 document.body subtree（不再是 DSH 重渲
+    //        时被换掉的 el.parentNode），任何新 turnStatus 节点（直接添加或深层
+    //        嵌套）出现就**立即** purge——杀零 tick 250ms 间隔的闪援窗口
+    //     3) `purgeTurnStatus()` 同时把 turnStatus 的 inline padding-left /
+    //        margin-left 归零，修"穿插几次后 status 像是首行缩进"——DSH 在
+    //        assistant-step 累加后给 turnStatus 父链加缩进 padding 是常见手法，
+    //        我方 CSS reset 只作用当前节点不够
+    //
     // v0.9.5 关键修复：`simplePickToolNameFromDom` 之前查 `[data-tool-name]`
     // 找不到任何工具名——DSH 实际渲染的是 `data-tool`（见 dsh-client-ui-tool
     // lib/client.js ToolRow：`"data-tool": toolName`）。这导致 v0.9.3 起的 8 类
@@ -1818,6 +1873,25 @@ window.__ModuleLoader__.load({
         return null;
       }
 
+      // v0.9.12：清空容器并保留 clock——v0.9.10 CHANGELOG [Unreleased] line 63
+      //   预设的回退路径。DSH loader / shimmer child（包括 React mount 第一帧
+      //   CSS 还没应用时的瞬闪）一律在 JS 阶段干掉，比 v0.9.10 三层 CSS reset
+      //   更彻底。同时把 inline padding/margin 归零，修 assistant-step 累加后
+      //   状态行看起来像"首行缩进"。
+      function purgeTurnStatus(turnStatus) {
+        if (turnStatus === null || turnStatus === undefined) return;
+        if (typeof document === "undefined") return;
+        // 保存 clock（无论 DSH 是否已渲染——querySelector 返回 null 时跳过）
+        var clock = turnStatus.querySelector('[class*="turnStatusClock"]');
+        // 抹掉所有子节点——包括 DSH loader / shimmer / 我们的 span（旧）/ 其它
+        while (turnStatus.firstChild) turnStatus.removeChild(turnStatus.firstChild);
+        // 还原 clock 到容器里（如果之前有的话）
+        if (clock !== null) turnStatus.appendChild(clock);
+        // 防御性归零 inline padding/margin——修"穿插几次后像首行缩进"
+        turnStatus.style.paddingLeft = '0';
+        turnStatus.style.marginLeft = '0';
+      }
+
       function attach() {
         if (typeof document === "undefined") return;
         // 已经在 attach 到当前 turnStatus——watchTurnStatus 的 MutationObserver
@@ -1832,8 +1906,12 @@ window.__ModuleLoader__.load({
         if (turnStatus === null) { current = null; return; }
         if (turnStatus !== lastTurnStatus) {
           lastTurnStatus = turnStatus;
-          watchTurnStatus(turnStatus);
+          watchTurnStatus();
         }
+        // v0.9.12：先 purge 后 append——v0.9.10 CSS 没杀干净的 DSH child 在
+        // 这步一律干掉。appendChild 触发 turnStatus 的 layout 重排但不触发
+        // MutationObserver（subtree 自身 childList 没变），开销可忽略。
+        purgeTurnStatus(turnStatus);
         var span = ensureStatusSpan();
         if (span.parentNode !== turnStatus) turnStatus.appendChild(span);
         current = turnStatus;
@@ -1845,16 +1923,47 @@ window.__ModuleLoader__.load({
         if (span !== null && span.parentNode !== null) span.parentNode.removeChild(span);
       }
 
-      function watchTurnStatus(el) {
+      // v0.9.12：watchTurnStatus 升级——观察 document.body subtree 而非
+      // `el.parentNode`（v0.9.11 旧实现局限：DSH 在 React 重渲时会换掉整个
+      // assistant-step 节点，旧 observer 失去目标后变僵尸）。新策略：
+      //   1) 任何 mutation 触发时检查当前 span 是否仍挂在我们想挂的 turnStatus
+      //      上；不是就 reattach（保留 purge 以防 DSH 偷偷在 mount 后塞 loader）
+      //   2) 任何 added node（直接添加或深层嵌套）含 turnStatus，立即 purge——
+      //      杀零 tick 250ms 间隔的闪援窗口：DSH 重渲立刻被拦截
+      function watchTurnStatus() {
         if (turnObserver !== null) { turnObserver.disconnect(); turnObserver = null; }
         if (typeof MutationObserver === "undefined") return;
-        turnObserver = new MutationObserver(function () {
+        turnObserver = new MutationObserver(function (records) {
           if (typeof document === "undefined") return;
           var span = document.getElementById(SIMPLE_STATUS_ID);
-          if (span === null) return;
-          if (span.parentNode !== el) el.appendChild(span);
+          // 1) Reattach：如果我们 span 已 orphaned 但 turnStatus 还在
+          if (span !== null && current !== null && span.parentNode !== current) {
+            if (current.parentNode !== null) current.appendChild(span);
+          }
+          // 2) Purge 任何新增的 turnStatus 节点（直接添加或深层）——
+          //    包括整个 `[class*="turnStatus"]` 被 DSH 替换 / 重渲时的新实例
+          for (var i = 0; i < records.length; i++) {
+            var rec = records[i];
+            for (var j = 0; j < rec.addedNodes.length; j++) {
+              var added = rec.addedNodes[j];
+              if (added === null || added === undefined) continue;
+              if (added.nodeType !== 1) continue;
+              if (typeof added.matches === "function" && added.matches(SIMPLE_TURN_STATUS_SEL)) {
+                purgeTurnStatus(added);
+                // 如果我们目前还没 attach，新出现的 turnStatus 就是目标
+                if (current === null) current = added;
+              }
+              var sub = null;
+              try { sub = added.querySelectorAll(SIMPLE_TURN_STATUS_SEL); } catch (_) { sub = []; }
+              for (var k = 0; k < sub.length; k++) {
+                purgeTurnStatus(sub[k]);
+                if (current === null) current = sub[k];
+              }
+            }
+          }
+          // 3) 如果我们 span 完全丢失 / current 失效，下次 tick() 会重新 attach
         });
-        turnObserver.observe(el.parentNode || document.body, { childList: true, subtree: false });
+        turnObserver.observe(document.body, { childList: true, subtree: true });
       }
 
       function tick() {

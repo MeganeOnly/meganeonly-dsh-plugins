@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.9.11",
+  "version": "0.9.12",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.9.11：simple-mode 防御性 layout zero 修复 hidden block 间距过大——用户反馈\"两边的字之间的距离会特别大 但有时候会有时候不会\"。根因：`display:none` 在某些 layout context 下不一定让元素彻底不占布局空间——React VirtualList fixed slot / CSS Grid `grid-template-rows: masonry` / React 给 parent 设的 inline style `min-height` 基于 child 内容 / layout 重算时机（间距时大时小对应 React 重渲时 layout 未收敛）。修法：把 hidden block 的 height / min-height / max-height / margin / padding / border / outline / flex-basis / flex-grow / grid-area 全部显式归零——在 block / flex / grid / virtual list 任意 layout context 下都不留残余高度。兼容性：纯 CSS 加固，所有类名 / ID / attribute / localStorage key 不动。v0.9.10 同时保留：simple-mode 状态行 v0.9.8 reset 不彻底修复（三层防线杀尽 DSH transition + mask-image shimmer）。v0.9.9 同时保留：sidebar-match-conversation-bg「侧栏背景与对话一致」tweak。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump、disclosure-end-collapse、sidebar-match-conversation-bg 九条 tweak。状态由 client half 用 localStorage 自管。",
+  "description": "DSH 外观设计微调合集（v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的 loader / shimmer 子元素——走 v0.9.10 CHANGELOG 预设的 JS 回退路径：`createSimpleModeStatusController#purgeTurnStatus()` 在 appendChild 之前清空容器并保留 clock；`watchTurnStatus()` 升级观察 document.body subtree（含 DSH 重渲时新增的任何 turnStatus 立即 purge），杀零 tick 250ms 间隔的闪援窗口。同时修\"几次 think / 工具调用穿插后状态行像是首行缩进\"——CSS 加 `padding-left:0 !important` + `margin-left:0 !important`，JS 同步把 inline `style.paddingLeft / marginLeft` 归零。v0.9.11 同时保留：simple-mode 防御性 layout zero 修复 hidden block 间距过大。v0.9.10 同时保留：simple-mode 状态行 v0.9.8 reset 不彻底修复（三层防线杀尽 DSH transition + mask-image shimmer）。v0.9.9 同时保留：sidebar-match-conversation-bg「侧栏背景与对话一致」tweak。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump、disclosure-end-collapse、sidebar-match-conversation-bg 九条 tweak。状态由 client half 用 localStorage 自管。",
   "license": "MIT",
   "repository": {
     "type": "git",

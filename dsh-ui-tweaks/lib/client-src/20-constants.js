@@ -1,4 +1,13 @@
     // ===== constants =====
+        // v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的
+        //   loader / shimmer 子元素；走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的
+        //   JS 回退路径——`createSimpleModeStatusController#purgeTurnStatus()` 在
+        //   appendChild 前清空容器并保留 clock；`watchTurnStatus()` 升级观察
+        //   document.body subtree（含 DSH 重渲时新增的任何 turnStatus 立即 purge），
+        //   杀零 tick 250ms 间隔的闪援窗口。同时修"几次穿插后像首行缩进"——CSS 加
+        //   `padding-left:0 !important` + `margin-left:0 !important`，JS 同步把 inline
+        //   `style.paddingLeft / marginLeft` 归零。详情见 `lib/client-src/55-simple-mode.js`
+        //   v0.9.12 banner 段 + `25-tweaks.js` simple-mode buildCSS v0.9.12 增量段。
         // v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
         //   但有时候会有时候不会"。根因：`display:none` 在某些 layout context（CSS Grid
         //   / React VirtualList fixed slot / React inline style min-height based on
@@ -51,7 +60,7 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.11";
+        var VERSION = "0.9.12";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

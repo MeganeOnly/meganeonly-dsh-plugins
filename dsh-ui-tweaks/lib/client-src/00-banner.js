@@ -1,6 +1,18 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的
+ *   loader / shimmer child；走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的
+ *   JS 回退路径——`createSimpleModeStatusController#purgeTurnStatus()` 在
+ *   appendChild 之前清空容器并保留 clock，`watchTurnStatus()` 升级观察
+ *   document.body subtree（含 DSH 重渲时新增的任何 turnStatus 立即 purge），
+ *   杀零 tick 250ms 间隔的闪援窗口。同时修"几次 think / 工具调用穿插后状态行
+ *   像是首行缩进"——CSS 加 `padding-left:0 !important` + `margin-left:0 !important`
+ *   让 status 始终贴容器左侧，JS 同步把 inline `style.paddingLeft / marginLeft`
+ *   归零作为 DSH 通过 inline style 缩进时的兜底。详情见
+ *   `55-simple-mode.js` v0.9.12 banner + `25-tweaks.js` simple-mode buildCSS
+ *   v0.9.12 增量段 + `20-constants.js` v0.9.12 VERSION 头注释。
+ *
  * v0.9.11：simple-mode 防御性 layout zero——用户反馈"两边的字之间的距离会特别大
  *   但有时候会有时候不会"。根因：`display:none` 在某些 layout context 下不一定
  *   让元素彻底不占布局空间——

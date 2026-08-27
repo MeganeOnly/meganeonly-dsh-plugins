@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### 修复（v0.9.12）
+
+- **`simple-mode` 状态行 v0.9.10 三层 CSS reset 兜不住——执行 v0.9.10 CHANGELOG 预设的 JS 回退路径**（v0.9.12）：v0.9.10 / v0.9.11 后用户反馈两个症状——
+  1. **底部 "正在思考 / 正在处理…" 还是会一闪一闪**——v0.9.10 三层 CSS reset（容器 reset + 伪元素 reset + 直接子元素 reset）杀尽了 transition / mask-image / shadow / filter / transform 等 animation 之外能产生 shimmer 的视觉动效源，但 v0.9.10 line 63 CHANGELOG [Unreleased] 已预判"如果仍漏，下一步走 JS 路径"——本次落地。两层 JS 接管：
+     - **`purgeTurnStatus(turnStatus)` 新增**（`55-simple-mode.js`）：在 `attach()` 调 `findTurnStatus()` 之后、`appendChild(span)` 之前，`while (turnStatus.firstChild) turnStatus.removeChild(...)` 清空容器，用 `querySelector('[class*="turnStatusClock"]')` 找回 clock 再追加回去。DSH loader / shimmer child（包括 React mount 第一帧 CSS 还没应用时的瞬闪）一律在 JS 阶段干掉。
+     - **`watchTurnStatus()` 升级**：原来观察 `el.parentNode`（`subtree:false`），DSH 替换 assistant-step 节点后 observer 变僵尸；新实现观察 `document.body` (`childList:true, subtree:true`)，mutation 触发时——
+       1) 检查我们 span 是否仍挂在 current turnStatus，不是就 reattach
+       2) 任何 added node（直接添加或深层嵌套）匹配 `[class*="turnStatus"]` 就**立即** purge，杀零 tick 250ms 间隔的闪援窗口（DSH 重渲立刻被拦截，不再等下一个 tick）
+  2. **几次 think / 工具调用穿插后状态行 "像是首行缩进"**——DSH 在 assistant-step 节点累加后沿父链逐步加 padding-left 缩进，v0.9.10 的 `[class*="turnStatus"]{ ... }` reset 作用在容器本身不够（祖先链 padding 才能视觉上把 status 推右），CSS 补 `padding-left:0 !important` + `margin-left:0 !important` 让 status 始终贴容器左侧，`purgeTurnStatus()` 同步把 inline `style.paddingLeft / marginLeft` 归零作 DSH 通过 inline style 设 padding 时的兜底。
+  - **不改 DSH 原生时钟颜色**（用户明确澄清"没有要求它变白"，原句 "应该是变成白色了" 是描述不是需求）；DSH 原生 `flex order:1 / order:2` 时间放在最右位置继续保留
+  - **保留** v0.9.10 的三层 CSS 防线（容器 reset + 伪元素 reset + 直接子元素 reset + clock 防御性 reset）——JS 接管是 belt-and-suspenders，CSS 不撤
+  - **兼容性**：所有 tweak id / 类名 / ID / attribute / localStorage key 全不动；新增 `purgeTurnStatus` 函数与 `watchTurnStatus` 的 body subtree 观察仅作用于已存在的 DOM 节点（find / querySelector / removeChild / appendChild 标准 API），不引入任何新 attribute / className / ID；JS 调用顺序与 DSH 自己 1s `setInterval` 更新 clock 文本不冲突（clock node 是同一个）
+  - **改动文件**：`lib/client-src/55-simple-mode.js` 加 `purgeTurnStatus()` 函数 + 重写 `watchTurnStatus()` 观察 body subtree + `attach()` 里调 purgeTurnStatus；`lib/client-src/25-tweaks.js` simple-mode buildCSS 加 `padding-left:0 !important; margin-left:0 !important` + 注释同步；`lib/client-src/00-banner.js` 加 v0.9.12 banner 段；`20-constants.js` VERSION 0.9.11 → 0.9.12；`package.json` version 同步；走 `npm run build:client` + `node --check lib/client.js` 语法校验。
+
 ### 修复（v0.9.11）
 
 - **`simple-mode` hidden block 间距过大**（v0.9.11）：用户反馈"两边的字之间的距离会特别大 但有时候会有时候不会"——大量思考 + 各种操作隐藏后，可见 user message 与 assistant response 之间的垂直间距过大（且时大时小不一致）。
