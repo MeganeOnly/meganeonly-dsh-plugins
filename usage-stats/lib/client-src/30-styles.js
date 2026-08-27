@@ -1,5 +1,15 @@
     // ===== styles =====
-// 样式 token（克制：单色 + 一个强调绿）
+// 样式 token
+//
+// 配色原则（v0.2.1 调色板升级，参考 data-viz-color / data-viz-techniques）：
+//   1. 二元对比用「蓝-橙」主对（input 蓝 / output 橙）：
+//      - 色盲安全（blue/orange 是色觉缺陷下仍可分辨的经典组合）
+//      - 冷暖对比鲜明，比原"灰+饱和绿"在浅灰背景下不刺眼
+//   2. 峰值用 rose-600 单独强调：与蓝/橙拉开色相距离，"峰值日"真的跳出来
+//   3. 通用 accent（绿）保留给非图表元素：btnPrimary / panel 复选框 /
+//      输出总计 / 模型比值列。图表不再吃绿色，避免"什么都是绿色"的扁平感
+//   4. 灰色 hierarchy 仅用于 hairline / text / 网格 / today 竖线——
+//      参考线不应抢数据色
     var C = {
       hairline: "rgba(128,128,128,0.18)",
       hairlineSoft: "rgba(128,128,128,0.10)",
@@ -12,13 +22,17 @@
       accentSolid: "#16a34a",
       err: "#b02a37",
       errSoft: "rgba(176,42,55,0.10)",
-      inputBar: "rgba(128,128,128,0.42)",
-      outputBar: "#16a34a",
-      // 图表专用色 token（峰值：暖陶土色，对比绿/灰而不抢戏）
-      peakLine: "#b06a3a",
-      peakText: "#8d5028",
-      peakSoft: "rgba(176,106,58,0.10)",
-      peakBorder: "rgba(176,106,58,0.30)",
+      // 图表双系列色（蓝-橙主对，色盲安全）
+      inputBar: "#3b82f6",
+      inputBarSoft: "rgba(59,130,246,0.12)",
+      outputBar: "#f59e0b",
+      outputBarSoft: "rgba(245,158,11,0.12)",
+      // 峰值强调色（rose，独立于蓝/橙，peak day 视觉跳出）
+      peakLine: "#e11d48",
+      peakText: "#be123c",
+      peakSoft: "rgba(225,29,72,0.10)",
+      peakBorder: "rgba(225,29,72,0.30)",
+      // 参考线（保留灰色 hierarchy，不与数据色竞争）
       todayLine: "rgba(128,128,128,0.40)",
       gridDashed: "rgba(128,128,128,0.10)",
       gridBase: "rgba(128,128,128,0.20)"

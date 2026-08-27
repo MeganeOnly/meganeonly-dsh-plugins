@@ -13,4 +13,9 @@
  * 竖线 + peak 浮动徽章 + 摘要脚注；图例移入图表顶部并加上 today
  * 日期加粗；图表专用色 token（peakLine 暖陶土、todayLine 中灰、
  * gridDashed/gridBase 浅虚线）。
+ *
+ * v0.2.1 调色板升级：原"灰+饱和绿"二元对比替换为「蓝-橙」主对
+ * （#3b82f6 输入 / #f59e0b 输出），rose-600 单独强调峰值日。
+ * 色盲安全（blue/orange 主对）+ 与非图表绿色 accent 拉开层次。
+ * 见 `lib/client-src/30-styles.js` 头部注释的设计原则与参考来源。
  */
