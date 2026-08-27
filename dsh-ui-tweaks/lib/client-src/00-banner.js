@@ -1,6 +1,25 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.4：`first-message-jump` step-by-step 跳过 hidden row 修复：
+ *   - 根因：v0.9.3 之前 `jumpFindPrevUserRow` / `jumpFindNextUserRow` 拿到
+ *     `topVisible` 的 DOM 索引后直接返回 `rows[i-1]` / `rows[i+1]`，没再
+ *     检查目标行是否实际可见。当 simple-mode（默认 ON）把会话顶部的
+ *     compaction 块 `display:none` 隐藏时，里面的旧 user 行
+ *     （rows[0..K-1]）仍在 DOM 里、`jumpAllUserRows` 仍会返回——
+ *     `jumpFindTopVisibleUserRow` 已正确跳过 height<=0 的行，但 step-by-step
+ *     直接 DOM 索引取 `rows[K-1]`（hidden 的旧 compaction user 行）作为
+ *     target → `jumpToPrev` 滚到 height=0 的位置 → 用户看不到任何视觉变化，
+ *     按钮"卡死"在该行
+ *   - 修法：拿到 topVisible 索引后，prev / next 各自向前 / 向后找第一个
+ *     `getBoundingClientRect().height > 0` 的 row；找不到返回 null
+ *     （按钮仍在但 click 变 no-op，与 v0.9.2 可见性放宽的视觉提示语义一致）
+ *   - 区别于 v0.9.2 Shift+点击用 `jumpIsRowInCompaction` 沿父链查
+ *     `data-chat-flow-kind` attribute：v0.9.4 用 DOM 渲染高度做"可见性"
+ *     判断，更通用——simple-mode 隐藏、自定义 CSS 隐藏等任何 `display:none`
+ *     的 user 行都会跳过；simple-mode OFF 时所有行可见，行为不变
+ *     （compaction 行仍可逐条 step 进去）
+ *
  * v0.9.3：`simple-mode` 状态行美术度升级——三轴叠加：
  *   - **A) Pill 化**：`padding:0 10px 0 8px`（仅水平 padding，保持总高严格 18px 与 DSH
  *     原生 turnStatus 文案如「Deep diving...」同高） + `border-radius:999px` +

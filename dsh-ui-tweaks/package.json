@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.9.3：simple-mode 状态行美术度升级——圆角胶囊 (pill) + 6px 呼吸点 + 8 类活动语义色（think/read/write/bash/task/plan/goal/git/generic 各一色），一眼区分当前在思考 / 阅读 / 改文件 / 执行命令；prefers-reduced-motion 自动关呼吸。v0.9.2：first-message-jump compaction 跳过 + 可见性放宽——Shift+点击现在跳过 compact 摘要里的旧 user 行直达当前会话第一条；可见性从 target!==null 放宽为 rows.length>=2（短会话底部 TodoList 卡片出现时也能看到按钮作为提示）。v0.9.1 是双按钮对称（单击 step / Shift+点击 极限）+ 锚点从 lastVisible 改为 topVisible 修复「上数第二条卡住」bug；v0.9.0 之前是 step-by-step 上一条单向上导航；v0.8.0 是一键回到最早。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump 七条 tweak。状态由 client half 用 localStorage 自管。",
+  "description": "DSH 外观设计微调合集（v0.9.4：first-message-jump 修复 step-by-step 跳到 hidden row——simple-mode（默认 ON）把顶部 compaction 块 display:none 时，prev / next 不再滚到 height=0 的旧 compaction user 行（DOM 里有但用户看不见的位置），改为跳过 hidden row 找下一个可见 row；找不到返回 null（按钮仍在但 click 变成 no-op，与 v0.9.2 可见性放宽的视觉提示语义一致）。v0.9.3：simple-mode 状态行美术度升级——圆角胶囊 (pill) + 6px 呼吸点 + 8 类活动语义色（think/read/write/bash/task/plan/goal/git/generic 各一色），一眼区分当前在思考 / 阅读 / 改文件 / 执行命令；prefers-reduced-motion 自动关呼吸。v0.9.2：first-message-jump compaction 跳过 + 可见性放宽——Shift+点击现在跳过 compact 摘要里的旧 user 行直达当前会话第一条；可见性从 target!==null 放宽为 rows.length>=2（短会话底部 TodoList 卡片出现时也能看到按钮作为提示）。v0.9.1 是双按钮对称（单击 step / Shift+点击 极限）+ 锚点从 lastVisible 改为 topVisible 修复「上数第二条卡住」bug；v0.9.0 之前是 step-by-step 上一条单向上导航；v0.8.0 是一键回到最早。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump 七条 tweak。状态由 client half 用 localStorage 自管。",
   "license": "MIT",
   "repository": {
     "type": "git",

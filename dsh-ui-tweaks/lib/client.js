@@ -1,6 +1,25 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.4：`first-message-jump` step-by-step 跳过 hidden row 修复：
+ *   - 根因：v0.9.3 之前 `jumpFindPrevUserRow` / `jumpFindNextUserRow` 拿到
+ *     `topVisible` 的 DOM 索引后直接返回 `rows[i-1]` / `rows[i+1]`，没再
+ *     检查目标行是否实际可见。当 simple-mode（默认 ON）把会话顶部的
+ *     compaction 块 `display:none` 隐藏时，里面的旧 user 行
+ *     （rows[0..K-1]）仍在 DOM 里、`jumpAllUserRows` 仍会返回——
+ *     `jumpFindTopVisibleUserRow` 已正确跳过 height<=0 的行，但 step-by-step
+ *     直接 DOM 索引取 `rows[K-1]`（hidden 的旧 compaction user 行）作为
+ *     target → `jumpToPrev` 滚到 height=0 的位置 → 用户看不到任何视觉变化，
+ *     按钮"卡死"在该行
+ *   - 修法：拿到 topVisible 索引后，prev / next 各自向前 / 向后找第一个
+ *     `getBoundingClientRect().height > 0` 的 row；找不到返回 null
+ *     （按钮仍在但 click 变 no-op，与 v0.9.2 可见性放宽的视觉提示语义一致）
+ *   - 区别于 v0.9.2 Shift+点击用 `jumpIsRowInCompaction` 沿父链查
+ *     `data-chat-flow-kind` attribute：v0.9.4 用 DOM 渲染高度做"可见性"
+ *     判断，更通用——simple-mode 隐藏、自定义 CSS 隐藏等任何 `display:none`
+ *     的 user 行都会跳过；simple-mode OFF 时所有行可见，行为不变
+ *     （compaction 行仍可逐条 step 进去）
+ *
  * v0.9.3：`simple-mode` 状态行美术度升级——三轴叠加：
  *   - **A) Pill 化**：`padding:0 10px 0 8px`（仅水平 padding，保持总高严格 18px 与 DSH
  *     原生 turnStatus 文案如「Deep diving...」同高） + `border-radius:999px` +
@@ -2360,9 +2379,9 @@ window.__ModuleLoader__.load({
     /**
      * 找"上一条"——按钮点击的 target 行（v0.9.1 用 topVisible）：
      *   - 视口内最顶部可见 user 行 = topVisible
-     *     - 若 topVisible 存在：target = topVisible 的 DOM 顺序上一条
+     *     - 若 topVisible 存在：target = topVisible 的 DOM 顺序上一条**且实际可见**
      *     - 若 topVisible 不存在（视口在所有 user 之上）：target = lastRow（首次入口）
-     *   - 若 topVisible === firstRow：target = null（已在最早，无路可上）
+     *   - 前面都是 hidden row：target = null（已在第一个可见 row，无路可上）
      *
      * v0.9.1 改用 topVisible 的关键修复：v0.9.0 用 lastVisible 时，
      * rows[1] 已在视口顶部但 rows[2..N] 仍可见 → lastVisible 始终是
@@ -2370,25 +2389,37 @@ window.__ModuleLoader__.load({
      * 永远到不了 rows[0]）。改用 topVisible 后：
      *   topVisible = rows[1] → target = rows[0]
      *   点击 → 滚到 rows[0] → topVisible = rows[0] → target = null → 按钮隐藏 ✓
+     *
+     * v0.9.4：上一条跳过 hidden row（`getBoundingClientRect().height <= 0`）。
+     * 修复：simple-mode（默认 ON）会把 compaction / context 块 `display:none`
+     * 隐藏，但它们的 user 行（rows[0..K-1]）仍然在 DOM 里——`jumpAllUserRows`
+     * 会返回它们，`jumpFindTopVisibleUserRow` 也正确跳过了；但原来的
+     * `jumpFindPrevUserRow` 直接返回 `rows[i-1]`，当 `topVisible` 是"第一个
+     * 可见 user 行"（rows[K]）时，`rows[K-1]` 是 hidden 的旧 compaction user
+     * 行——target 滚到了一个用户看不见的位置 → 按钮看起来"卡死"在该行，
+     * 即使再点也无变化。修正：从 topVisible 向前找第一个 height>0 的 row，
+     * 没有就返回 null（与"上一条 step 到边界后按钮看似还在但 Shift+点击仍
+     * 能直达第一行"的语义一致）。
      */
     function jumpFindPrevUserRow(port) {
       var rows = jumpAllUserRows(port);
       if (rows.length === 0) return null;
-      var firstRow = rows[0];
       var lastRow = rows[rows.length - 1];
       var topVisible = jumpFindTopVisibleUserRow(port);
       if (!topVisible) {
         // 视口内无 user 行：跳到最后一条作为入口（用户在对话上方空白区）
         return lastRow;
       }
-      if (topVisible === firstRow) {
-        // 已是最早一条，没有"上一条"
-        return null;
-      }
-      // 找 topVisible 在 rows 中的索引，返回前一条
+      // 找 topVisible 在 rows 中的索引，向前找第一个实际可见（height>0）的 row
       for (var i = 0; i < rows.length; i++) {
         if (rows[i] === topVisible) {
-          return i > 0 ? rows[i - 1] : null;
+          for (var j = i - 1; j >= 0; j--) {
+            var prevRect = rows[j].getBoundingClientRect();
+            if (prevRect && prevRect.height > 0) return rows[j];
+          }
+          // 前面都是 hidden row（simple-mode 隐藏的 compaction 行等）——
+          // 已到"第一个可见 user 行"，无路可上
+          return null;
         }
       }
       // 兜底：理论上不可达（topVisible 是 querySelectorAll 结果之一）
@@ -2399,14 +2430,18 @@ window.__ModuleLoader__.load({
      * v0.9.1：找"下一条"——原生「回到底部」按钮单击拦截时的 target 行。
      * 锚点同样用 topVisible（与 prev 对称）：
      *   - 视口内最顶部可见 user 行 = topVisible
-     *     - 若 topVisible 存在：target = topVisible 的 DOM 顺序下一条
+     *     - 若 topVisible 存在：target = topVisible 的 DOM 顺序下一条**且实际可见**
      *     - 若 topVisible 不存在（视口在所有 user 之上/之下）：
      *       target = firstRow（"从对话起点开始往下一条"——自然入口）
-     *   - 若 topVisible === lastRow：target = null（已在最晚，无路可下）
+     *   - 后面都是 hidden row：target = null（已在最后一个可见 row，无路可下）
      *
      * 与 prev 对称：prev 用 lastRow 作为"无可见"时的入口（页面刚打开
      * 时跳到最新一条作为起点）；next 用 firstRow（"从对话起点开始往
      * 下走"——起点即入口）。语义对称。
+     *
+     * v0.9.4：与 prev 对称——下一条也跳过 hidden row（height<=0），
+     * 避免 simple-mode 隐藏的 compaction 行（罕见但可能的"中间夹一个
+     * 隐藏块"结构）被当成 target 滚过去用户却看不到。
      */
     function jumpFindNextUserRow(port) {
       var rows = jumpAllUserRows(port);
@@ -2418,14 +2453,16 @@ window.__ModuleLoader__.load({
         // 视口内无 user 行：从对话起点开始（firstRow 本身）作为入口
         return firstRow;
       }
-      if (topVisible === lastRow) {
-        // 已是最晚一条，没有"下一条"
-        return null;
-      }
-      // 找 topVisible 在 rows 中的索引，返回下一条
+      // 找 topVisible 在 rows 中的索引，向后找第一个实际可见（height>0）的 row
       for (var i = 0; i < rows.length; i++) {
         if (rows[i] === topVisible) {
-          return i < rows.length - 1 ? rows[i + 1] : null;
+          for (var j = i + 1; j < rows.length; j++) {
+            var nextRect = rows[j].getBoundingClientRect();
+            if (nextRect && nextRect.height > 0) return rows[j];
+          }
+          // 后面都是 hidden row（simple-mode 隐藏的 compaction 行等）——
+          // 已到"最后一个可见 user 行"，无路可下
+          return null;
         }
       }
       // 兜底：理论上不可达

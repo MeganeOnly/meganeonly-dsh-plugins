@@ -14,7 +14,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 | `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 隐藏侧栏会话/工作区条目在悬停时弹出的浮层（同时覆盖 Tooltip 与 HoverCard 两种实现）。 |
 | `hide-trajectory-tab` | 隐藏"轨迹"标签 | 隐藏对话顶部的轨迹标签页；若当前正停留在轨迹视图，自动切回对话视图。 |
 | `hide-chat-tab` | 隐藏"对话"标签 | 隐藏对话顶部的"对话"标签页（默认 view 的标签，纯视觉噪音）；和 `hide-trajectory-tab` 一起开启 → 两个标签都消失。 |
-| `first-message-jump` | 上一条我发的消息按钮（Shift+点击 = 回到最早） | 对话区右下角（输入框上方）的悬浮按钮——单击跳到当前视口内最顶部可见 user 消息的上一条，连续单击可一路向上直到最早一条 user 消息（已是最早一条时按钮自动隐藏）。**Shift+单击 = 一键回到最早一条 user 行**（恢复 v0.8.0 的「回到最早」语义）。 |
+| `first-message-jump` | 上一条我发的消息按钮（Shift+点击 = 回到最早） | 对话区右下角（输入框上方）的悬浮按钮——单击跳到当前视口内最顶部可见 user 消息的上一条，连续单击可一路向上直到第一个可见 user 行（v0.9.4 起 prev 跳过 hidden row——例如 simple-mode `display:none` 隐藏的 compaction 块里的旧 user 行，避免按钮"卡死"在看不见的位置；v0.9.2 起可见性放宽为 `rows.length >= 2`：2 条以上 user 行就显示作为视觉提示，即使已在顶部 click 也是 no-op）。**Shift+单击 = 一键回到最早一条可见 user 行**（v0.9.2 起跳过 compaction / context 容器里的旧 user 行，恢复 v0.8.0 的「回到最早」语义）。 |
 
 每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
 

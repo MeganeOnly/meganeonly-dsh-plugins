@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **`first-message-jump` step-by-step 上一条 / 下一条 跳过 hidden row**（v0.9.4）：v0.9.3 之前 `jumpFindPrevUserRow` / `jumpFindNextUserRow` 拿到 `topVisible` 的 DOM 索引后直接返回 `rows[i-1]` / `rows[i+1]`，**没有再检查目标行是否实际可见**。当 simple-mode（默认 ON）把会话顶部的 compaction 块 `display:none` 隐藏时，里面的旧 user 行（rows[0..K-1]）仍然在 DOM 里、`jumpAllUserRows` 仍会返回——而 `jumpFindTopVisibleUserRow` 已经正确跳过了 height<=0 的行，所以锚点（topVisible）通常是 rows[K]。但再点一次"上一条"，`jumpFindPrevUserRow` 直接返回 rows[K-1]（hidden 的旧 compaction user 行），`jumpToPrev` 滚到了一个 `height=0` 的位置 → 用户看不到任何视觉变化，按钮看起来"卡死"在该行，再点也无反应（直到下次 compact 边界变化或 simple-mode 切换）。同样的问题在 `jumpFindNextUserRow`（罕见但若 hidden 行不在顶部而是夹在中间会触发）。修法：拿到 topVisible 索引后，prev / next 各自向前 / 向后找第一个 `getBoundingClientRect().height > 0` 的 row；找不到就返回 null（与"上一条 step 到边界后按钮看似还在但 Shift+点击仍能直达第一行"的语义一致——v0.9.2 可见性放宽后的视觉提示不变）。区别于 v0.9.2 的 Shift+点击用 `jumpIsRowInCompaction` 沿父链检查 `data-chat-flow-kind` attribute：v0.9.4 用 DOM 渲染高度（`getBoundingClientRect().height > 0`）做"可见性"判断，更通用——simple-mode 隐藏、自定义 CSS 隐藏等任何 `display:none` 的 user 行都会跳过；simple-mode OFF 时所有行可见，行为不变（compaction 行仍可逐条 step 进去）。
+
 ### 优化（v0.9.3）
 
 - **`simple-mode` 状态行美术度升级**（v0.9.3）：三轴叠加，单一设计语言——
