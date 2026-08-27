@@ -1,13 +1,22 @@
     // ===== constants =====
-        // v0.9.7：simple-mode 状态行两轮「去装饰」——
-        //   1) 去圆角胶囊灰底：撤掉 background:color-mix(...) / border-radius:999px /
-        //      水平 padding（用户反馈简洁模式不需要 badge 铺底）。
-        //   2) 去呼吸脉动动画：撤掉 @keyframes dsh-status-pulse 与 ::before 上的
-        //      animation（用户反馈 2.4s 周期 opacity .6↔.9 持续闪烁反客为主，
-        //      可接受切换缓慢但不能接受一闪一闪）。圆点保留为静态视觉锚。
-        //   活动色切换走 `.dsh-ui-tweaks-status` 上新增的 transition:color .4s ease，
-        //   text + ::before dot 一起平滑过渡。
-        //   其它不动的 ID/class/attribute/localStorage key / debug API 全保留。
+        // v0.9.8：simple-mode 状态行接管 DSH 原生 turnStatus 视觉呈现——
+        //   用户反馈三个问题（"正在处理 还在闪" / "时间想出现在 后面" /
+        //   "还是比原生高一点点"）根因不是 v0.9.7 撤掉的自家 pulse，而是
+        //   DSH `dsh-client-ui-conversation/lib/client.js:5591` 原生
+        //   TurnStatus 组件的 shimmer effect（gradient + background-clip:text
+        //   + 1.8s linear infinite dsh-turn-status-shimmer）。我们的 span
+        //   appendChild 到这个容器里，被 shimmer 染到。整容器接管：
+        //   1) 杀 shimmer：[class*="turnStatus"]{animation:none; background:none;
+        //      background-clip:border-box; -webkit-text-fill-color:initial}
+        //   2) 抹 "Deep diving..." 文字节点：父级 color:transparent + font-size:0
+        //      + 子级 override（DSH .turnStatusClock 也必须 override）
+        //   3) 容器 26px → 18px：之前 18px text 在 26px 容器居中垂直空白太多
+        //   4) DSH .turnStatusClock flex order:2 重排到我们 span（order:1）后——
+        //      "时间出现在 后面" 纯 CSS 解决，DSH 1s setInterval 自动维护
+        //   5) 8 类活动色 + -webkit-text-fill-color 同色 override（防父级传递）
+        //   其它 ID/class/attribute/localStorage key / debug API 全保留。
+        // v0.9.7：simple-mode 状态行两轮「去装饰」——撤自家 pulse 和 pill 灰底
+        //   （v0.9.8 接管整容器后 v0.9.7 那些 CSS 规则被父级 reset 影响）。
         // v0.9.5：simple-mode 状态行工具名识别修复——simplePickToolNameFromDom
         // 之前查 [data-tool-name]（错属性），DSH 实际渲染 [data-tool]（见
         // dsh-client-ui-tool ToolRow.js）；同时新增 simpleIsThinkingFromDom
@@ -15,7 +24,7 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.7";
+        var VERSION = "0.9.8";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

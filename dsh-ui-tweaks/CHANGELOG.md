@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### 修复（v0.9.8）
+
+- **`simple-mode` 状态行接管 DSH 原生 turnStatus 视觉呈现**（v0.9.8）：解决 v0.9.7 后三个用户反馈：（1）「正在处理」还在闪（2）时间想出现在后面（3）还是比原生高一点点。**根因诊断**：v0.9.7 只撤了我们自己 `::before` 上的 `@keyframes dsh-status-pulse`；用户看到的「正在处理」不是「正在处理…」我们的 fallback 文本，而是 DSH 原生 TurnStatus 组件（`dsh-client-ui-conversation/lib/client.js:5591`）的 `linear-gradient + background-clip:text + animation:1.8s linear infinite Md3f7G_dsh-turn-status-shimmer` 做的 shimmer effect——gradient 在 DSH "Deep diving..." 文字形状里平移。我们的 `<span class="dsh-ui-tweaks-status">` 是 appendChild 到 `<div class="Md3f7G_turnStatus">` 内的，shimmer 渲染整容器，包括 DSH 原生文字 + 我们 append 的 span，看起来整个 status 在闪。**整容器接管**（在 `.dsh-ui-tweaks-status` 之前加 `[class*="turnStatus"]{ ... }` 块）：
+  - **杀 shimmer**：`animation:none !important` + `background:none !important` + `background-clip:border-box !important` + `-webkit-background-clip:border-box !important` + `-webkit-text-fill-color:initial !important` ——DSH 父级这条 CSS 让文字用 gradient 填充的整套招全 reset
+  - **抹 DSH "Deep diving..." 文字节点**：CSS 选不中 text 节点，靠父级 `color:transparent !important` + `font-size:0 !important`，子级 `.dsh-ui-tweaks-status` 和 `[class*="turnStatusClock"]` 都显式 `font-size:13px !important` override 回来
+  - **容器 26px → 18px**：之前我们 18px 在 DSH 原生 26px 容器居中，垂直空白多——`height:18px !important` 改写对齐；用户反馈"还是比原生高一点点"指的就是这个 26px 容器 + 18px 内容居中的视觉错位
+  - **时间出现在后面**：DSH 自带 `.turnStatusClock`（每 1s setInterval 自动更新，15s 后才显示——DSH 原生 `showClock = elapsedMs >= 15e3` 不改）用 flex `order:2` 重排到我们的 span（`order:1`）后面——纯 CSS、无新 DOM、无新 JS 时间维护
+  - **8 类活动色追加 `-webkit-text-fill-color` 同色 override**：DSH 父级 `-webkit-text-fill-color:initial` 经测试不传递到子级 `.dsh-ui-tweaks-status`，得在每条 `[data-dsh-activity="..."]` 加 `-webkit-text-fill-color:... !important`（与 `color` 同色）才能真正显示活动色
+  - `.dsh-ui-tweaks-status` 自身：`line-height:18px` + `height:18px` + `margin-left:0`（之前 10px 是和 DSH "Deep diving..." 之间留空，现在 DSH 文字抹掉了不需要空隙）+ `order:1` + `transition:color .4s ease, -webkit-text-fill-color .4s ease`（活动色平滑过渡，v0.9.7 沿用的"宁可切换慢一点"）
+  - **最终视觉**：`[● 正在查找...  5s]`（静态圆点 + 8 类活动色文字 + DSH 自动更新时钟），无任何动画、无 shimmer、18px 高度、时间在后面
+  - **兼容性**：`.dsh-ui-tweaks-status` 类名 / `dsh-ui-tweaks-status-row` ID / `[data-dsh-activity]` attr / `localStorage simpleModeEnabled` / 调试 API `window.__dshUiTweaks` / `[data-chat-flow-kind="tool-call"]{display:none}` 等隐藏规则——全部不动。仅在浏览器中观察到的视觉差异（DSH shimmer 消失 + 时间位置重排 + 容器高度匹配）。DSH 升级 CSS Module hash 改了 `[class*="turnStatus"]` / `[class*="turnStatusClock"]` 仍 substring 命中。
+  - **测试/构建**：`lib/client-src/25-tweaks.js` 的 simple-mode buildCSS 加 `[class*="turnStatus"]` 块 + `[class*="turnStatusClock"]` 块 + 改 `.dsh-ui-tweaks-status` + 8 类活动色加 `-webkit-text-fill-color`；`lib/client-src/00-banner.js` + `20-constants.js` VERSION + CHANGELOG + package.json 同步；走 `npm run build:client` + `node --check lib/client.js` 语法校验
+  - **诊断**：浏览器控制台 `document.querySelector('.Md3f7G_turnStatus').style.animation` 应是 `none`（带 important 来源）；`getComputedStyle(.turnStatusClock).order` 若是 2 则生效（DSH 内联样式 / 父级 flex）；`getComputedStyle(.dsh-ui-tweaks-status).order` 若是 1 则生效
+
 ### 优化（v0.9.7）
 
 - **`simple-mode` 状态行两轮「去装饰」**（v0.9.7）：用户对 v0.9.3 美术度升级的两层叠加装饰（圆角胶囊灰底 + 呼吸点闪烁）都反馈过剩——前者「简洁模式不需要 badge 铺底」，后者「一闪一闪比活动切换更抢戏，宁可切换慢也不能接受脉动」。

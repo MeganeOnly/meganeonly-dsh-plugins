@@ -1,27 +1,34 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.8：simple-mode 状态行接管 DSH 原生 turnStatus——根因不是自家
+ *   pulse，是 DSH 的 `linear-gradient + background-clip:text +
+ *   animation:1.8s linear infinite dsh-turn-status-shimmer` shimmer
+ *   （gradient 在 DSH "Deep diving..." 文字形状里平移，渲染整容器；
+ *   我们的 span appendChild 到容器内，被 shimmer 一起染到）。
+ *   解决三个用户反馈："正在处理 还在闪" / "时间想出现在 后面" /
+ *   "还是比原生高一点点"。整容器接管：
+ *   - 杀 shimmer：`[class*="turnStatus"]{animation:none; background:none;
+ *     background-clip:border-box; -webkit-text-fill-color:initial}` +
+ *     `color:transparent` 抹掉 DSH 文字节点 + `font-size:0`（子级显式
+ *     override 到 13px）
+ *   - 容器 26px → 18px：DSH 原生 turnStatus height 26px，我们 18px 在
+ *     26px 容器居中，垂直空白太多——`height:18px !important` 对齐
+ *   - 时间出现在后面：DSH 自带 `.turnStatusClock`（1s setInterval 自动
+ *     更新，15s 后才显示）用 flex `order:2` 重排到我们 span（order:1）
+ *     后面——纯 CSS、无新 DOM、无新 JS 时间维护
+ *   - 8 类活动色追加 `-webkit-text-fill-color` override（DSH 父级
+ *     `-webkit-text-fill-color:initial` 不传递到我们的子级）
+ *   最终视觉：`[● 正在查找...  5s]` 无动画、无 shimmer、18px 高度、
+ *   时间在后面。兼容：类名/ID/attribute/localStorage/debug API 全不动；
+ *   见 `25-tweaks.js` simple-mode buildCSS。
+ *
  * v0.9.7：simple-mode 状态行两轮「去装饰」——
- *   - 去圆角胶囊灰底：用户反馈简洁模式不需要 badge 铺底，"正在查找…"
- *     那种 `read` 类着色 #475569 中性灰 8% tint 出图明显的灰色色块多余。
- *     撤掉 `.dsh-ui-tweaks-status` 的 `background:color-mix(...)` /
- *     `border-radius:999px` / 水平 padding——圆角胶囊外壳不再。
- *   - 去呼吸脉动动画：用户反馈 2.4s 周期 opacity .6↔.9 的 `@keyframes
- *     dsh-status-pulse` 持续闪烁（"一闪一闪"）比活动切换的"现在还在跑"
- *     信号更抢戏，反客为主。用户表态宁可切换不那么准确、过渡缓慢，
- *     也不能接受脉动。撤掉 `@keyframes dsh-status-pulse` + `::before`
- *     上的 animation，去掉相应的 `@media (prefers-reduced-motion:reduce)`
- *     规则。圆点保留为静态 6×6（颜色继承 currentColor，opacity 0.7，
- *     无任何动画/过渡）；活动切换的色变靠 `.dsh-ui-tweaks-status` 上的
- *     `transition:color .4s ease` 让 text + ::before dot 一起平滑过渡——
- *     满足"宁可切换慢一点"的要求，视觉平滑无闪烁。
- *   - 最终形态：`[● 正在查找…]` 极简文字行（静态圆点 + 8 类活动色 text +
- *     margin-left:10px），与 DSH 原生 turnStatus 文案（如「Deep diving...」）
- *     同层内联，更像带状态前缀的一条普通文字而非 badge。
- *   - 兼容性：`.dsh-ui-tweaks-status` 类名 / `dsh-ui-tweaks-status-row`
- *     ID / `[data-dsh-activity]` attr / `localStorage simpleModeEnabled` /
- *     调试 API `window.__dshUiTweaks` 全不动；状态行总高仍 18px（line-height
- *     不变，与原 turnStatus 文案同高）。
+ *   - 去圆角胶囊灰底：撤掉 `.dsh-ui-tweaks-status` 的 `background:color-mix(...)` /
+ *     `border-radius:999px` / 水平 padding
+ *   - 去呼吸脉动动画：撤掉 `@keyframes dsh-status-pulse` + `::before`
+ *     animation + `@media (prefers-reduced-motion:reduce)`
+ *   - 加 `transition:color .4s ease` 让活动切换平滑过渡
  *
  * v0.9.6：折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾追加
  *   "收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。覆盖三类
@@ -282,15 +289,24 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
-        // v0.9.7：simple-mode 状态行两轮「去装饰」——
-        //   1) 去圆角胶囊灰底：撤掉 background:color-mix(...) / border-radius:999px /
-        //      水平 padding（用户反馈简洁模式不需要 badge 铺底）。
-        //   2) 去呼吸脉动动画：撤掉 @keyframes dsh-status-pulse 与 ::before 上的
-        //      animation（用户反馈 2.4s 周期 opacity .6↔.9 持续闪烁反客为主，
-        //      可接受切换缓慢但不能接受一闪一闪）。圆点保留为静态视觉锚。
-        //   活动色切换走 `.dsh-ui-tweaks-status` 上新增的 transition:color .4s ease，
-        //   text + ::before dot 一起平滑过渡。
-        //   其它不动的 ID/class/attribute/localStorage key / debug API 全保留。
+        // v0.9.8：simple-mode 状态行接管 DSH 原生 turnStatus 视觉呈现——
+        //   用户反馈三个问题（"正在处理 还在闪" / "时间想出现在 后面" /
+        //   "还是比原生高一点点"）根因不是 v0.9.7 撤掉的自家 pulse，而是
+        //   DSH `dsh-client-ui-conversation/lib/client.js:5591` 原生
+        //   TurnStatus 组件的 shimmer effect（gradient + background-clip:text
+        //   + 1.8s linear infinite dsh-turn-status-shimmer）。我们的 span
+        //   appendChild 到这个容器里，被 shimmer 染到。整容器接管：
+        //   1) 杀 shimmer：[class*="turnStatus"]{animation:none; background:none;
+        //      background-clip:border-box; -webkit-text-fill-color:initial}
+        //   2) 抹 "Deep diving..." 文字节点：父级 color:transparent + font-size:0
+        //      + 子级 override（DSH .turnStatusClock 也必须 override）
+        //   3) 容器 26px → 18px：之前 18px text 在 26px 容器居中垂直空白太多
+        //   4) DSH .turnStatusClock flex order:2 重排到我们 span（order:1）后——
+        //      "时间出现在 后面" 纯 CSS 解决，DSH 1s setInterval 自动维护
+        //   5) 8 类活动色 + -webkit-text-fill-color 同色 override（防父级传递）
+        //   其它 ID/class/attribute/localStorage key / debug API 全保留。
+        // v0.9.7：simple-mode 状态行两轮「去装饰」——撤自家 pulse 和 pill 灰底
+        //   （v0.9.8 接管整容器后 v0.9.7 那些 CSS 规则被父级 reset 影响）。
         // v0.9.5：simple-mode 状态行工具名识别修复——simplePickToolNameFromDom
         // 之前查 [data-tool-name]（错属性），DSH 实际渲染 [data-tool]（见
         // dsh-client-ui-tool ToolRow.js）；同时新增 simpleIsThinkingFromDom
@@ -298,7 +314,7 @@ window.__ModuleLoader__.load({
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.7";
+        var VERSION = "0.9.8";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -436,8 +452,22 @@ window.__ModuleLoader__.load({
             '[data-chat-flow-kind="model-retry"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-error"]{display:none!important}\n' +
             '[data-chat-flow-kind="turn-max-tokens"]{display:none!important}\n' +
-            // —— v0.9.7 status row —— 撤掉 v0.9.3–0.9.6 的圆角胶囊灰底 + 呼吸脉动动画
-            //   两层「去装饰」：
+            // —— v0.9.8 status row —— 接管 DSH 原生 turnStatus 视觉呈现。
+            //   v0.9.7 只撤了自家 ::before pulse；用户反馈"正在处理 还在闪"
+            //   根因是 DSH 原生 TurnStatus（dsh-client-ui-conversation/lib/
+            //   client.js:5591）的 `linear-gradient + background-clip:text +
+            //   animation:1.8s linear infinite dsh-turn-status-shimmer`
+            //   shimmer——gradient 在文字形状里平移。我们的 span 是 appendChild
+            //   到这个 <div class="turnStatus"> 里的，shimmer 渲染整容器。
+            //   v0.9.8 整容器接管：
+            //   1) 杀 DSH shimmer：见 [class*="turnStatus"] 块 reset
+            //   2) 抹 DSH "Deep diving..." 文字节点：父级 color:transparent
+            //      + font-size:0 + 子级 override
+            //   3) 容器 26px → 18px：之前 18px text 在 26px 容器居中空白太多
+            //   4) DSH .turnStatusClock flex order:2 排到我们 span 后——
+            //      "时间出现在 正在处理 的后面"用 CSS 解决，无新 DOM
+            //   最终视觉：`[● 正在查找...  5s]`，无任何动画、无 shimmer。
+            //   v0.9.7 两层「去装饰」（历史）回顾：
             //   - 去背景：用户反馈简洁模式不需要 badge 铺底，"正在查找…"
             //     那种 `read` 类着色 #475569 中性灰，8% tint 出图就是明显
             //     的灰色色块，看着多余。去掉 background / border-radius:999px
@@ -454,19 +484,33 @@ window.__ModuleLoader__.load({
             //   与前面 DSH 原生 turnStatus 文案（如「Deep diving...」）天然分隔，
             //   像一条带状态前缀的普通文字，不像 badge。
             // visibility:visible !important 仍保留（v0.7.1 起的祖先 display:none 兜底）
+            "[class*=\"turnStatus\"]{" +
+              "animation:none !important;" +
+              "background:none !important;" +
+              "background-clip:border-box !important;" +
+              "-webkit-background-clip:border-box !important;" +
+              "-webkit-text-fill-color:initial !important;" +
+              "color:transparent !important;" +
+              "font-size:0 !important;" +
+              "height:18px !important;" +
+              "align-items:center !important" +
+            "}\n" +
             ".dsh-ui-tweaks-status{" +
               "display:inline-flex !important;" +
               "align-items:center;" +
               "gap:6px;" +
               "padding:0;" +
-              "margin-left:10px;" +
-              "color:var(--dsw-alias-label-tertiary);" +
-              "font-size:13px;" +
+              "margin-left:0;" +
+              "font-size:13px !important;" +
               "line-height:18px;" +
+              "height:18px;" +
+              "color:var(--dsw-alias-label-tertiary) !important;" +
+              "-webkit-text-fill-color:var(--dsw-alias-label-tertiary) !important;" +
               "vertical-align:middle;" +
               "flex:none;" +
               "white-space:nowrap;" +
-              "transition:color .4s ease;" +
+              "order:1;" +
+              "transition:color .4s ease, -webkit-text-fill-color .4s ease;" +
               "visibility:visible !important" +
             "}\n" +
             // —— 静态点 ::before —— v0.9.7 撤掉 v0.9.3–v0.9.6 的呼吸动画
@@ -487,19 +531,37 @@ window.__ModuleLoader__.load({
               "opacity:.7;" +
               "flex:none" +
             "}\n" +
+            // —— DSH 自带 .turnStatusClock 时间元素 —— v0.9.8 用 flex order
+            //   重排到我们 span 后面（order:2 vs ours 1），解决用户反馈
+            //   "时间出现在 正在处理...的后面"——纯 CSS、无新 DOM。DSH 自己
+            //   每 1s setInterval 自动更新文本，15s 后才出现（DSH 原生
+            //   `showClock = elapsedMs >= 15e3`，不改）。font-size:0 从父级
+            //   继承会被吃掉，必须显式 override 到 13px；颜色与活动色独立——
+            //   始终 tertiary，不跟活动色走（时间应该是中性信息，不抢戏）。
+            //   font-variant-numeric:tabular-nums 让数字宽度一致（"5s"→"10s"
+            //   切换时数字部分不抖）。
+            "[class*=\"turnStatusClock\"]{" +
+              "order:2;" +
+              "margin-left:8px;" +
+              "font-size:13px !important;" +
+              "color:var(--dsw-alias-label-tertiary);" +
+              "-webkit-text-fill-color:var(--dsw-alias-label-tertiary);" +
+              "font-variant-numeric:tabular-nums;" +
+              "font-weight:400" +
+            "}\n" +
             // —— 8 类活动语义色 —— JS tick() 给 span setAttribute("data-dsh-activity", ...)
             // 顺序：think (思辨) / read (输入) / write (变更) / bash (执行) /
             //       task (调度) / plan (计划) / goal (跟踪) / git (版本) / generic (兜底)
             // 硬值 fallback——主题切到没有这些变量的主题时仍能着色
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"think\"]   {color:#2563eb}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"read\"]    {color:#475569}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"write\"]   {color:#d97706}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"bash\"]    {color:#7c3aed}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"task\"]    {color:#0891b2}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"plan\"]    {color:#059669}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"goal\"]    {color:#db2777}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"git\"]     {color:#64748b}" +
-            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary)}";
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"think\"]   {color:#2563eb !important;-webkit-text-fill-color:#2563eb !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"read\"]    {color:#475569 !important;-webkit-text-fill-color:#475569 !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"write\"]   {color:#d97706 !important;-webkit-text-fill-color:#d97706 !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"bash\"]    {color:#7c3aed !important;-webkit-text-fill-color:#7c3aed !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"task\"]    {color:#0891b2 !important;-webkit-text-fill-color:#0891b2 !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"plan\"]    {color:#059669 !important;-webkit-text-fill-color:#059669 !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"goal\"]    {color:#db2777 !important;-webkit-text-fill-color:#db2777 !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"git\"]     {color:#64748b !important;-webkit-text-fill-color:#64748b !important}" +
+            ".dsh-ui-tweaks-status[data-dsh-activity=\"generic\"] {color:var(--dsw-alias-label-tertiary) !important;-webkit-text-fill-color:var(--dsw-alias-label-tertiary) !important}";
         }
       },
       {
