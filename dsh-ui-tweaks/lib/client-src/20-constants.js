@@ -129,7 +129,17 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.10.1";
+        // v0.10.2：conversation-shift 双 padding bug + 窄屏不可用 bug 修复
+        //   1) chatflow 探测升级首选 DSH 稳定锚点 [data-conversation-scroll]
+        //      ——空会话（hero composer 无消息）也能命中。命中即返回，
+        //      **不再额外标 input**——scrollBody 在 DSH 结构里已包了 composerSeat，
+        //      单 padding 同步影响消息 + 输入框；v0.5.3 同时标 chatflow+input
+        //      导致双 padding 在窄屏叠加成不可用宽度（680-760=-80 溢出）
+        //   2) CSS 改成 `padding-right: min(Npx, 40%)`——保留用户在全屏的偏好像素，
+        //      半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例
+        //   详见 `45-chatflow-marks.js` v0.10.2 banner 段 + `25-tweaks.js` 的
+        //   conversation-shift buildCSS v0.10.2 注释段。
+        var VERSION = "0.10.2";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -187,6 +197,14 @@
         var SHIFT_TARGET_CHATFLOW = "chatflow";
         var SHIFT_TARGET_INPUT = "input";
         var SHIFT_TARGET_COLUMN = "column";  // 兜底：探测失败时标记列容器
+        // v0.10.2：DSH 稳定锚点首选——ConversationRoot.scrollBody 上的
+        //   `data-conversation-scroll=""`（DSH 源码 `dsh-client-ui-conversation/
+        //   lib/client.js:7277` 显式 `setAttribute` 的属性，不含构建 hash）。
+        //   与 v0.8.0 JUMP_SCROLL_SEL 是同一个属性，但本 tweak 用于「整列右缩」
+        //   而 first-message-jump 用于「滚到上一条 user 行」——职责不同、保持
+        //   各自常量便于读者按文件回溯。两者同时为 DSH 升级兼容锚点：DSH 改名
+        //   时本常量 + JUMP_SCROLL_SEL 同步更新即可。
+        var SHIFT_SCROLL_SEL = "[data-conversation-scroll]";
         // v0.8.0：「回到最早消息」按钮（first-message-jump tweak）→ v0.9.0 改为「上一条」导航
         var JUMP_BTN_ID = "dsh-ui-tweaks-jump-btn";
         var JUMP_SCROLL_SEL = "[data-conversation-scroll]";   // DSH 会话滚动容器（scrollBody）

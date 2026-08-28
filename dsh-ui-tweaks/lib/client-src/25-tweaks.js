@@ -13,7 +13,7 @@
       {
         id: "conversation-shift",
         name: "对话区右缩",
-        description: "让对话列内的对话内容（消息气泡）整体左移 N 像素，腾出右侧空间——列容器本身宽度不变，滚动条与滚动指示器保持在原位。",
+        description: "让对话列内的对话内容（消息气泡）整体左移 N 像素，腾出右侧空间——列容器本身宽度不变，滚动条与滚动指示器保持在原位。v0.10.2 起像素值在窄屏自动收紧到对话列宽度的 40%（`min(Npx, 40%)`），避免半屏浏览器时 380px 缩进吃掉过多对话宽度。",
         configKeys: { enabled: "conversationShift", value: "conversationShiftPx" },
         defaults: { enabled: false, value: 380 },
         buildCSS: function (state) {
@@ -24,8 +24,14 @@
           // v0.5.3 + v0.5.4：命中 JS 探测标记的元素，无 transition
           // （去掉 transition 是 v0.5.4 的关键修复：避免在 MutationObserver 频繁重打
           //   标记时被打断产生"来回弹"视觉循环）
-          return "/* === conversation-shift : 命中 JS 探测标记的元素 " + px + "px（无 transition）=== */\n" +
-            "html [" + SHIFT_TARGET_ATTR + "]{padding-right:" + px + "px !important;box-sizing:border-box !important;}";
+          // v0.10.2：`min(380px, 40%)` 适配窄屏——保留用户在全屏的偏好像素，半屏时
+          //   40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例，聊天气泡（DSH
+          //   `--dsh-chat-content-width:748px`）始终可读。CSS `min()` 是逐元素计
+          //   算的——`padding-right:min(380px,40%)` 里 40% 是父元素（命中元素本身
+          //   的直接父 = ConversationRoot / scrollBody 包裹层）宽度的 40%。需要更小
+          //   比例可在设置页直接改 conversationShiftPx；需要更激进收紧请改本 CSS。
+          return "/* === conversation-shift : 命中 JS 探测标记的元素 min(" + px + "px, 40%)（v0.10.2 起，窄屏自动收紧；无 transition）=== */\n" +
+            "html [" + SHIFT_TARGET_ATTR + "]{padding-right:min(" + px + "px,40%) !important;box-sizing:border-box !important;}";
         }
       },
       {

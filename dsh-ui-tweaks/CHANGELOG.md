@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+### 修复（v0.10.2）
+
+- **`conversation-shift` 半屏浏览器看起来奇怪 + 新建会话界面不生效**（v0.10.2）：用户反馈两个症状——「对话区右缩，全屏时效果很好，但半屏看起来很奇怪」+「对话区右缩，在『新建会话』界面不生效，我希望它生效」。两个症状是同一个 bug 的两面。
+  - **根因（一个 bug 引发两个症状）**：v0.5.3 的 `findChatflowTargets()` 同时给 chatflow 容器和 input 容器打 `data-dsh-ui-tweaks-shift-target` 标记，CSS 对两个元素都加 `padding-right:380px !important` → 实际叠加成 **双 padding 760px**。DSH 当前的 DOM 结构是 `ConversationRoot > scrollBody [data-conversation-scroll] > { session, composerSeat }`——composer 是 scrollBody 的子元素而非兄弟，所以**单 padding 在 scrollBody 上就能同步影响消息内容 + 输入框**，无需再额外标 input。v0.5.3 同时标 chatflow + input 是「DSH 早期结构里 composer 在 scrollBody 外的兜底」残留。
+    - **症状一（半屏）**：全屏视口 1920px / conv 列 ≈ 1640px → 1640 - 760 = 880px 内容区 → 聊天气泡（DSH `--dsh-chat-content-width:748px`）仍能放下 → 用户感「效果很好」；半屏视口 960px / conv 列 ≈ 680px → 680 - 760 = -80px（负值溢出）→ 用户感「看起来很奇怪」
+    - **症状二（新建会话）**：空会话（hero composer + 无消息）里 `[data-chat-flow-kind]` 不存在 → v0.5.3 策略 1（overflow + chat-flow-kind 探测）漏判 → 落到 input 探测 → 单 padding 加在 ConversationRoot 上 → 但 hero composer 在 scrollBody 里 `align-self:center` 居中，scrollBody 也在 ConversationRoot 里居中 → 整列右移 380px 在居中布局里视觉上「不明显」，用户感「不生效」
+  - **修法两条**：
+    1. **`findChatflowTargets()` 探测策略首选 DSH 稳定锚点 `[data-conversation-scroll]`**——DSH `ConversationRoot.scrollBody` 上 DSH 源码（`dsh-client-ui-conversation/lib/client.js:7277`）显式 `setAttribute("data-conversation-scroll", "")` 的属性，**不含构建 hash**，跨 DSH 版本不变。命中即返回，**不再额外标 input**——单 padding 同步影响消息 + 输入框。该策略与 v0.7.3 HoverCard `[class*="_hoverContent"]` / v0.10.0 stats-line-position `data-slot=...` 同源的 hash-independence 策略；DSH 升级换 hash 不影响命中。v0.5.3 的 overflow + chat-flow-kind 探测保留作**兜底策略 2**（DSH 极端改名 `data-conversation-scroll` 时仍能工作），input 探测保留作**兜底策略 3**（DSH 未来把 composer 拆出 scrollBody 时的最后防线）。
+    2. **`buildCSS` 输出改成 `padding-right: min(Npx, 40%) !important`**——保留用户在全屏的偏好像素，半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例。聊天气泡（748px max）始终可读。CSS `min()` 是逐元素计算的，`40%` 是父元素（命中元素本身的直接父 = ConversationRoot / scrollBody 包裹层）宽度的 40%。需要更激进收紧可改设置页 `conversationShiftPx`；需要更宽保留（如窄屏下也想保 380）改本 CSS 的 40% 为更大值。
+  - **兼容性**：tweak id `conversation-shift` / localStorage key `conversationShift` + `conversationShiftPx` / 数字输入框（0–800）/ 设置页 UI / 调试 API / 调试高亮（`conversation-shift-debug` 黄色 outline + 浮动标签）全部不动；只改 chatflow 探测顺序（v0.5.3 策略保留作兜底）+ CSS 输出值的 `min()` 包裹 + tweak description 加一句窄屏自适应说明。
+  - **诊断**：
+    - `window.__dshUiTweaks.debug()` 在 conversation-shift 开启时，`getMatchedElements()` 的 `shift targets` 项应只命中 **1 个** `[data-dsh-ui-tweaks-shift-target]` 元素（scrollBody），不再是 2 个；该元素的 `shiftType` 字段是 `"chatflow"`，`padR` 字段是 `min(380px, 40%)` 解析后的 px 值
+    - `window.__dshUiTweaks.getInjectedCSS()` 在 tweak 开启时返回的 CSS 段应包含 `padding-right:min(380px,40%)` 而不再是 `padding-right:380px`
+    - DevTools inspect `[data-conversation-scroll]` 元素：开启 tweak 时其 `padding-right` 计算值应是 `min(380px, 40%父)`；缩窄窗口到半屏视口（≈ 960px），值应自动减小到 ≈ `272px`（40% × 680px），聊天气泡仍居中可见
+    - 「新建会话」界面（hero phase）开启 tweak 时，`[data-conversation-scroll]` 应被打上标记（v0.5.3 在该界面打不到任何元素），hero composer 整体右移 380px（在全屏视口下保留 380，min 不生效；半屏视口下收紧到 40%）
+  - **改动文件**：`45-chatflow-marks.js` 的 `findChatflowTargets()` 策略重排（[data-conversation-scroll] 首选 + 命中即返回 + 不再额外探测 input）+ 头部 v0.10.2 banner 注释；`25-tweaks.js` conversation-shift `buildCSS` 改 `min(Npx, 40%)` + description 同步；`20-constants.js` VERSION 0.10.1 → 0.10.2 + 头部 v0.10.2 注释 + 新增 `SHIFT_SCROLL_SEL` 常量；`00-banner.js` 加 v0.10.2 banner 段；`package.json` version 0.10.1 → 0.10.2 + description 同步；`README.md` / `docs/maintainability.md` 同步；走 `npm run build:client` + `node --check lib/client.js` 语法校验。
+
 ### 修复（v0.10.1）
 
 - **`stats-line-position` 非「底部」时输入框下移 24px**（v0.10.1）：用户反馈 v0.10.0「这样就导致了发消息的框往下走了一点点，我希望它还是处于原来的位置」。

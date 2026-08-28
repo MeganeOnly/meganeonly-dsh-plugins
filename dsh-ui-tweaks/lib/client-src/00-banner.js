@@ -1,6 +1,63 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.2：conversation-shift 修复两个用户反馈
+ *   1) 半屏浏览器时右缩看起来很奇怪
+ *   2) 新建会话界面右缩不生效
+ *
+ *   根因（一个 bug 引发两个症状）：
+ *   v0.5.3 的 chatflow 探测同时给 chatflow 容器和 input 容器打标记，
+ *   CSS 对两个元素都加 padding-right → 实际叠加成**双 padding**
+ *   （如 380+380=760）。DSH 当前的 DOM 结构是 scrollBody（包了
+ *   composerSeat）——composer 是 scrollBody 的子元素而非兄弟，所以单
+ *   padding 在 scrollBody 上就能同步影响消息 + 输入框，无需再额外标
+ *   input。v0.5.3 同时标 chatflow + input 是「DSH 早期结构里 composer
+ *   在 scrollBody 外的兜底」残留，已不需要。
+ *
+ *     全屏（视口 1920px，conv 列 ≈ 1640px）：1640 - 760 = 880px 内容区
+ *     → 聊天气泡 748px 仍能放下 → 「效果很好」
+ *     半屏（视口 960px，conv 列 ≈ 680px）：680 - 760 = -80px 溢出
+ *     → 「看起来很奇怪」
+ *
+ *   「新建会话」界面右缩不生效是同一根源：空会话（hero composer +
+ *   无消息）里 `[data-chat-flow-kind]` 不存在 → v0.5.3 策略 1 漏判，
+ *   落到 input 探测 → 单 padding 在 ConversationRoot 上 → 视觉上
+ *   看似没生效（hero composer 居中 + scrollBody 居中 → 整列右移不明显）。
+ *
+ *   修法两条：
+ *   1) **chatflow 探测首选 DSH 稳定锚点 `[data-conversation-scroll]`**
+ *      ——DSH `ConversationRoot.scrollBody` 上的属性（DSH 源码
+ *      `dsh-client-ui-conversation/lib/client.js:7277` 显式
+ *      `setAttribute`）。**空会话也命中**（scrollBody 在 hero composer
+ *      仍在）。命中即返回，**不再额外标 input**——单 padding 同步影响
+ *      消息内容 + 输入框。新策略与 v0.7.3 HoverCard `[class*="_hoverContent"]`
+ *      / v0.10.0 stats-line-position `data-slot=...` 同源的 hash-independence。
+ *   2) **CSS 改成 `padding-right: min(Npx, 40%)`**——保留用户在全屏的
+ *      偏好像素，半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」
+ *      的比例。聊天气泡（DSH `--dsh-chat-content-width:748px`）始终可读。
+ *      需要更小比例直接改设置页 conversationShiftPx。
+ *
+ *   兼容性：tweak id `conversation-shift` / localStorage key `conversationShift`
+ *     / `conversationShiftPx` / 设置页 UI / 调试 API / 调试高亮全部不动；
+ *     只改 chatflow 探测顺序（v0.5.3 的 overflow+chat-flow-kind 保留作
+ *     兜底）+ CSS 输出值的 `min()` 包裹 + 头部 banner 段。DSH 升级换 hash
+ *     不影响 `data-conversation-scroll` 命中（DSH 自己 setAttribute 的
+ *     稳定属性）。
+ *
+ *   诊断：`window.__dshUiTweaks.debug()` 在 conversation-shift 开启时
+ *     `getMatchedElements()` 应只命中 1 个 `[data-dsh-ui-tweaks-shift-target]`
+ *     元素（scrollBody），不再是 2 个；`getInjectedCSS()` 在 tweak 开启时
+ *     应包含 `padding-right:min(380px,40%)` 而不再是 `padding-right:380px`。
+ *
+ *   改动文件：`45-chatflow-marks.js` findChatflowTargets 策略重排
+ *     （[data-conversation-scroll] 首选 + 命中即返回）+ applyChatflowShiftMarks
+ *     幂等逻辑保持兼容（只标一个元素，原有的 chatflow/input 双标逻辑天然
+ *     兼容 0/1/2 个目标）；`25-tweaks.js` conversation-shift buildCSS
+ *     改 `min(Npx, 40%)` + 描述同步；`20-constants.js` VERSION 0.10.1
+ *     → 0.10.2 + 头部 v0.10.2 注释 + 新增 `SHIFT_SCROLL_SEL` 常量；
+ *     `00-banner.js` 本段；`package.json` version + description 同步；
+ *     `README.md` / `CHANGELOG.md` / `docs/maintainability.md` 同步。
+ *
  * v0.10.1：stats-line-position 隐藏底部原生统计行时改用 `visibility:hidden`
  *   而不是 `display:none`。
  *

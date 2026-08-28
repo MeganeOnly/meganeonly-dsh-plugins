@@ -1,6 +1,63 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.2：conversation-shift 修复两个用户反馈
+ *   1) 半屏浏览器时右缩看起来很奇怪
+ *   2) 新建会话界面右缩不生效
+ *
+ *   根因（一个 bug 引发两个症状）：
+ *   v0.5.3 的 chatflow 探测同时给 chatflow 容器和 input 容器打标记，
+ *   CSS 对两个元素都加 padding-right → 实际叠加成**双 padding**
+ *   （如 380+380=760）。DSH 当前的 DOM 结构是 scrollBody（包了
+ *   composerSeat）——composer 是 scrollBody 的子元素而非兄弟，所以单
+ *   padding 在 scrollBody 上就能同步影响消息 + 输入框，无需再额外标
+ *   input。v0.5.3 同时标 chatflow + input 是「DSH 早期结构里 composer
+ *   在 scrollBody 外的兜底」残留，已不需要。
+ *
+ *     全屏（视口 1920px，conv 列 ≈ 1640px）：1640 - 760 = 880px 内容区
+ *     → 聊天气泡 748px 仍能放下 → 「效果很好」
+ *     半屏（视口 960px，conv 列 ≈ 680px）：680 - 760 = -80px 溢出
+ *     → 「看起来很奇怪」
+ *
+ *   「新建会话」界面右缩不生效是同一根源：空会话（hero composer +
+ *   无消息）里 `[data-chat-flow-kind]` 不存在 → v0.5.3 策略 1 漏判，
+ *   落到 input 探测 → 单 padding 在 ConversationRoot 上 → 视觉上
+ *   看似没生效（hero composer 居中 + scrollBody 居中 → 整列右移不明显）。
+ *
+ *   修法两条：
+ *   1) **chatflow 探测首选 DSH 稳定锚点 `[data-conversation-scroll]`**
+ *      ——DSH `ConversationRoot.scrollBody` 上的属性（DSH 源码
+ *      `dsh-client-ui-conversation/lib/client.js:7277` 显式
+ *      `setAttribute`）。**空会话也命中**（scrollBody 在 hero composer
+ *      仍在）。命中即返回，**不再额外标 input**——单 padding 同步影响
+ *      消息内容 + 输入框。新策略与 v0.7.3 HoverCard `[class*="_hoverContent"]`
+ *      / v0.10.0 stats-line-position `data-slot=...` 同源的 hash-independence。
+ *   2) **CSS 改成 `padding-right: min(Npx, 40%)`**——保留用户在全屏的
+ *      偏好像素，半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」
+ *      的比例。聊天气泡（DSH `--dsh-chat-content-width:748px`）始终可读。
+ *      需要更小比例直接改设置页 conversationShiftPx。
+ *
+ *   兼容性：tweak id `conversation-shift` / localStorage key `conversationShift`
+ *     / `conversationShiftPx` / 设置页 UI / 调试 API / 调试高亮全部不动；
+ *     只改 chatflow 探测顺序（v0.5.3 的 overflow+chat-flow-kind 保留作
+ *     兜底）+ CSS 输出值的 `min()` 包裹 + 头部 banner 段。DSH 升级换 hash
+ *     不影响 `data-conversation-scroll` 命中（DSH 自己 setAttribute 的
+ *     稳定属性）。
+ *
+ *   诊断：`window.__dshUiTweaks.debug()` 在 conversation-shift 开启时
+ *     `getMatchedElements()` 应只命中 1 个 `[data-dsh-ui-tweaks-shift-target]`
+ *     元素（scrollBody），不再是 2 个；`getInjectedCSS()` 在 tweak 开启时
+ *     应包含 `padding-right:min(380px,40%)` 而不再是 `padding-right:380px`。
+ *
+ *   改动文件：`45-chatflow-marks.js` findChatflowTargets 策略重排
+ *     （[data-conversation-scroll] 首选 + 命中即返回）+ applyChatflowShiftMarks
+ *     幂等逻辑保持兼容（只标一个元素，原有的 chatflow/input 双标逻辑天然
+ *     兼容 0/1/2 个目标）；`25-tweaks.js` conversation-shift buildCSS
+ *     改 `min(Npx, 40%)` + 描述同步；`20-constants.js` VERSION 0.10.1
+ *     → 0.10.2 + 头部 v0.10.2 注释 + 新增 `SHIFT_SCROLL_SEL` 常量；
+ *     `00-banner.js` 本段；`package.json` version + description 同步；
+ *     `README.md` / `CHANGELOG.md` / `docs/maintainability.md` 同步。
+ *
  * v0.10.1：stats-line-position 隐藏底部原生统计行时改用 `visibility:hidden`
  *   而不是 `display:none`。
  *
@@ -705,7 +762,17 @@ window.__ModuleLoader__.load({
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.10.1";
+        // v0.10.2：conversation-shift 双 padding bug + 窄屏不可用 bug 修复
+        //   1) chatflow 探测升级首选 DSH 稳定锚点 [data-conversation-scroll]
+        //      ——空会话（hero composer 无消息）也能命中。命中即返回，
+        //      **不再额外标 input**——scrollBody 在 DSH 结构里已包了 composerSeat，
+        //      单 padding 同步影响消息 + 输入框；v0.5.3 同时标 chatflow+input
+        //      导致双 padding 在窄屏叠加成不可用宽度（680-760=-80 溢出）
+        //   2) CSS 改成 `padding-right: min(Npx, 40%)`——保留用户在全屏的偏好像素，
+        //      半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例
+        //   详见 `45-chatflow-marks.js` v0.10.2 banner 段 + `25-tweaks.js` 的
+        //   conversation-shift buildCSS v0.10.2 注释段。
+        var VERSION = "0.10.2";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -763,6 +830,14 @@ window.__ModuleLoader__.load({
         var SHIFT_TARGET_CHATFLOW = "chatflow";
         var SHIFT_TARGET_INPUT = "input";
         var SHIFT_TARGET_COLUMN = "column";  // 兜底：探测失败时标记列容器
+        // v0.10.2：DSH 稳定锚点首选——ConversationRoot.scrollBody 上的
+        //   `data-conversation-scroll=""`（DSH 源码 `dsh-client-ui-conversation/
+        //   lib/client.js:7277` 显式 `setAttribute` 的属性，不含构建 hash）。
+        //   与 v0.8.0 JUMP_SCROLL_SEL 是同一个属性，但本 tweak 用于「整列右缩」
+        //   而 first-message-jump 用于「滚到上一条 user 行」——职责不同、保持
+        //   各自常量便于读者按文件回溯。两者同时为 DSH 升级兼容锚点：DSH 改名
+        //   时本常量 + JUMP_SCROLL_SEL 同步更新即可。
+        var SHIFT_SCROLL_SEL = "[data-conversation-scroll]";
         // v0.8.0：「回到最早消息」按钮（first-message-jump tweak）→ v0.9.0 改为「上一条」导航
         var JUMP_BTN_ID = "dsh-ui-tweaks-jump-btn";
         var JUMP_SCROLL_SEL = "[data-conversation-scroll]";   // DSH 会话滚动容器（scrollBody）
@@ -797,7 +872,7 @@ window.__ModuleLoader__.load({
       {
         id: "conversation-shift",
         name: "对话区右缩",
-        description: "让对话列内的对话内容（消息气泡）整体左移 N 像素，腾出右侧空间——列容器本身宽度不变，滚动条与滚动指示器保持在原位。",
+        description: "让对话列内的对话内容（消息气泡）整体左移 N 像素，腾出右侧空间——列容器本身宽度不变，滚动条与滚动指示器保持在原位。v0.10.2 起像素值在窄屏自动收紧到对话列宽度的 40%（`min(Npx, 40%)`），避免半屏浏览器时 380px 缩进吃掉过多对话宽度。",
         configKeys: { enabled: "conversationShift", value: "conversationShiftPx" },
         defaults: { enabled: false, value: 380 },
         buildCSS: function (state) {
@@ -808,8 +883,14 @@ window.__ModuleLoader__.load({
           // v0.5.3 + v0.5.4：命中 JS 探测标记的元素，无 transition
           // （去掉 transition 是 v0.5.4 的关键修复：避免在 MutationObserver 频繁重打
           //   标记时被打断产生"来回弹"视觉循环）
-          return "/* === conversation-shift : 命中 JS 探测标记的元素 " + px + "px（无 transition）=== */\n" +
-            "html [" + SHIFT_TARGET_ATTR + "]{padding-right:" + px + "px !important;box-sizing:border-box !important;}";
+          // v0.10.2：`min(380px, 40%)` 适配窄屏——保留用户在全屏的偏好像素，半屏时
+          //   40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例，聊天气泡（DSH
+          //   `--dsh-chat-content-width:748px`）始终可读。CSS `min()` 是逐元素计
+          //   算的——`padding-right:min(380px,40%)` 里 40% 是父元素（命中元素本身
+          //   的直接父 = ConversationRoot / scrollBody 包裹层）宽度的 40%。需要更小
+          //   比例可在设置页直接改 conversationShiftPx；需要更激进收紧请改本 CSS。
+          return "/* === conversation-shift : 命中 JS 探测标记的元素 min(" + px + "px, 40%)（v0.10.2 起，窄屏自动收紧；无 transition）=== */\n" +
+            "html [" + SHIFT_TARGET_ATTR + "]{padding-right:min(" + px + "px,40%) !important;box-sizing:border-box !important;}";
         }
       },
       {
@@ -1826,14 +1907,42 @@ window.__ModuleLoader__.load({
     // v0.5.3 解法：JS 探测实际 DOM，找到真正的 chatflow 容器和输入框，
     //   给它们打 data 属性标记；CSS 只命中被标记的元素。探测失败时回退
     //   给 centerCol 列容器打标记（v0.5.1 行为兜底）。
+    //
+    // v0.10.2：探测策略升级 + 单元素标记
+    //   1) **新增 DSH 锚点 [data-conversation-scroll]**——DSH `ConversationRoot`
+    //      给 scrollBody 打的稳定属性（不含构建 hash），跨版本不变；v0.5.3 的
+    //      overflow+chat-flow-kind 检测在**空会话**时找不到任何元素（没有
+    //      `[data-chat-flow-kind]`），导致「新建会话」界面右缩不生效——
+    //      用户实测反馈。新策略把这层 DSH 自己的稳定属性作为首选，命中即停
+    //      （与 v0.7.3 HoverCard `[class*="_hoverContent"]`、v0.10.0
+    //      stats-line-position `data-slot=...` 同源的 hash-independence 策略）。
+    //   2) **chatflow 命中后不再额外标 input**——v0.5.3 的实现同时给 chatflow
+    //      和 input 打标记，CSS 对两个元素都加 padding-right → 实际叠加成
+    //      **双 padding**（如 380+380=760）。scrollBody 在 DSH 结构里**已经
+    //      包了 composerSeat**（composer 是 scrollBody 的子元素而非兄弟），
+    //      所以单 padding 在 scrollBody 上同时影响消息内容 + 输入框，无需
+    //      再额外标 input。input 检测只作为 chatflow 失败时的兜底（DSH 未来
+    //      把 composer 拆出 scrollBody 仍能命中）。**用户反馈的「半屏时
+    //      看起来很奇怪」**就是双 padding 在窄屏下叠加成不可用宽度——
+    //      全屏时 1640-760=880 还能容下 748px 聊天气泡，半屏时 680-760=-80
+    //      直接溢出 / 被裁。这条改动把「单 padding」行为重新拉回正轨。
+    //   3) **CSS 在 v0.10.2 buildCSS 同步改成 min(Npx, 40%)**——保留用户在
+    //      全屏的偏好像素，窄屏自动收紧到对话列宽度的 40%，聊天气泡始终
+    //      可读（748px max 在 408px 内容区也能水平居中显示）。
     // ====================================================================
 
     /**
      * 在 centerCol 列容器内探测 chatflow 容器和输入框。
-     * 探测策略：
-     *   chatflow：含 [data-chat-flow-kind] 节点的 overflow:auto/scroll 容器
-     *     （典型 DSH chatflow 滚动容器；overscroll-behavior 也可能命中但少见）
-     *   inputArea：contenteditable=true / textarea / role=textbox 的最近祖先
+     * 探测策略（v0.10.2 起）：
+     *   策略 1（首选）：DSH scrollBody 锚点 `[data-conversation-scroll]`——
+     *     `ConversationRoot.scrollBody` 上 DSH 自己打的稳定属性，跨版本
+     *     不变；命中即返回，**不再额外探测 input**（避免 v0.5.3 的双 padding
+     *     bug——见头注释）。
+     *   策略 2（兜底）：v0.5.3 原始的 overflow + [data-chat-flow-kind] 探测
+     *     ——DSH 升级去掉 `data-conversation-scroll` 时仍能工作（有消息时）。
+     *   策略 3（兜底）：input 探测（contenteditable=true / textarea / role=
+     *     textbox 的最近祖先）。只有 chatflow 完全没找到时才使用（DSH 极端
+     *     布局变动把 composer 拆出 scrollBody 的场景）。
      * 返回 { chatflow, input, found }；任一找到即为 found=true。
      */
     function findChatflowTargets(centerColEl) {
@@ -1841,8 +1950,24 @@ window.__ModuleLoader__.load({
         return { chatflow: null, input: null, found: false };
       }
 
-      // 策略 1: chatflow 容器（overflow 容器 + 含 [data-chat-flow-kind]）
       var chatflow = null;
+
+      // 策略 1（v0.10.2 起首选）：DSH 稳定锚点 [data-conversation-scroll]
+      //   ConversationRoot 的 scrollBody——空会话（有 composer 无消息）也命中
+      //   ——v0.5.3 的 overflow+chat-flow-kind 在空会话会失效。
+      //   命中后直接返回，不走 input 探测（避免双 padding，见头注释）。
+      var scrollEl = centerColEl.querySelector(SHIFT_SCROLL_SEL);
+      if (scrollEl) {
+        return {
+          chatflow: scrollEl,
+          input: null,
+          found: true
+        };
+      }
+
+      // 策略 2（v0.5.3 兜底）：overflow 容器 + 含 [data-chat-flow-kind]
+      //   仅在策略 1 失败时跑——DSH 升级把 data-conversation-scroll 改名的
+      //   兜底路径（有消息时仍能工作）。命中后同样不再标 input。
       var all = centerColEl.querySelectorAll("*");
       for (var i = 0; i < all.length; i++) {
         var n = all[i];
@@ -1856,8 +1981,17 @@ window.__ModuleLoader__.load({
           break;
         }
       }
+      if (chatflow) {
+        return {
+          chatflow: chatflow,
+          input: null,
+          found: true
+        };
+      }
 
-      // 策略 2: inputArea
+      // 策略 3（v0.5.3 兜底）：input 探测——DSH 未来把 composer 拆出 scrollBody
+      //   时的最后防线。contenteditable=true / textarea / role=textbox 的最近
+      //   祖先（向上走到 centerCol 的直接子）。
       var input = null;
       var inputNode = centerColEl.querySelector(
         '[contenteditable="true"], textarea, [role="textbox"]'
@@ -1871,9 +2005,9 @@ window.__ModuleLoader__.load({
       }
 
       return {
-        chatflow: chatflow,
+        chatflow: null,
         input: input,
-        found: !!(chatflow || input)
+        found: !!input
       };
     }
 

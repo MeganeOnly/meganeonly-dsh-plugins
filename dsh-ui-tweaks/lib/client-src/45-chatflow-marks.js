@@ -8,14 +8,42 @@
     // v0.5.3 解法：JS 探测实际 DOM，找到真正的 chatflow 容器和输入框，
     //   给它们打 data 属性标记；CSS 只命中被标记的元素。探测失败时回退
     //   给 centerCol 列容器打标记（v0.5.1 行为兜底）。
+    //
+    // v0.10.2：探测策略升级 + 单元素标记
+    //   1) **新增 DSH 锚点 [data-conversation-scroll]**——DSH `ConversationRoot`
+    //      给 scrollBody 打的稳定属性（不含构建 hash），跨版本不变；v0.5.3 的
+    //      overflow+chat-flow-kind 检测在**空会话**时找不到任何元素（没有
+    //      `[data-chat-flow-kind]`），导致「新建会话」界面右缩不生效——
+    //      用户实测反馈。新策略把这层 DSH 自己的稳定属性作为首选，命中即停
+    //      （与 v0.7.3 HoverCard `[class*="_hoverContent"]`、v0.10.0
+    //      stats-line-position `data-slot=...` 同源的 hash-independence 策略）。
+    //   2) **chatflow 命中后不再额外标 input**——v0.5.3 的实现同时给 chatflow
+    //      和 input 打标记，CSS 对两个元素都加 padding-right → 实际叠加成
+    //      **双 padding**（如 380+380=760）。scrollBody 在 DSH 结构里**已经
+    //      包了 composerSeat**（composer 是 scrollBody 的子元素而非兄弟），
+    //      所以单 padding 在 scrollBody 上同时影响消息内容 + 输入框，无需
+    //      再额外标 input。input 检测只作为 chatflow 失败时的兜底（DSH 未来
+    //      把 composer 拆出 scrollBody 仍能命中）。**用户反馈的「半屏时
+    //      看起来很奇怪」**就是双 padding 在窄屏下叠加成不可用宽度——
+    //      全屏时 1640-760=880 还能容下 748px 聊天气泡，半屏时 680-760=-80
+    //      直接溢出 / 被裁。这条改动把「单 padding」行为重新拉回正轨。
+    //   3) **CSS 在 v0.10.2 buildCSS 同步改成 min(Npx, 40%)**——保留用户在
+    //      全屏的偏好像素，窄屏自动收紧到对话列宽度的 40%，聊天气泡始终
+    //      可读（748px max 在 408px 内容区也能水平居中显示）。
     // ====================================================================
 
     /**
      * 在 centerCol 列容器内探测 chatflow 容器和输入框。
-     * 探测策略：
-     *   chatflow：含 [data-chat-flow-kind] 节点的 overflow:auto/scroll 容器
-     *     （典型 DSH chatflow 滚动容器；overscroll-behavior 也可能命中但少见）
-     *   inputArea：contenteditable=true / textarea / role=textbox 的最近祖先
+     * 探测策略（v0.10.2 起）：
+     *   策略 1（首选）：DSH scrollBody 锚点 `[data-conversation-scroll]`——
+     *     `ConversationRoot.scrollBody` 上 DSH 自己打的稳定属性，跨版本
+     *     不变；命中即返回，**不再额外探测 input**（避免 v0.5.3 的双 padding
+     *     bug——见头注释）。
+     *   策略 2（兜底）：v0.5.3 原始的 overflow + [data-chat-flow-kind] 探测
+     *     ——DSH 升级去掉 `data-conversation-scroll` 时仍能工作（有消息时）。
+     *   策略 3（兜底）：input 探测（contenteditable=true / textarea / role=
+     *     textbox 的最近祖先）。只有 chatflow 完全没找到时才使用（DSH 极端
+     *     布局变动把 composer 拆出 scrollBody 的场景）。
      * 返回 { chatflow, input, found }；任一找到即为 found=true。
      */
     function findChatflowTargets(centerColEl) {
@@ -23,8 +51,24 @@
         return { chatflow: null, input: null, found: false };
       }
 
-      // 策略 1: chatflow 容器（overflow 容器 + 含 [data-chat-flow-kind]）
       var chatflow = null;
+
+      // 策略 1（v0.10.2 起首选）：DSH 稳定锚点 [data-conversation-scroll]
+      //   ConversationRoot 的 scrollBody——空会话（有 composer 无消息）也命中
+      //   ——v0.5.3 的 overflow+chat-flow-kind 在空会话会失效。
+      //   命中后直接返回，不走 input 探测（避免双 padding，见头注释）。
+      var scrollEl = centerColEl.querySelector(SHIFT_SCROLL_SEL);
+      if (scrollEl) {
+        return {
+          chatflow: scrollEl,
+          input: null,
+          found: true
+        };
+      }
+
+      // 策略 2（v0.5.3 兜底）：overflow 容器 + 含 [data-chat-flow-kind]
+      //   仅在策略 1 失败时跑——DSH 升级把 data-conversation-scroll 改名的
+      //   兜底路径（有消息时仍能工作）。命中后同样不再标 input。
       var all = centerColEl.querySelectorAll("*");
       for (var i = 0; i < all.length; i++) {
         var n = all[i];
@@ -38,8 +82,17 @@
           break;
         }
       }
+      if (chatflow) {
+        return {
+          chatflow: chatflow,
+          input: null,
+          found: true
+        };
+      }
 
-      // 策略 2: inputArea
+      // 策略 3（v0.5.3 兜底）：input 探测——DSH 未来把 composer 拆出 scrollBody
+      //   时的最后防线。contenteditable=true / textarea / role=textbox 的最近
+      //   祖先（向上走到 centerCol 的直接子）。
       var input = null;
       var inputNode = centerColEl.querySelector(
         '[contenteditable="true"], textarea, [role="textbox"]'
@@ -53,9 +106,9 @@
       }
 
       return {
-        chatflow: chatflow,
+        chatflow: null,
         input: input,
-        found: !!(chatflow || input)
+        found: !!input
       };
     }
 

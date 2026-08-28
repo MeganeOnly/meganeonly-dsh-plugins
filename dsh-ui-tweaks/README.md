@@ -8,7 +8,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 
 | id | 名称 | 说明 |
 | --- | --- | --- |
-| `conversation-shift` | 对话区右缩 | 通过 DOM 探测定位对话流容器与输入区，为其增加可配置的右侧内边距，给右侧面板让位；探测失败时回退到对话列容器。 |
+| `conversation-shift` | 对话区右缩 | 通过 DOM 探测定位对话滚动容器（v0.10.2 起首选 DSH 稳定锚点 `[data-conversation-scroll]`，空会话也命中；v0.5.3 的 overflow+chat-flow-kind / input 探测保留作兜底），为其增加可配置的右侧内边距，给右侧面板让位。**v0.10.2 起像素值在窄屏自动收紧到父元素宽度的 40%**（`min(Npx, 40%)`）——保留全屏偏好像素，半屏浏览器下不会出现 380px 吃掉过多对话宽度的问题。 |
 | `conversation-shift-debug` | 对话右缩调试高亮 | 为命中的元素加高亮描边与浮动标签，并在控制台输出命中元素的诊断信息。 |
 | `simple-mode` | 简洁模式 | 隐藏思考、工具调用、上下文注入等过程节点；在输入框上方显示一行极简运行状态。 |
 | `hide-sidebar-tooltip` | 隐藏侧栏悬浮提示 | 隐藏侧栏会话/工作区条目在悬停时弹出的浮层（同时覆盖 Tooltip 与 HoverCard 两种实现）。 |
@@ -22,6 +22,12 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数；带 `choices` 的条目在设置页渲染下拉框而不是开关。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
 
 设置页每行附带"诊断"按钮，可输出当前状态、生成的 CSS 与命中元素；栏目顶部提供"复制状态到剪贴板"。运行时还暴露 `window.__dshUiTweaks` 调试接口（`getState` / `getInjectedCSS` / `getMatchedElements` / `debug` / `setState` / `reshim` / `firstMessageJump` / `disclosureEndCollapse` / `statsLinePosition`）。
+
+### `conversation-shift` 的实现约定与已知代价（v0.10.2 起）
+
+- **首选 DSH 稳定锚点 `[data-conversation-scroll]`**（v0.10.2 起）：DSH `ConversationRoot.scrollBody` 上 DSH 源码（`dsh-client-ui-conversation/lib/client.js:7277`）显式 `setAttribute` 的属性，**不含构建 hash**，跨 DSH 版本不变。该属性在「空会话（hero composer + 无消息）」时也命中——v0.5.3 的 overflow + `[data-chat-flow-kind]` 探测在空会话找不到任何元素导致右缩不生效，本修复解决。DSH 升级换 hash 不影响命中（与 v0.7.3 HoverCard `[class*="_hoverContent"]` / v0.10.0 stats-line-position `data-slot=...` 同源的 hash-independence 策略）。
+- **单 padding 而非双 padding**（v0.10.2 起）：v0.5.3 实现同时给 chatflow 容器和 input 容器打标记，CSS 对两个元素各加 `padding-right:380px` 叠加成 760px 双 padding——全屏 conv 列 1640px 还容得下，半屏 680px 直接溢出。DSH 当前 DOM 结构是 scrollBody 已包了 composerSeat（composer 是 scrollBody 的子元素而非兄弟），所以单 padding 在 scrollBody 上就能同步影响消息 + 输入框，无需再额外标 input。input 探测保留作兜底（DSH 未来把 composer 拆出 scrollBody 时的最后防线）。
+- **CSS 用 `padding-right: min(Npx, 40%)`**（v0.10.2 起）：保留用户在全屏的偏好像素，半屏浏览器自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例——聊天气泡（DSH `--dsh-chat-content-width:748px`）始终可读。`40%` 是父元素宽度的 40%（CSS `min()` 是逐元素计算的）。需要更激进收紧可改设置页 `conversationShiftPx`；需要更宽保留（如窄屏下也想保 380px）改本 CSS 的 40% 为更大值。
 
 ### `stats-line-position` 的实现约定与已知代价（v0.10.0 起）
 
