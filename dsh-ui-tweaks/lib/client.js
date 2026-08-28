@@ -1892,15 +1892,33 @@ window.__ModuleLoader__.load({
         turnStatus.style.marginLeft = '0';
       }
 
+      // 取 DOM 里文档顺序的最后一个 turnStatus（最新的 turn）。
+      // 与 findTurnStatus 的区别：本函数不跳过任何 turnStatus——拿到
+      // 当前正在运行的 turn（即使它已包含我们的 span）。
+      // DSH 在历史已结束 turn 里会保留 [class*="turnStatus"] 节点，
+      // 此时最新 turnStatus 与 current 可能不同，需走 reattach 路径。
+      function getLatestTurnStatus() {
+        if (typeof document === "undefined") return null;
+        var nodes = document.querySelectorAll(SIMPLE_TURN_STATUS_SEL);
+        return nodes.length > 0 ? nodes[nodes.length - 1] : null;
+      }
+
       function attach() {
         if (typeof document === "undefined") return;
         // 已经在 attach 到当前 turnStatus——watchTurnStatus 的 MutationObserver
         // 会负责把 span 重新挂回去（DSH 偶尔会把它 detach），不需要每 250ms 重新
         // 跑 findTurnStatus + ensureStatusSpan + appendChild。tick 高频轮询下
         // 跳过这些 DOM 操作显著降低开销。
+        //
+        // 守卫条件收紧：除了「span 已挂在某个父节点」之外，还要求 current 是
+        // DOM 里文档顺序的最后一个 turnStatus。DSH 在历史 turn 里会保留
+        // [class*="turnStatus"] 节点不删（completed turn 仍可见），此时若用户
+        // 开启新一轮，DSH 在尾部新增 turnStatus，原来的 current 不再是"最新"，
+        // 必须走 reattach 路径把 span 搬过去——否则旧 turn 上的 status 行
+        // 会跟到历史里。
         if (current !== null) {
           var existing = document.getElementById(SIMPLE_STATUS_ID);
-          if (existing !== null && existing.parentNode !== null) return;
+          if (existing !== null && existing.parentNode === current && current === getLatestTurnStatus()) return;
         }
         var turnStatus = findTurnStatus();
         if (turnStatus === null) { current = null; return; }
