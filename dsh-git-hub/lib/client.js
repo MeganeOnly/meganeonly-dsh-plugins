@@ -109,7 +109,7 @@ window.__ModuleLoader__.load({
 
     // ===== summary =====
     /** 把当前会话里发"仓库摘要"消息（走 task-pool 同款 sessions.driver.prompt）。 */
-    function sendRepoSummaryToSession(sessions, repo, depsRef) {
+    function sendRepoSummaryToSession(sessions, repo) {
       try {
         if (!sessions || typeof sessions.list.getSnapshot !== "function") return Promise.reject(new Error("sessions 服务不可用"));
         var snap = sessions.list.getSnapshot();
