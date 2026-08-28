@@ -257,10 +257,15 @@ async function saveConfig(scanRoots) {
 /**
  * 递归扫一个根目录，收集所有包含 .git 子目录的目录路径。
  * 同步实现：DSH 进程内只在 API 请求时跑，单次扫描应控制在秒级。
+ *
+ * 第二个参数 sharedSeen（可选）允许多个 scanRoot 调用复用同一份已访问 Set——
+ * 用来在 cfg.scanRoots 多个根目录互相嵌套时（如同时配了父根与子根）
+ * 避免重复扫同一棵子树。键用 lowercase 是 Windows 路径大小写不敏感的兜底。
+ * 调用方拿到的是原始大小写路径（保留可读性）。
  */
-function scanRoot(rootPath) {
+function scanRoot(rootPath, sharedSeen) {
   const results = []
-  const visited = new Set()
+  const visited = sharedSeen || new Set()
   function walk(dir, depth) {
     if (depth > MAX_DEPTH) return
     if (results.length >= MAX_REPOS) return
@@ -276,8 +281,9 @@ function scanRoot(rootPath) {
       if (SKIP_DIRS.has(name)) continue
       if (name.startsWith('.git')) continue
       const full = join(dir, name)
-      if (visited.has(full)) continue
-      visited.add(full)
+      const key = full.toLowerCase()
+      if (visited.has(key)) continue
+      visited.add(key)
       const gitPath = join(full, '.git')
       try {
         const s = statSync(gitPath)
@@ -378,10 +384,13 @@ async function getAllRepos(force) {
   }
   const cfg = await loadConfig()
   const repoPaths = []
+  // 跨根去重：scanRoots 里若有嵌套关系（父根与子根），
+  // 共享 visited Set 跳过已扫过的子树——避免同一 repo 在 UI 里出现两次。
+  const seen = new Set()
   for (const root of cfg.scanRoots) {
     if (!isDirectory(root)) continue
     try {
-      const found = scanRoot(root)
+      const found = scanRoot(root, seen)
       for (const p of found) repoPaths.push(p)
     } catch (e) {
       console.warn('[dsh-git-hub] scanRoot failed for', root, e?.message || e)
@@ -700,10 +709,12 @@ export function apply(ctx) {
   async function listChangedRepos() {
     const cfg = await loadConfig()
     const repoPaths = []
+    // 跨根去重——嵌套 scanRoots 下避免同一 repo 被列两次（commit 区不重复展示）
+    const seen = new Set()
     for (const root of cfg.scanRoots) {
       if (!isDirectory(root)) continue
       try {
-        const found = scanRoot(root)
+        const found = scanRoot(root, seen)
         for (const p of found) repoPaths.push(p)
       } catch (_) { /* ignore single root failure */ }
     }
@@ -1004,10 +1015,12 @@ export function apply(ctx) {
   async function listMergeableRepos() {
     const cfg = await loadConfig()
     const repoPaths = []
+    // 跨根去重——嵌套 scanRoots 下避免同一 repo 在 merge 区重复展示
+    const seen = new Set()
     for (const root of cfg.scanRoots) {
       if (!isDirectory(root)) continue
       try {
-        const found = scanRoot(root)
+        const found = scanRoot(root, seen)
         for (const p of found) repoPaths.push(p)
       } catch (_) { /* ignore single root failure */ }
     }
