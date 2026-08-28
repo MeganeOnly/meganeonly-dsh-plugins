@@ -541,12 +541,9 @@ window.__ModuleLoader__.load({
     Controller.prototype.toggleSection = function (key) {
       var allowed = ["commit", "merge", "pushStatus", "perCardPush"];
       if (allowed.indexOf(key) < 0) return;
-      // 严格 true/false 切换；缺字段视为默认（false for commit；true for others）
-      var cur = this.sections[key];
-      var next;
-      if (key === "commit") next = cur !== true;
-      else next = cur !== true; // 与上面同义；语义：当前非 true 时设为 true，反之设为 false
-      this.sections[key] = next;
+      // 严格 true/false 切换；defaultSections() 已保证 4 个 key 都是 boolean，
+      //   此处无需再 fallback 处理 undefined（storage.load 已显式迁移 v1→v4）。
+      this.sections[key] = this.sections[key] !== true;
       this._persist();
       this.notify();
     };
