@@ -1,6 +1,111 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.9.15：sidebar-match-conversation-bg 用户实测"展开页面左上角的
+ *   部分，过一会就会变成灰色，我鼠标光标移动到上面的时候，又变成了
+ *   白色，移走一段时间，又变成灰色"——v0.9.9/v0.9.13/v0.9.14 三层修复
+ *   都只覆盖 column + 已知 _root 后代，没考虑 DSH 侧栏作用域内 CSS
+ *   变量 `--dsw-specific-sidebar-fill` 的扩散。DSH 内部 sidebarCol /
+ *   SidebarRoot 都 `background:var(--dsw-specific-sidebar-fill)`，
+ *   column + inner root 的直接 background 覆盖可能因 DSH 后续调整
+ *   （cascade 重排、HMR 重注入、theme 异步应用、某些 panel 状态切换等）
+ *   失效，露出 sidebar-fill 的浅灰/深灰——hover 触发某些透明层覆盖
+ *   时又显出 frame 的白色背景；hover 出后透明层消失重新露出 inner
+ *   root 的灰。
+ *
+ *   修法：三层兜底强制抹掉侧栏作用域内所有 sidebar-fill 变量解析结果——
+ *
+ *     [data-pane="sidebar"] {
+ *       background: var(dsw-alias-bg-base, ...) !important;   // ① 列显式 bg
+ *       变量级覆盖在更高作用域应用，详见代码                    // ③ 变量级覆盖
+ *     }
+ *     [data-pane="sidebar"] [class*="_root"] {
+ *       background: var(dsw-alias-bg-base, ...) !important;   // ② _root 后代 bg
+ *     }
+ *
+ *   变量覆盖作用于整个 `[data-pane="sidebar"]` 子树——DSH 后续在此
+ *   作用域内加新元素并引用 `--dsw-specific-sidebar-fill` 也会解析为
+ *   透明，不再依赖具体选择器是否命中。
+ *
+ *   - `[class*="_root"]` contains 仍是 hash-independence（DSH CSS module
+ *     `<hash>_<name>_root` 约定保留 `_root` 子串）——与 v0.7.3 HoverCard
+ *     `[class*="_hoverContent"]` / v0.7.5 Inspect `[class*="_inspectButton"]`
+ *     / v0.9.14 sidebar `[class*="_root"]` 同策略
+ *   - `!important` 强化在 DSH 后续 column rule 调整时仍生效（DSH sidebarCol
+ *     当前 specificity 0,1,0,0 与我们相同，!important 决定胜负）
+ *   - 兼容性：tweak id / localStorage key / 调试 API / 类名 / ID /
+ *     attribute / 设置页 UI 全部不动；只多了一条 `--dsw-specific-sidebar-fill`
+ *     变量覆盖 + 列选择器显式 background + inner root 选择器强化
+ *
+ *   改动文件：`25-tweaks.js` 的 sidebar-match-conversation-bg buildCSS
+ *     加 ③ 变量覆盖 + 列显式 bg；`20-constants.js` VERSION 0.9.14 → 0.9.15；
+ *     `00-banner.js` 加本 banner 段；`package.json` version + description
+ *     同步；走 `npm run build:client` + `node --check lib/client.js`
+ *     语法校验。
+ *
+ * v0.9.14：sidebar-match-conversation-bg v0.9.13 修复——v0.9.13 用
+ *   `[class$="_root"]` ends-with 匹配 SidebarRoot 组件根，但在收起态
+ *   DSH 给 root 元素额外拼接 `hHd-Xa_collapsed` + `hHd-Xa_railIn` +
+ *   `hHd-Xa_quietBars` 修饰类（见 `dsh-client-ui-sidebar/lib/client.js`
+ *   SidebarRoot.js `clsx(root, !wide && collapsed, !wide && everWide &&
+ *   railIn, collapsed && wide && fading, !pointerInside && quietBars)`），
+ *   整个 className 字符串变成 `"hHd-Xa_root hHd-Xa_collapsed
+ *   hHd-Xa_railIn hHd-Xa_quietBars"`，末尾是 `_quietBars` 不是 `_root`——
+ *   ends-with 选择器在收起态完全失效，小侧栏仍显示 `--dsw-specific-sidebar-fill`
+ *   的灰色 / 深灰。修法：改 `[class*="_root"]` contains 子串匹配，与
+ *   className 拼接顺序无关，展开 / 收起两态都命中。
+ *
+ *   - `[class*="_root"]` contains 仍是 hash-independence（DSH CSS module
+ *     `<hash>_<name>_root` 约定保留 `_root` 子串），DSH 升级换 hash
+ *     仍命中——策略与 v0.7.3 HoverCard `[class*="_hoverContent"]` /
+ *     v0.7.5 Inspect `[class*="_inspectButton"]` 同源
+ *   - 兼容性：tweak id / localStorage key / 调试 API / 类名 / ID /
+ *     attribute / 设置页 UI 全部不动；只改 buildCSS 输出的选择器子串匹配
+ *     字符（`$` → `*`）与头注释；老用户开关状态保留
+ *   - WorkspaceList 的 `qDHVXG_root` 也命中但目前无 background 设置，
+ *     无视觉副作用
+ *
+ *   改动文件：`25-tweaks.js` 的 sidebar-match-conversation-bg buildCSS
+ *     （`[class$="_root"]` 改 `[class*="_root"]`）；`20-constants.js`
+ *     VERSION 0.9.13 → 0.9.14；`00-banner.js` 加本 banner 段；`package.json`
+ *     version 同步；走 `npm run build:client` + `node --check lib/client.js`
+ *     语法校验。
+ *
+ * v0.9.13：sidebar-match-conversation-bg v0.9.9 修复——v0.9.9 选择器
+ *   `[data-pane="sidebar"]` 只命中 DSH AppFrame 的 sidebarCol 列容器，
+ *   但列内的 `<div class="hHd-Xa_root">`（SidebarRoot 组件根，height:100%
+ *   完全覆盖列容器）也设了 `background:var(--dsw-specific-sidebar-fill)`
+ *   ——v0.9.9 改 column 背景视觉上仍被 inner 的 specific-sidebar-fill
+ *   覆盖，用户实测"开启后无变化"。
+ *
+ *   修法：选择器同时命中 column 与其内 SidebarRoot（后代选择器，无 `>`）——
+ *     `[data-pane="sidebar"], [data-pane="sidebar"] [class$="_root"]`
+ *   两层都改 `background: var(--dsw-alias-bg-base, ...) !important`，
+ *   让可见的侧栏 UI 与对话区背景一致。后代选择器是为兼容 DSH 后续在
+ *   sidebarCol 与 SidebarRoot 间插入包装层（动画 / portal 等）；直接子
+ *   选择器 `>` 会被切断。
+ *
+ *   - `[class$="_root"]` ends-with 匹配 DSH CSS module 约定
+ *     `<hash>_<name>_root`（SidebarRoot 当前 hash=hHd-Xa，DSH 升级换 hash
+ *     仍命中——hash-independence 与 v0.7.3 HoverCard / v0.7.5 Inspect button
+ *     同策略）
+ *   - AppFrame 的 sidebarCol 内当前只有 SidebarRoot 一个匹配元素
+ *     （`renderSlot("sidebar")` 输出）；WorkspaceList 的 `qDHVXG_root` 也
+ *     匹配但目前无 background 设置，命中无视觉副作用
+ *   - 列边框 `border-right: 1px solid var(--dsw-alias-border-l1)` 保留——
+ *     用户原意是背景一致，不是无边界；边框分割由 border 单独承担
+ *   - 子元素（会话项 / 按钮 / hover 态 / active 态）零变化，仍由 DSH
+ *     `--dsw-specific-sidebar-nav-item-*` 等功能性背景控制
+ *   - 兼容性：tweak id `sidebar-match-conversation-bg` 不动、localStorage
+ *     key `sidebarMatchConversationBg` 不动、老用户开关状态保留；
+ *     调试 API `window.__dshUiTweaks.getInjectedCSS()` 输出仍含本 tweak 段
+ *
+ *   改动文件：`25-tweaks.js` 的 sidebar-match-conversation-bg buildCSS
+ *     （选择器扩为 column + `[class$="_root"]` 后代双命中）；`20-constants.js`
+ *     VERSION 0.9.12 → 0.9.13；`00-banner.js` 加本 banner 段；`package.json`
+ *     version 同步；走 `npm run build:client` + `node --check lib/client.js`
+ *     语法校验。
+ *
  * v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的
  *   loader / shimmer child；走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的
  *   JS 回退路径——`createSimpleModeStatusController#purgeTurnStatus()` 在
@@ -357,6 +462,7 @@
  *    getMatchedElements, debug, setState, reshim }`
  *  - TWEAKS 数组仍是 UI + CSS + 持久化的单一数据源
  */
+
 window.__ModuleLoader__.load({
   id: "dsh-ui-tweaks",
   factory: (require) => {
@@ -370,6 +476,49 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
+        // v0.9.15：sidebar-match-conversation-bg 用户实测"展开页面左上角的
+        //   部分，过一会就会变成灰色，我鼠标光标移动到上面的时候，又变成
+        //   了白色，移走一段时间，又变成灰色"——v0.9.9/v0.9.13/v0.9.14 三层
+        //   都只覆盖 column + 已知 _root 后代，没考虑 DSH 侧栏作用域内 CSS
+        //   变量 `--dsw-specific-sidebar-fill` 的扩散——DSH 内部 sidebarCol /
+        //   SidebarRoot 都引用此变量赋值 background，column + inner root
+        //   直接 background 覆盖可能因 DSH 后续调整（如 cascade 重排、
+        //   HMR 重注入、theme 异步应用、panel hover 切换状态等）失效，
+        //   露出 sidebar-fill 的灰；hover 触发某些透明层覆盖又显出白色
+        //   frame 背景；hover 出后透明层消失重新露出 inner root 的灰。
+        //   修法：三层兜底——① 列显式 background + !important 强化
+        //   + ② 内部 _root 后代 background + ③ `--dsw-specific-sidebar-fill`
+        //   变量级覆盖为 transparent，让侧栏作用域内任何 `var(--dsw-specific-sidebar-fill)`
+        //   引用解析为透明，从根上消除"侧栏内任何元素用 sidebar-fill 色
+        //   覆盖 frame 背景"的可能。
+        //   兼容性：tweak id / localStorage key / 调试 API / 类名 / ID /
+        //   attribute / 设置页 UI 全部不动；只多了一条 `--dsw-specific-sidebar-fill`
+        //   变量覆盖 + 列选择器显式 background。DSH 升级换 hash 也仍命中
+        //   （className 仍含 `_root` 子串；变量覆盖作用于整个作用域，新元素
+        //   也被覆盖）。
+        //   详见 `25-tweaks.js` 的 sidebar-match-conversation-bg buildCSS
+        //   v0.9.15 段 + `00-banner.js` v0.9.15 banner 段 + CHANGELOG v0.9.15。
+        // v0.9.14：sidebar-match-conversation-bg v0.9.13 在收起态失效——
+        //   DSH SidebarRoot 收起态额外加 `hHd-Xa_collapsed` + `hHd-Xa_railIn`
+        //   + `hHd-Xa_quietBars` 类，整个 className 字符串从 `"hHd-Xa_root"`
+        //   变成 `"hHd-Xa_root hHd-Xa_collapsed hHd-Xa_railIn hHd-Xa_quietBars"`，
+        //   末尾不再是 `_root`——`[class$="_root"]` ends-with 匹配失效，小侧栏
+        //   仍显示 `--dsw-specific-sidebar-fill` 的灰。改 `[class*="_root"]`
+        //   contains 后与 className 拼接顺序无关，展开 / 收起两态都命中。
+        //   其他 tweak / 类名 / ID / attribute / localStorage key / 调试 API
+        //   全不动。详见 `25-tweaks.js` 的 sidebar-match-conversation-bg
+        //   buildCSS v0.9.14 段 + `00-banner.js` v0.9.14 banner 段 + CHANGELOG v0.9.14。
+        // v0.9.13：sidebar-match-conversation-bg v0.9.9 选择器只命中 sidebarCol，
+        //   但 DSH AppFrame 内的 `<div class="hHd-Xa_root">`（SidebarRoot 组件根，
+        //   height:100%）也设了 `background:var(--dsw-specific-sidebar-fill)`，
+        //   完全覆盖 column——column 改背景视觉上仍被 inner 的特定色盖住，
+        //   用户实测"开启后无变化"。修法：选择器同时命中 column + 其内
+        //   SidebarRoot（`[class*="_root"]` contains，DSH CSS module
+        //   `<hash>_<name>_root` 约定，hash-independence；后代选择器
+        //   兼容 DSH 后续在两者间加包装层）。其他 tweak / 类名 /
+        //   ID / attribute / localStorage key / 调试 API 全不动。详见
+        //   `25-tweaks.js` 的 sidebar-match-conversation-bg buildCSS v0.9.13 段
+        //   + `00-banner.js` v0.9.13 banner 段 + CHANGELOG v0.9.13。
         // v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的
         //   loader / shimmer 子元素；走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的
         //   JS 回退路径——`createSimpleModeStatusController#purgeTurnStatus()` 在
@@ -431,7 +580,7 @@ window.__ModuleLoader__.load({
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.12";
+        var VERSION = "0.10.1";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -457,7 +606,7 @@ window.__ModuleLoader__.load({
         //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。
         //   目标三类 DisclosureRow：ReasoningRow（Think, data-variant="think"）、
         //   GenericCommandCard（工具调用输出, data-variant="others"）、
-        //   ContextInjectionRow（上下文注入, class 含 _root 且 data-open）。
+        var VERSION = "0.9.15";
         //   button 在 body 元素里（wrapper div + button），点击时找 body 父元素
         //   里 rowClassName 那行调 .click()——DSH React onToggle 触发折叠，body 与
         //   按钮一起被卸载；stopPropagation 避免冒泡到 row（虽然 row 是 body 兄弟
@@ -493,6 +642,7 @@ window.__ModuleLoader__.load({
         var JUMP_BUTTON_TITLE = "上一条我发的消息（Shift+点击 = 回到最早）";  // title 属性（v0.9.1 新增）
         // SVG 上箭头（与 v0.8.0 同一 path：▲ 朝上表示"上一条"）
         var JUMP_SVG_UP = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5L8 6l4.5 4.5"/></svg>';
+
 
     // ===== tweaks =====
     /**
@@ -1079,16 +1229,45 @@ window.__ModuleLoader__.load({
         //   `#ffffff`——主题切到没定义 bg-base 时退化到 layer-1（与简单
         //   模式状态行按钮背景同款），再退化到硬值白。
         //
-        // 子元素（会话项 / 按钮 / hover 态）不动——它们有功能性背景（hover
-        //   高亮 `--dsw-specific-sidebar-nav-item-hover` 等），保持可见。
-        //   只让容器背景色与对话一致，子元素视觉行为零变化。
+        // v0.9.13 增量：v0.9.9 只命中 sidebarCol，但 DSH AppFrame 内 `<div class="
+        //   pI_x6G_sidebarCol">`（column，self-shim 在这层打 data-pane="sidebar"）
+        //   与其内 `<div class="hHd-Xa_root">`（SidebarRoot 组件根，height:100%）
+        //   **都**有 `background:var(--dsw-specific-sidebar-fill)`——inner root
+        //   完全覆盖 column（height:100% + flex 布局），column 改背景后视觉
+        //   上仍被 inner 的 specific-sidebar-fill（与对话不同的灰色 / 深灰）
+        //   覆盖。实测"开启后视觉无变化"。修法：选择器同时命中 column 与
+        //   内部 SidebarRoot（`[class*="_root"]` contains 匹配 DSH CSS module
+        //   命名约定 `<hash>_<name>_root`，hash-independence 与 v0.7.3 HoverCard
+        //   同策略），让两层都用 bg-base。
+        //   - 列 column（v0.9.9 已命中）：命中 background 实际不可见但保持——
+        //     DSH 后续给 column 加新 wrapper（DragHandle 等）可能露出底色
+        //   - inner root（v0.9.13 新增）：实际可见侧栏 UI 容器，必须改
+        //   - 列边框 border-right 保留——用户原意是背景一致，不是无边界；
+        //     边框分割由 border 单独承担，移除会偏离需求
+        //   - 子元素（会话项 / 按钮 / hover 态）不动——它们有功能性背景，
+        //     视觉行为零变化
+        //   - 后代选择器（无 `>`）：DSH 当前 sidebarCol 直接子就是 SidebarRoot，
+        //     但若未来在两者间加 wrapper（如动画层 / portal mount point），
+        //     后代选择器仍能命中内部 `_root`；直接子选择器 `>` 会被切断。
+        //     内层 qDHVXG_root（WorkspaceList 根，目前无 background）即使被
+        //     命中也没视觉副作用（无 bg → bg-base 仍透明覆盖）；若 DSH 后续
+        //     给它加 background，bg-base 仍是一致的对话区色——保持视觉统一
+        //   - **v0.9.14 增量**：用 `*=`（contains）而非 `*=` 上的 `^=` 或 `$=`——
+        //     DSH SidebarRoot 在收起状态额外加 `hHd-Xa_collapsed` + `hHd-Xa_railIn`
+        //     类，整个 className 字符串从 `"hHd-Xa_root"` 变成
+        //     `"hHd-Xa_root hHd-Xa_collapsed hHd-Xa_railIn hHd-Xa_quietBars"`
+        //     （末尾是 `_railIn` 或 `_quietBars`），`[class$="_root"]` ends-with
+        //     匹配失效——收起时小侧栏仍是 `--dsw-specific-sidebar-fill` 的灰。
+        //     改 `[class*="_root"]` contains 后匹配 className 任何位置含 `_root`
+        //     子串的元素，与 className 是否拼接后续修饰类无关，展开/收起两态
+        //     都命中
         //
         // 默认 OFF：本 tweak 是 v0.9.9 新引入，倾向保守——老用户升级后默认
         //   视觉不变，需要在设置页显式开启；与 v0.9.6 disclosure-end-collapse
         //   的"默认 ON"反着来（后者是修复 UX 痛点必开，前者是视觉偏好可选）。
         id: "sidebar-match-conversation-bg",
         name: "侧栏背景与对话一致",
-        description: "DSH 默认左侧栏（展示会话列表的区域）有独立的背景色，与对话区视觉上有明显分割。开启后把侧栏列容器的背景设为对话区同款（用 DSH 主题变量 --dsw-alias-bg-base，主题没定义时退化到 --dsw-alias-bg-layer-1 再退化到白），让两个区域在背景色上融合。会话项 / 按钮 / hover 态等子元素的视觉行为不变（只改列容器背景）。",
+        description: "DSH 默认左侧栏（展示会话列表的区域）有独立的背景色，与对话区视觉上有明显分割。开启后把侧栏列容器及其内 SidebarRoot（高度 100% 完全覆盖列容器）的背景都设为对话区同款，让两个区域在背景色上融合。会话项 / 按钮 / hover 态等子元素的视觉行为不变。",
         // 仅开关型 tweak：enabled 和 value 复用同一 key（与 simple-mode / hide-* 同模式），
         //   localStorage 只存一个布尔字段；TweakRow 通过 k2===k1 检测不渲染数字框。
         configKeys: { enabled: "sidebarMatchConversationBg", value: "sidebarMatchConversationBg" },
@@ -1098,14 +1277,43 @@ window.__ModuleLoader__.load({
           // 三层 fallback 链：--dsw-alias-bg-base（DSH 主背景，ssh / task-board 面板用同款）
           //   → --dsw-alias-bg-layer-1（DSH 卡片背景，disclosure 按钮背景同款）
           //   → #ffffff（硬值白）。任意一层在当前主题下可用即可。
-          return "/* === sidebar-match-conversation-bg v0.9.9 : 侧栏 [data-pane=\"sidebar\"] 列容器背景与对话区一致（--dsw-alias-bg-base） === */\n" +
+          //
+          // v0.9.15 三层防线（覆盖此 tweak 自 v0.9.9 以来的所有已知失效场景）：
+          //   ① `[data-pane="sidebar"]` 自己 → column（v0.9.9 起就有）
+          //   ② `[data-pane="sidebar"] [class*="_root"]` → SidebarRoot + 任何 _root 结尾类
+          //      的后代元素（v0.9.13 起；v0.9.14 把 `$=` 改 `*=` 处理收起态 className
+          //      末尾被修饰类占据的情况）
+          //   ③ `--dsw-specific-sidebar-fill: transparent` → 覆盖整个侧栏作用域内
+          //      该 CSS 变量的值。任何在侧栏后代里 `var(--dsw-specific-sidebar-fill)`
+          //      引用的元素都解析为 transparent——即使 DSH 后续在侧栏里加新元素并
+          //      引用此变量，也不会再显示原色。这是最稳的兜底。
+          //   ④ `background: ...` 显式赋给 `[data-pane="sidebar"]` 自身（与 ① 重复但
+          //      + !important 强化，DSH `pI_x6G_sidebarCol` 的 `border-right` 等
+          //      同规则组 CSS 变量修改可能引发 cascade 重排时仍生效）
+          //
+          // 用户实测"展开页面左上角的部分，过一会就会变成灰色，hover 变白，
+          // 移走一段时间又变灰"——v0.9.14 之前 hover 行为可能来自某个我们
+          // 没覆盖到的元素（如 panelRoot 或后代 root 类组件）；v0.9.15 加
+          // 变量级别 + 多层 selector 兜底后理论上不再出现这种边角情况。
+          //
+          // 兼容性：DSH 升级换 hash 也仍命中（className 仍含 `_root` 子串，
+          //   v0.7.3 / v0.7.5 同策略）；不变类名 / ID / attribute / 调试 API / localStorage。
+          return "/* === sidebar-match-conversation-bg v0.9.15 : 侧栏 [data-pane=\"sidebar\"] 列容器 + 其内所有 _root 后代 + --dsw-specific-sidebar-fill 变量覆盖，三层兜底强制 background 与对话区一致 === */\n" +
+            // ① 列容器显式 background（带 !important）
             "[data-pane=\"sidebar\"] {" +
+              "background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1,#ffffff)) !important;" +
+              // ③ 变量级覆盖：让侧栏作用域内所有 `var(--dsw-specific-sidebar-fill)`
+              //   引用都解析为 transparent。即使 DSH 在该作用域内加新元素（panel / overlay /
+              //   hover 层 / 装饰层）使用此变量，也不再显示原 sidebar-fill 色
+              "--dsw-specific-sidebar-fill:transparent;" +
+            "}\n" +
+            // ② 内部 _root 后代（SidebarRoot + 任何 _root 结尾类的组件如 WorkspaceList root）
+            "[data-pane=\"sidebar\"] [class*=\"_root\"] {" +
               "background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1,#ffffff)) !important" +
             "}";
         }
-      }
+      },
     ];
-
     // ===== storage =====
     // ====================================================================
     // localStorage 持久化（按 dsh-persistent-plugin-authoring skill §三）

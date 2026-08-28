@@ -20,7 +20,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 
 每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
 
-设置页每行附带"诊断"按钮，可输出当前状态、生成的 CSS 与命中元素；栏目顶部提供"复制状态到剪贴板"。运行时还暴露 `window.__dshUiTweaks` 调试接口（`getState` / `getInjectedCSS` / `getMatchedElements` / `debug` / `setState` / `reshim`）。
+设置页每行附带“诊断”按钮，可输出当前状态、生成的 CSS 与命中元素；栏目顶部提供“复制状态到剪贴板”。运行时还暴露 `window.__dshUiTweaks` 调试接口（`getState` / `getInjectedCSS` / `getMatchedElements` / `debug` / `setState` / `reshim` / `firstMessageJump` / `disclosureEndCollapse`）。
 
 ### `first-message-jump` 启用后的额外副作用（v0.9.1 起）
 
@@ -94,3 +94,4 @@ pnpm install --no-frozen-lockfile
 ## 许可证
 
 [MIT](./LICENSE)
+

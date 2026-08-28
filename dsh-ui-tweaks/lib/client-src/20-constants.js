@@ -1,4 +1,47 @@
     // ===== constants =====
+        // v0.9.15：sidebar-match-conversation-bg 用户实测"展开页面左上角的
+        //   部分，过一会就会变成灰色，我鼠标光标移动到上面的时候，又变成
+        //   了白色，移走一段时间，又变成灰色"——v0.9.9/v0.9.13/v0.9.14 三层
+        //   都只覆盖 column + 已知 _root 后代，没考虑 DSH 侧栏作用域内 CSS
+        //   变量 `--dsw-specific-sidebar-fill` 的扩散——DSH 内部 sidebarCol /
+        //   SidebarRoot 都引用此变量赋值 background，column + inner root
+        //   直接 background 覆盖可能因 DSH 后续调整（如 cascade 重排、
+        //   HMR 重注入、theme 异步应用、panel hover 切换状态等）失效，
+        //   露出 sidebar-fill 的灰；hover 触发某些透明层覆盖又显出白色
+        //   frame 背景；hover 出后透明层消失重新露出 inner root 的灰。
+        //   修法：三层兜底——① 列显式 background + !important 强化
+        //   + ② 内部 _root 后代 background + ③ `--dsw-specific-sidebar-fill`
+        //   变量级覆盖为 transparent，让侧栏作用域内任何 `var(--dsw-specific-sidebar-fill)`
+        //   引用解析为透明，从根上消除"侧栏内任何元素用 sidebar-fill 色
+        //   覆盖 frame 背景"的可能。
+        //   兼容性：tweak id / localStorage key / 调试 API / 类名 / ID /
+        //   attribute / 设置页 UI 全部不动；只多了一条 `--dsw-specific-sidebar-fill`
+        //   变量覆盖 + 列选择器显式 background。DSH 升级换 hash 也仍命中
+        //   （className 仍含 `_root` 子串；变量覆盖作用于整个作用域，新元素
+        //   也被覆盖）。
+        //   详见 `25-tweaks.js` 的 sidebar-match-conversation-bg buildCSS
+        //   v0.9.15 段 + `00-banner.js` v0.9.15 banner 段 + CHANGELOG v0.9.15。
+        // v0.9.14：sidebar-match-conversation-bg v0.9.13 在收起态失效——
+        //   DSH SidebarRoot 收起态额外加 `hHd-Xa_collapsed` + `hHd-Xa_railIn`
+        //   + `hHd-Xa_quietBars` 类，整个 className 字符串从 `"hHd-Xa_root"`
+        //   变成 `"hHd-Xa_root hHd-Xa_collapsed hHd-Xa_railIn hHd-Xa_quietBars"`，
+        //   末尾不再是 `_root`——`[class$="_root"]` ends-with 匹配失效，小侧栏
+        //   仍显示 `--dsw-specific-sidebar-fill` 的灰。改 `[class*="_root"]`
+        //   contains 后与 className 拼接顺序无关，展开 / 收起两态都命中。
+        //   其他 tweak / 类名 / ID / attribute / localStorage key / 调试 API
+        //   全不动。详见 `25-tweaks.js` 的 sidebar-match-conversation-bg
+        //   buildCSS v0.9.14 段 + `00-banner.js` v0.9.14 banner 段 + CHANGELOG v0.9.14。
+        // v0.9.13：sidebar-match-conversation-bg v0.9.9 选择器只命中 sidebarCol，
+        //   但 DSH AppFrame 内的 `<div class="hHd-Xa_root">`（SidebarRoot 组件根，
+        //   height:100%）也设了 `background:var(--dsw-specific-sidebar-fill)`，
+        //   完全覆盖 column——column 改背景视觉上仍被 inner 的特定色盖住，
+        //   用户实测"开启后无变化"。修法：选择器同时命中 column + 其内
+        //   SidebarRoot（`[class*="_root"]` contains，DSH CSS module
+        //   `<hash>_<name>_root` 约定，hash-independence；后代选择器
+        //   兼容 DSH 后续在两者间加包装层）。其他 tweak / 类名 /
+        //   ID / attribute / localStorage key / 调试 API 全不动。详见
+        //   `25-tweaks.js` 的 sidebar-match-conversation-bg buildCSS v0.9.13 段
+        //   + `00-banner.js` v0.9.13 banner 段 + CHANGELOG v0.9.13。
         // v0.9.12：simple-mode 状态行 v0.9.10 CSS 三层 reset 兜不住 DSH 后续添加的
         //   loader / shimmer 子元素；走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的
         //   JS 回退路径——`createSimpleModeStatusController#purgeTurnStatus()` 在
@@ -60,7 +103,7 @@
         // data-variant="think"）。两处合并让 v0.9.3 美术度升级的 8 类语义色
         // 真正生效（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 /
         // plan 绿 / goal 粉 / git 石板——之前一直停在 generic 灰）。
-        var VERSION = "0.9.12";
+        var VERSION = "0.10.1";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -86,7 +129,7 @@
         //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。
         //   目标三类 DisclosureRow：ReasoningRow（Think, data-variant="think"）、
         //   GenericCommandCard（工具调用输出, data-variant="others"）、
-        //   ContextInjectionRow（上下文注入, class 含 _root 且 data-open）。
+        var VERSION = "0.9.15";
         //   button 在 body 元素里（wrapper div + button），点击时找 body 父元素
         //   里 rowClassName 那行调 .click()——DSH React onToggle 触发折叠，body 与
         //   按钮一起被卸载；stopPropagation 避免冒泡到 row（虽然 row 是 body 兄弟
@@ -122,4 +165,5 @@
         var JUMP_BUTTON_TITLE = "上一条我发的消息（Shift+点击 = 回到最早）";  // title 属性（v0.9.1 新增）
         // SVG 上箭头（与 v0.8.0 同一 path：▲ 朝上表示"上一条"）
         var JUMP_SVG_UP = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5L8 6l4.5 4.5"/></svg>';
+
 
