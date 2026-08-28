@@ -26,7 +26,6 @@
         var toolAvail = snap.config && snap.config.toolAvailable;
         // v0.5.0：commit-toggle 升级为「显示选项」按钮——commitVisible 改为 optionsOpen（菜单开/关态）
         var optionsOpen = !!snap.optionsOpen;
-        var commitVisible = optionsOpen; // 旧字段别名（保留 v0.4.0 兼容，避免下面行内引用改动）
         var headerHtml =
           '<span class="DGH_title">Git/GitHub</span>' +
           '<button class="DGH_iconBtn" data-action="config" title="配置扫描根路径">' +
@@ -217,9 +216,6 @@
 
         // v0.1.7："已隐藏 N 个" 小条只在 selectionMode 激活时显示在 body 底部
         var hiddenCount = snap.repos.filter(function (r) { return snap.hiddenPaths.indexOf(r.path) >= 0; }).length;
-        // 移除旧的"hiddenBar"（v0.1.6 默认在顶部，v0.1.7 改为仅 selectionMode 模式底部显示）
-        var oldHiddenBar = bodyEl.querySelector(".DGH_hiddenBar");
-        if (oldHiddenBar) oldHiddenBar.remove();
 
         // 仓库列表
         var oldList = bodyEl.querySelector(".DGH_list, .DGH_empty, .DGH_loading");

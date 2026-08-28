@@ -59,7 +59,6 @@
         mergeRepos: this.mergeRepos,        // v0.3.0
         mergeBusy: this.mergeBusy,          // v0.3.0
         lastMergeResult: this.lastMergeResult, // v0.3.0
-        commitSectionVisible: this.sections.commit, // v0.5.0：保留旧字段名作为快照别名（v0.4.0 兼容；view 已切到 sections）
         sections: this.sections,                     // v0.5.0：统一管理 4 个功能区可见性
         pinnedPaths: Array.from(this.pinnedPaths),
         hiddenPaths: Array.from(this.hiddenPaths),
