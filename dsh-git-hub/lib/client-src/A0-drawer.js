@@ -28,9 +28,11 @@
 
       function applyOpen() {
         if (controller.getSnapshot().drawerOpen) {
-          document.documentElement.removeAttribute("data-dsh-taskpool-drawer-open");
-          document.documentElement.removeAttribute("data-dsh-ssh-active");
-          document.documentElement.removeAttribute("data-dsh-taskboard-active");
+          // 互斥协议：清掉所有已知 panel 抽屉 attr（除自己）→ 强制只有一个打开
+          for (var i = 0; i < KNOWN_DRAWER_ATTRS.length; i++) {
+            if (KNOWN_DRAWER_ATTRS[i] === DRAWER_ATTR) continue;
+            document.documentElement.removeAttribute(KNOWN_DRAWER_ATTRS[i]);
+          }
           document.documentElement.setAttribute(DRAWER_ATTR, "");
           // 设 CSS 变量 --active-drawer-width = 自己抽屉宽度（用于 FAB 让位公式）
           document.documentElement.style.setProperty("--active-drawer-width", DRAWER_WIDTH + "px");
