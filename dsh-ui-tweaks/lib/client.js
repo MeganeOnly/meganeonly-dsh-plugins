@@ -1,6 +1,106 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.1：stats-line-position 隐藏底部原生统计行时改用 `visibility:hidden`
+ *   而不是 `display:none`。
+ *
+ *   用户反馈 v0.10.0："这样就导致了发消息的框往下走了一点点，我希望它
+ *   还是处于原来的位置"。
+ *
+ *   根因：统计行是 composer 卡片的 footer（`conversation.composer.dock`
+ *   作为输入条的 footer prop 渲染），高 24px（DSH `.FJxK0a_root` 的
+ *   `line-height:20px` + `padding:4px ... 0px`）；而 composer seat 是
+ *   `position:sticky; bottom:0` 贴着滚动容器底部的（DSH
+ *   `.wSkVaW_composerSeat`）。`display:none` 把统计行从布局里彻底移除
+ *   → 卡片整体变矮 24px → 因为底边被钉住，顶边（也就是输入行）只能
+ *   往下挪 24px。
+ *
+ *   修法：`visibility:hidden` —— 元素的盒子仍然生成、仍然参与布局、
+ *   React 仍然照常更新它的文本，只是不渲染。24px 分毫不差地保留，
+ *   输入框位置与"底部"位置完全一致。比"补一个硬编码 24px padding"更稳：
+ *   不依赖 DSH 的字号 / 行高 / padding 具体数值，DSH 后续改统计行样式
+ *   也自动跟随。
+ *
+ *   CSS 从
+ *     [data-slot="conversation.composer.dock"]{display:none !important}
+ *   改为
+ *     [data-slot="conversation.composer.dock"],
+ *     [data-slot="conversation.composer.dock"] *{visibility:hidden !important}
+ *   两条选择器：出口自身 + 其所有后代。`visibility` 本身是继承属性，
+ *   出口那层 `display:contents` 不生成盒子但仍能把 `hidden` 传给子元素；
+ *   后代那条是显式兜底，防 DSH 将来给统计行自己写 `visibility`。
+ *   已核对 DSH 侧只有 `.wSkVaW_root[data-phase=settling] .wSkVaW_composerSeat
+ *   {visibility:hidden}` 一条 visibility 规则（settling 阶段整个 seat 都
+ *   隐藏），没有任何 `visibility:visible` 的后代重置会与本规则冲突。
+ *
+ *   代价（有意）：非"底部"位置时输入框下方保留一条 24px 空白——这正是
+ *   把输入框钉在原位所必须的空间。
+ *
+ *   兼容性：tweak id / choices / localStorage key / 镜像逻辑 / controller /
+ *   诊断 API / 设置页 UI 全部不动，只改 buildCSS 输出的隐藏属性。
+ *
+ *   改动文件：`25-tweaks.js` 的 stats-line-position buildCSS；
+ *     `20-constants.js` VERSION 0.10.0 → 0.10.1 + 头部注释；
+ *     `69-stats-line-position.js` 头部注释同步；`00-banner.js` 本段；
+ *     `package.json` / `README.md` / `CHANGELOG.md` / `docs/maintainability.md` 同步。
+ *
+ * v0.10.0：新增 stats-line-position tweak——对话底部那行运行统计
+ *   （"3 轮 · 45 步 | LLM 12m13s · 工具调用 1m21s | 首 token 平均 2.9s ·
+ *   71 tok/s | 缓存命中 96% | 输入 3.6M tok · 输出 42.7K tok"）现在三选一：
+ *
+ *     bottom（默认）  DSH 原样，零 CSS、controller 停机
+ *     top             底部整条隐藏，改在顶部标题行"对话名 + 模式"右边显示
+ *     hidden          底部整条隐藏，不再显示
+ *
+ *   这行统计由 DSH `dsh-client-ui-conversation` 的 StatsLine 组件渲染，
+ *   注册在 slot `conversation.composer.dock`（id "stats"，order 0）。
+ *
+ *   两个实现要点：
+ *
+ *   1) 隐藏走**纯 CSS**，锚点是 slot 出口属性而不是 CSS module 类名——
+ *      DSH renderer（`dsh-client-ui-renderer` SlotOutlet）给每个 slot 出口
+ *      包一层 `<div data-slot="<slot key>" style="display:contents">`，
+ *      这个属性不含构建 hash，跨 DSH 版本稳定；而统计行自身的类名
+ *      `.FJxK0a_root` 每次 DSH 构建都会变。DSH 自己的 slot 目录把
+ *      `conversation.composer.dock` 的 occupants 记为
+ *      `["client-ui-conversation StatsLine id 'stats'"]`——唯一占位者就是
+ *      统计行，所以隐藏整个出口 == 隐藏统计行。`!important` 必需：出口的
+ *      `display:contents` 是 inline style，普通样式表规则压不过它。
+ *
+ *   2) 顶部走**镜像**而不是搬 DOM——把 DSH 渲染的原生统计行 appendChild
+ *      到标题簇里，React 下次卸载它（StatsLine 在 groups 为空时
+ *      `return null`，新会话开局必然发生）会对**它记录的原父节点**调
+ *      removeChild → NotFoundError 崩掉 React 树。镜像方案：原生节点
+ *      始终留在原位（只是 `display:none`，React 照常更新它的文本），
+ *      本插件另建一个 React 不认识的尾部子节点，400ms 轮询把原生行的
+ *      子节点 `cloneNode(true)` 搬进去（保留 `_sep` 分隔符类名，DSH 自己
+ *      的分隔符样式继续生效；不搬克隆根，避免带上底部专用的居中 +
+ *      `max-width` + padding）。文本没变则整段跳过，不做无谓 DOM 重建。
+ *      与 v0.9.6 disclosure-end-collapse 往 body 末尾 appendChild 按钮
+ *      同一模式——已验证不干扰 React 协调。轮询同时兼任自愈：DSH 换会话
+ *      重建 header 后下一 tick 自动在新标题簇补上镜像。
+ *
+ *   顺带的框架能力：TweakRow 支持 `choices`（`[{value,label}]`）——有
+ *   choices 的 tweak 在设置页渲染 `<select>` 而不是开关，`configKeys.enabled`
+ *   存选项字符串。这是本插件第一条非布尔 tweak；开关型 tweak 走原路径，
+ *   行为零变化。脏值 / 老布尔值由 `statsNormalizePosition()` 统一退回
+ *   "bottom"，所以老用户升级后视觉零变化。
+ *
+ *   顺带的维护动作：`68-first-message-jump.js` / `68a-first-message-jump-utils.js`
+ *   / `75-react-tweak-row.js` 三个 source 文件末尾缺行尾换行（违反仓库
+ *   `docs/maintainability.md` § 五 "每个 source 文件末尾必须有 \n"），
+ *   导致拼接时下一个文件的 `// ===== marker =====` 首行被接到上一个文件
+ *   的 `}` 后面。补上换行（各 +1 字节），bundle 里所有 section marker
+ *   现在都独立成行。
+ *
+ *   改动文件：新增 `69-stats-line-position.js`（controller + 镜像逻辑）；
+ *     `20-constants.js` 加 STATS_* 常量 + VERSION 0.9.15 → 0.10.0；
+ *     `25-tweaks.js` 加 stats-line-position 条目（含 choices）；
+ *     `75-react-tweak-row.js` 支持 choices 下拉；`35-styles.js` 加
+ *     `.DTPD_select`；`85-apply.js` 接线 controller + 诊断
+ *     `window.__dshUiTweaks.statsLinePosition()`；`package.json` /
+ *     `README.md` / `CHANGELOG.md` / `docs/maintainability.md` 同步。
+ *
  * v0.9.15：sidebar-match-conversation-bg 用户实测"展开页面左上角的
  *   部分，过一会就会变成灰色，我鼠标光标移动到上面的时候，又变成了
  *   白色，移走一段时间，又变成灰色"——v0.9.9/v0.9.13/v0.9.14 三层修复
@@ -462,7 +562,6 @@
  *    getMatchedElements, debug, setState, reshim }`
  *  - TWEAKS 数组仍是 UI + CSS + 持久化的单一数据源
  */
-
 window.__ModuleLoader__.load({
   id: "dsh-ui-tweaks",
   factory: (require) => {
@@ -476,6 +575,32 @@ window.__ModuleLoader__.load({
     var inject = ["slots"];
 
     // ===== constants =====
+        // v0.10.1：stats-line-position 隐藏底部原生行时改用 `visibility:hidden`
+        //   而不是 `display:none`——用户反馈 v0.10.0 "发消息的框往下走了一点点"。
+        //   根因：统计行是 composer 卡片的 footer（高 24px = line-height 20 +
+        //   padding-top 4），而 composer seat 是 `position:sticky;bottom:0` 贴底的
+        //   （DSH `.wSkVaW_composerSeat`），卡片变矮 24px 就等于输入行整体下移
+        //   24px。visibility 保留盒子（照常参与布局、React 照常更新其文本），
+        //   高度分毫不差地保留 → 输入框位置与"底部"位置完全一致；比补一个
+        //   硬编码 24px padding 更稳（不依赖 DSH 的字号 / 行高 / padding 数值）。
+        //   代价：非"底部"位置时输入框下方保留一条 24px 空白——这正是把输入框
+        //   钉在原位所必须的空间。详见 `25-tweaks.js` 的 stats-line-position
+        //   buildCSS v0.10.1 段 + `00-banner.js` v0.10.1 banner 段。
+        // v0.10.0：新增 stats-line-position tweak——对话底部那行统计
+        //   （"N 轮 · M 步 | LLM ... | 首 token ... | 缓存命中 ...% | 输入/输出 tok"）
+        //   现在可三选一：底部（DSH 默认）/ 顶部标题右侧 / 不显示。
+        //   这是本插件第一条**非布尔**的 tweak——configKeys.enabled 存的是
+        //   "bottom" / "top" / "hidden" 字符串；TweakRow 通过新增的
+        //   `choices` 字段判断渲染下拉框而非开关（有 choices 就不渲染开关）。
+        //   实现要点见 `69-stats-line-position.js` 头部注释：
+        //     - 隐藏走纯 CSS（`[data-slot="conversation.composer.dock"]`
+        //       出口 visibility:hidden !important，v0.10.1 起；v0.10.0 曾用
+        //       display:none 但会让贴底的输入框下移 24px）——DSH renderer
+        //       给每个 slot 出口包的 `data-slot` 属性不含 hash，比 CSS module
+        //       类名稳定
+        //     - 顶部走"镜像"（本插件 createElement 的元素 append 到标题簇
+        //       末尾，周期性克隆原生行内容）——不搬 React 拥有的 DOM 节点，
+        //       避免 React 卸载原节点时 removeChild 找不到父节点而崩树
         // v0.9.15：sidebar-match-conversation-bg 用户实测"展开页面左上角的
         //   部分，过一会就会变成灰色，我鼠标光标移动到上面的时候，又变成
         //   了白色，移走一段时间，又变成灰色"——v0.9.9/v0.9.13/v0.9.14 三层
@@ -606,7 +731,7 @@ window.__ModuleLoader__.load({
         //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。
         //   目标三类 DisclosureRow：ReasoningRow（Think, data-variant="think"）、
         //   GenericCommandCard（工具调用输出, data-variant="others"）、
-        var VERSION = "0.9.15";
+        //   ContextInjectionRow（上下文注入, class 含 _root 且 data-open）。
         //   button 在 body 元素里（wrapper div + button），点击时找 body 父元素
         //   里 rowClassName 那行调 .click()——DSH React onToggle 触发折叠，body 与
         //   按钮一起被卸载；stopPropagation 避免冒泡到 row（虽然 row 是 body 兄弟
@@ -619,6 +744,20 @@ window.__ModuleLoader__.load({
           '[data-variant="others"] [class*="_body"]',
           '[class*="_root"][data-open] [class*="_body"]'
         ].join(", ");
+        // v0.10.0：统计行位置（stats-line-position tweak）。
+        //   锚点全部走 DSH renderer 的 slot 出口属性 `data-slot="<slot key>"`
+        //   （dsh-client-ui-renderer SlotOutlet 给每个出口包一层
+        //   `<div data-slot=... style="display:contents">`）——不含 CSS module
+        //   hash，跨 DSH 版本稳定；只有兜底选择器才用 `[class*="..."]` 子串匹配。
+        var STATS_DOCK_SEL = '[data-slot="conversation.composer.dock"]';          // 底部统计行出口（唯一占位者 = StatsLine）
+        var STATS_HEADER_ACTIONS_SEL = '[data-slot="conversation.session.header.actions"]'; // 顶部"模式"标签出口（其祖父 = 标题簇）
+        var STATS_TITLE_CLUSTER_HINT_SEL = '[class*="_titleCluster"]';            // 兜底：标题簇（对话名 + 模式那一簇）
+        var STATS_ROOT_HINT_SEL = '[class*="_root"]';                             // 出口内定位 StatsLine 根元素
+        var STATS_MIRROR_ATTR = "data-dsh-ui-tweaks-stats-mirror";                // 顶部镜像元素标记（本插件独占）
+        var STATS_POS_BOTTOM = "bottom";
+        var STATS_POS_TOP = "top";
+        var STATS_POS_HIDDEN = "hidden";
+        var STATS_POLL_MS = 400;   // 镜像同步轮询间隔（统计行按"步"更新，不必更密）
         // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
         var SHIFT_TARGET_ATTR = "data-dsh-ui-tweaks-shift-target";
         var SHIFT_TARGET_CHATFLOW = "chatflow";
@@ -642,7 +781,6 @@ window.__ModuleLoader__.load({
         var JUMP_BUTTON_TITLE = "上一条我发的消息（Shift+点击 = 回到最早）";  // title 属性（v0.9.1 新增）
         // SVG 上箭头（与 v0.8.0 同一 path：▲ 朝上表示"上一条"）
         var JUMP_SVG_UP = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5L8 6l4.5 4.5"/></svg>';
-
 
     // ===== tweaks =====
     /**
@@ -1313,7 +1451,93 @@ window.__ModuleLoader__.load({
             "}";
         }
       },
+      {
+        // v0.10.0 新增：统计行位置（本插件第一条三选一 tweak）。
+        //
+        // 用户反馈：对话底部那行统计（"3 轮 · 45 步 | LLM 12m13s · 工具调用
+        //   1m21s | 首 token 平均 2.9s · 71 tok/s | 缓存命中 96% | 输入
+        //   3.6M tok · 输出 42.7K tok"）想能选位置——保持底部 / 挪到顶部
+        //   "对话名 + 模式"右边 / 干脆不显示。
+        //
+        // 数据形态：与其它"仅开关型"tweak 一样 enabled 与 value 复用同一
+        //   key（localStorage 只存一个字段），但存的是**字符串**
+        //   "bottom" / "top" / "hidden" 而不是布尔。TweakRow 见到
+        //   `choices` 字段就渲染 <select> 而不是开关（见 75-react-tweak-row.js）。
+        //   老用户升级后该 key 不存在 → defaultState() 补 "bottom" → 视觉零变化。
+        //   脏值 / 老布尔值由 statsNormalizePosition() 统一退回 "bottom"。
+        //
+        // CSS 侧只负责"隐藏原生行"（top / hidden 两种位置都要隐藏）：
+        //   隐藏的是整个 `conversation.composer.dock` slot 出口。DSH 自己的
+        //   slot 目录把该 slot 的 occupants 记为
+        //   `["client-ui-conversation StatsLine id 'stats'"]`——唯一占位者
+        //   就是统计行，所以隐藏整个出口 == 隐藏统计行，且完全不依赖
+        //   CSS module hash 类名（`.FJxK0a_root` 每次 DSH 构建都会变）。
+        //
+        // **v0.10.1：用 `visibility:hidden` 而不是 `display:none`**——
+        //   用户反馈 v0.10.0 "发消息的框往下走了一点点"。根因：统计行是
+        //   composer 卡片的 footer（`conversation.composer.dock` 作为输入条的
+        //   footer prop 渲染），高 24px（`line-height:20px` + `padding-top:4px`）；
+        //   而 composer seat 是**贴着滚动容器底部**的（sticky bottom），卡片
+        //   变矮 24px 就等于输入行整体下移 24px。`display:none` 把元素从布局里
+        //   彻底移除 → 卡片变矮 → 输入框下移；`visibility:hidden` 保留元素的
+        //   盒子（照常参与布局、照常被 React 更新文本），只是不渲染 → 高度
+        //   分毫不差地保留，输入框位置与"底部"位置时完全一致。
+        //   比"补一个硬编码 24px padding"更稳：不依赖 DSH 的字号 / 行高 /
+        //   padding 数值，DSH 后续改统计行样式也自动跟随。
+        //   代价：非"底部"位置时输入框下方保留一条 24px 空白（这正是把输入框
+        //   钉在原位所必须的空间）。
+        //   两条选择器：出口自身 + 其所有后代。`visibility` 本身是继承属性，
+        //   出口那层 `display:contents` 不生成盒子但仍能把 `hidden` 传给子元素；
+        //   后代那条是显式兜底，防 DSH 将来给统计行显式写 `visibility`。
+        //   `!important` 必需：出口的 `display:contents` 是 **inline style**，
+        //   普通样式表规则压不过它（这里虽然改的是 visibility 而非 display，
+        //   但同规则组内保持一致的 !important 强度，避免 DSH 后续加规则时翻盘）。
+        //
+        // 顶部镜像的 DOM 维护由 69-stats-line-position.js 的 controller 负责
+        //   （apply() 按状态启停），这里只出镜像的外观 CSS。
+        id: "stats-line-position",
+        name: "统计行位置",
+        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
+        choices: [
+          { value: STATS_POS_BOTTOM, label: "底部（DSH 默认）" },
+          { value: STATS_POS_TOP, label: "顶部标题右侧" },
+          { value: STATS_POS_HIDDEN, label: "不显示" }
+        ],
+        configKeys: { enabled: "statsLinePosition", value: "statsLinePosition" },
+        defaults: { enabled: STATS_POS_BOTTOM, value: STATS_POS_BOTTOM },
+        buildCSS: function (state) {
+          var pos = statsNormalizePosition(state.statsLinePosition);
+          if (pos === STATS_POS_BOTTOM) return null;
+          // v0.10.1：visibility 而非 display——保留 24px 占位，输入框不下移
+          var css = "/* === stats-line-position v0.10.1 : " + pos + " —— 隐藏底部 composer.dock 出口（唯一占位者 = DSH StatsLine）；用 visibility 保留占位，输入框不下移 === */\n" +
+            STATS_DOCK_SEL + "," + STATS_DOCK_SEL + " *{visibility:hidden !important;}";
+          if (pos !== STATS_POS_TOP) return css;
+          // 顶部镜像外观：跟着标题簇的 flex 流排在"模式"标签右边（titleCluster
+          //   自带 gap:10px，无需额外 margin）。可收缩 + 省略号，避免长统计
+          //   把面包屑挤没；颜色 / 字号对齐 DSH 原生统计行（tertiary label /
+          //   12px / 20px 行高）；tabular-nums 让数字跳动时宽度稳定。
+          //   分隔符 `<span class="..._sep">` 是从原生行克隆来的，DSH 自己的
+          //   `_sep` 规则（color + margin:0 10px）继续生效，不用我们重写。
+          return css + "\n" +
+            "[" + STATS_MIRROR_ATTR + "]{" +
+              "flex:0 1 auto;" +
+              "min-width:0;" +
+              "overflow:hidden;" +
+              "white-space:nowrap;" +
+              "text-overflow:ellipsis;" +
+              "color:var(--dsw-alias-label-tertiary);" +
+              "font-size:12px;" +
+              "line-height:20px;" +
+              "font-variant-numeric:tabular-nums;" +
+              "cursor:default;" +
+            "}\n" +
+            // 无统计可显示时（新会话开局 StatsLine 返回 null）镜像为空——
+            //   连同 titleCluster 的 gap 一起去掉，标题行不留可疑空隙
+            "[" + STATS_MIRROR_ATTR + "]:empty{display:none;}";
+        }
+      }
     ];
+
     // ===== storage =====
     // ====================================================================
     // localStorage 持久化（按 dsh-persistent-plugin-authoring skill §三）
@@ -1443,6 +1667,10 @@ window.__ModuleLoader__.load({
      * v0.7.5：description 从 `<p>` 收进 `title` 属性后，row 默认不再渲染描述——
      * 给 `.DTPD_item` 加 `cursor:help` 提示可悬停看说明；同时删除
      * `.DTPD_itemDesc` 规则（不再被任何 JSX 引用）。
+     *
+     * v0.10.0：加 `.DTPD_select`——"多选一"tweak（首例 stats-line-position）
+     * 头部右侧渲染下拉框而非开关。外观对齐已有的 `.DTPD_input` 数字框
+     * （同边框 / 圆角 / 内边距 / focus 色），只是宽度按内容给个下限。
      */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
@@ -1461,7 +1689,10 @@ window.__ModuleLoader__.load({
       ".DTPD_valueRow{align-items:center;gap:8px;display:flex}\n" +
       ".DTPD_valueLabel{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;min-width:64px}\n" +
       ".DTPD_input{box-sizing:border-box;width:120px;color:var(--dsw-alias-label-primary);background:var(--dsw-specific-input-major,#fff);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:6px;padding:4px 8px;font-family:inherit;font-size:13px;line-height:20px}\n" +
-      ".DTPD_input:focus{border-color:var(--dsw-alias-state-business-primary,#2563eb);outline:none}";
+      ".DTPD_input:focus{border-color:var(--dsw-alias-state-business-primary,#2563eb);outline:none}\n" +
+      // v0.10.0：多选一 tweak 的下拉框（stats-line-position 首用）
+      ".DTPD_select{box-sizing:border-box;flex:none;min-width:150px;cursor:pointer;color:var(--dsw-alias-label-primary);background:var(--dsw-specific-input-major,#fff);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:6px;padding:4px 8px;font-family:inherit;font-size:13px;line-height:20px}\n" +
+      ".DTPD_select:focus{border-color:var(--dsw-alias-state-business-primary,#2563eb);outline:none}";
 
     function injectSectionCSS() {
       if (document.querySelector("style[data-plugin-css=\"" + SECTION_CSS_TAG_ID + "\"]")) return;
@@ -3229,7 +3460,8 @@ window.__ModuleLoader__.load({
         getState: getState,
         get running() { return isRunning; }
       };
-    }// ===== first-message-jump utils =====
+    }
+// ===== first-message-jump utils =====
     // ====================================================================
     // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 `port` 作参
     // 数）。从 68-first-message-jump.js 拆出（v0.9.0 → v0.9.2 三轮迭
@@ -3507,7 +3739,206 @@ window.__ModuleLoader__.load({
       var raw = cs ? cs.getPropertyValue("--active-drawer-width") : "";
       var n = raw ? parseFloat(raw) : NaN;
       return isFinite(n) ? n : null;
-    }    // ===== debug-api =====
+    }
+    // ===== stats-line-position =====
+    // ====================================================================
+    // v0.10.0：统计行位置（stats-line-position tweak）
+    // --------------------------------------------------------------------
+    // DSH 对话底部那行统计（"3 轮 · 45 步 | LLM 12m13s · 工具调用 1m21s |
+    //   首 token 平均 2.9s · 71 tok/s | 缓存命中 96% | 输入 3.6M tok ·
+    //   输出 42.7K tok"）由 dsh-client-ui-conversation 的 StatsLine 组件渲染，
+    //   注册在 slot `conversation.composer.dock`（order 0，id "stats"）。
+    //
+    // 三种位置：
+    //   - bottom（默认）：DSH 原样，本控制器不启动，buildCSS 返回 null
+    //   - top：底部原生行整条隐藏，另在顶部标题行（"对话名 + 模式"那一簇）
+    //     右侧渲染一个**本插件独占的镜像元素**，内容周期性从原生行克隆
+    //   - hidden：底部原生行整条隐藏，不渲染镜像
+    //
+    // v0.10.1：隐藏用 `visibility:hidden` 而不是 `display:none`——统计行是
+    //   composer 卡片的 footer，而 composer seat 是 `position:sticky;bottom:0`
+    //   贴底的，卡片变矮 24px 就等于输入行整体下移 24px（用户实测"发消息的框
+    //   往下走了一点点"）。visibility 保留盒子（照常参与布局、照常被 React
+    //   更新文本），高度分毫不差地保留，输入框位置与"底部"完全一致。
+    //   详见 `25-tweaks.js` 的 stats-line-position buildCSS v0.10.1 段。
+    //
+    // 为什么"镜像"而不是"搬 DOM"：原生统计行与顶部标题行都是 DSH React
+    //   渲染的节点。把原生节点 appendChild 到别的容器里，React 在下次
+    //   卸载它（StatsLine 在 groups 为空时 return null，新会话开局必然发生）
+    //   时会对**它记录的原父节点**调 removeChild → NotFoundError 崩 React 树。
+    //   镜像方案里原生节点始终留在原位（只是不可见——React 照常更新
+    //   它的文本），我们只读它的内容；镜像是本插件 createElement 出来的、
+    //   React 不认识的额外尾部子节点（与 v0.9.6 disclosure-end-collapse
+    //   往 body 末尾 appendChild 按钮同一模式，已验证不干扰 React 协调）。
+    //
+    // 为什么锚点用 `[data-slot="..."]` 而不是 CSS module 类名：DSH renderer
+    //   （dsh-client-ui-renderer SlotOutlet）给**每个** slot 出口包一层
+    //   `<div data-slot="<slot key>" style="display:contents">`——不含 hash、
+    //   跨 DSH 版本稳定，比 `.FJxK0a_root` 这类每次构建都会变的 CSS module
+    //   hash 类名可靠得多。注意这层的 `display:contents` 是 inline style，
+    //   同规则组一律带 `!important` 以免被它或 DSH 后续规则翻盘。
+    //
+    // 隐藏粒度：直接隐藏整个 `conversation.composer.dock` 出口。DSH 自己的
+    //   slot 目录（dsh-cordis-client-runner 的 slot catalog）把该 slot 的
+    //   occupants 记为 `["client-ui-conversation StatsLine id 'stats'"]`——
+    //   唯一占位者就是统计行，所以隐藏整个出口 == 隐藏统计行，且不依赖任何
+    //   hash 类名。代价：若将来有第三方插件也往 composer.dock 注册条目，
+    //   本 tweak 开启（top / hidden）时会连带隐藏它——已在 tweak description
+    //   与 README 注明。
+    // ====================================================================
+
+    /** 把任意持久化值归一到三个合法位置之一（脏数据 / 老版本布尔值都退回 bottom）。 */
+    function statsNormalizePosition(value) {
+      if (value === STATS_POS_TOP) return STATS_POS_TOP;
+      if (value === STATS_POS_HIDDEN) return STATS_POS_HIDDEN;
+      return STATS_POS_BOTTOM;
+    }
+
+    /**
+     * 找 DSH 原生统计行的根元素（StatsLine 的 `<div className={...root}>`）。
+     *
+     * 策略：先用稳定锚点 `[data-slot="conversation.composer.dock"]` 圈定范围，
+     *   再在其中取**最内层**的 `[class*="_root"]`——DSH 用 Tooltip 包裹
+     *   StatsLine，若 Tooltip 将来也带 `_root` 类名，最内层那个才是统计行
+     *   自身。全都没命中时退回出口的第一个元素子节点。
+     */
+    function statsFindSource() {
+      if (typeof document === "undefined") return null;
+      var dock = document.querySelector(STATS_DOCK_SEL);
+      if (!dock) return null;
+      var list = dock.querySelectorAll(STATS_ROOT_HINT_SEL);
+      for (var i = list.length - 1; i >= 0; i--) {
+        if (list[i].querySelector(STATS_ROOT_HINT_SEL) === null) return list[i];
+      }
+      return dock.firstElementChild;
+    }
+
+    /**
+     * 找顶部标题簇容器——也就是"对话名 + 模式"横向排布的那个 flex 容器
+     *   （DSH ConversationRoot 的 titleCluster：children = [面包屑 nav,
+     *   headerActions]）。镜像 append 到它末尾即落在模式标签右边。
+     *
+     * 主路径：`[data-slot="conversation.session.header.actions"]` 出口
+     *   → 父（headerActions 包装 div）→ 父（titleCluster）。全程无 hash。
+     * 兜底：`[class*="_titleCluster"]` 子串匹配（与 v0.7.3 HoverCard /
+     *   v0.9.14 sidebar 同策略的 hash-independence 写法）。
+     */
+    function statsFindTitleCluster() {
+      if (typeof document === "undefined") return null;
+      var actions = document.querySelector(STATS_HEADER_ACTIONS_SEL);
+      if (actions && actions.parentElement && actions.parentElement.parentElement) {
+        return actions.parentElement.parentElement;
+      }
+      return document.querySelector(STATS_TITLE_CLUSTER_HINT_SEL);
+    }
+
+    /** 清掉页面上所有本插件的统计行镜像（切位置 / 停用 / header 被重建时）。 */
+    function statsRemoveMirror() {
+      if (typeof document === "undefined") return;
+      var nodes = document.querySelectorAll("[" + STATS_MIRROR_ATTR + "]");
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+      }
+    }
+
+    /**
+     * 确保标题簇末尾有一个镜像元素。幂等——已有则直接返回。
+     *   当前标题簇里没有时，先把别处残留的孤儿镜像清掉（DSH 换会话重建
+     *   header 的场景），再新建，保证全页面只存在一个镜像。
+     */
+    function statsEnsureMirror() {
+      if (typeof document === "undefined") return null;
+      var cluster = statsFindTitleCluster();
+      if (!cluster) return null;
+      var existing = cluster.querySelector("[" + STATS_MIRROR_ATTR + "]");
+      if (existing) return existing;
+      statsRemoveMirror();
+      var mirror = document.createElement("div");
+      mirror.setAttribute(STATS_MIRROR_ATTR, "");
+      cluster.appendChild(mirror);
+      return mirror;
+    }
+
+    /**
+     * 把原生统计行的内容克隆进镜像。
+     *   - 用 `cloneNode(true)` 后逐个搬运子节点，而不是直接塞克隆根——
+     *     克隆根带着 DSH 的 `_root` 类（`text-align:center` / `width:100%` /
+     *     `max-width:var(--dsh-chat-content-width)` / 底部专用 padding），
+     *     放进标题行会撑破布局；只搬子节点则保留分隔符 `<span class="..._sep">`
+     *     的类名，DSH 自己的 `.._sep{color:...;margin:0 10px}` 继续生效，
+     *     视觉与底部原生行一致。
+     *   - 文本没变就整段跳过，避免每 400ms 无谓重建 DOM（也顺带避免
+     *     镜像自身的 mutation 触发别的观察者）。用 `title` 同时兼作
+     *     "上次内容"缓存与鼠标悬停时的完整内容 tooltip（标题行窄，
+     *     镜像会 ellipsis 截断）。
+     */
+    function statsSyncMirror(mirror, source) {
+      var text = source === null ? "" : (source.textContent || "");
+      if (mirror.title === text) return;
+      mirror.title = text;
+      while (mirror.firstChild) mirror.removeChild(mirror.firstChild);
+      if (text === "" || source === null) return;
+      var clone = source.cloneNode(true);
+      while (clone.firstChild) mirror.appendChild(clone.firstChild);
+    }
+
+    /**
+     * v0.10.0：统计行位置 controller。
+     *
+     * 只有 top 位置需要运行（维护镜像）；bottom / hidden 都只靠 buildCSS
+     *   的纯 CSS 生效，controller 停机。
+     *
+     * 轮询而非 MutationObserver：统计行内容按"步"更新（不是按 token 流），
+     *   400ms 轮询足够跟手；而统计行文本变化是 characterData mutation，
+     *   要用 observer 就得在 document 上开 characterData+subtree——对话
+     *   流式输出时每个 token 都会触发，开销远大于一次 textContent 比较。
+     *   节奏与 v0.9.x simple-mode 状态行的 setInterval 轮询一致。
+     *   轮询同时兼任"自愈"：DSH 换会话重建 header 后下一 tick 自动补镜像。
+     */
+    function createStatsLinePositionController() {
+      var intervalId = null;
+      var isRunning = false;
+
+      function tick() {
+        var mirror = statsEnsureMirror();
+        if (mirror === null) return;
+        statsSyncMirror(mirror, statsFindSource());
+      }
+
+      function start() {
+        if (isRunning) return;
+        if (typeof window === "undefined" || !window.setInterval) return;
+        isRunning = true;
+        intervalId = window.setInterval(tick, STATS_POLL_MS);
+        tick();
+      }
+
+      function stop() {
+        if (intervalId !== null && typeof window !== "undefined" && window.clearInterval) {
+          window.clearInterval(intervalId);
+        }
+        intervalId = null;
+        isRunning = false;
+        statsRemoveMirror();
+      }
+
+      /** 按当前位置值启停。返回归一化后的位置，方便调用方记录 / 诊断。 */
+      function sync(position) {
+        var pos = statsNormalizePosition(position);
+        if (pos === STATS_POS_TOP) start();
+        else stop();
+        return pos;
+      }
+
+      return {
+        start: start,
+        stop: stop,
+        sync: sync,
+        get running() { return isRunning; }
+      };
+    }
+
+    // ===== debug-api =====
     // ====================================================================
     // 诊断 API（暴露 window.__dshUiTweaks）
     // ====================================================================
@@ -3598,6 +4029,12 @@ window.__ModuleLoader__.load({
      *   才需要看描述。新实现：description 默认不渲染，鼠标悬停在 row 上（或键盘
      *   focus）时弹出浏览器原生 tooltip（HTML `title` 属性）——所见即所得、无
      *   额外 CSS、无 JS state。CSS 同步加 `cursor:help` 提示可悬停。
+     *
+     * v0.10.0：支持"多选一"tweak。tweak 带 `choices`（`[{value,label}]`）时，
+     *   头部右侧渲染 `<select>` 而不是开关——此时 `configKeys.enabled` 存的是
+     *   选项字符串而非布尔（首例：stats-line-position 的 bottom/top/hidden）。
+     *   数字输入行的判定不变（仍看 `k2 !== k1`），所以"多选一"tweak 天然不带
+     *   数字框；开关型 tweak 完全不受影响（没有 choices 就走原路径）。
      */
     function TweakRow(props) {
       var t = props.tweak;
@@ -3608,11 +4045,23 @@ window.__ModuleLoader__.load({
       var enabled = state[k1];
       var value = state[k2];
       var hasValueInput = k2 !== k1;
+      var choices = t.choices || null;
+      var control = null;
+      var options = [];
+      var i;
 
       function onToggle(e) {
         var next = {};
         for (var k in state) next[k] = state[k];
         next[k1] = !!e.target.checked;
+        setState(next);
+      }
+
+      function onChoiceChange(e) {
+        var raw = e.target.value;
+        var next = {};
+        for (var k in state) next[k] = state[k];
+        next[k1] = raw;
         setState(next);
       }
 
@@ -3628,19 +4077,45 @@ window.__ModuleLoader__.load({
         setState(next);
       }
 
+      if (choices !== null) {
+        for (i = 0; i < choices.length; i++) {
+          options.push(jsxRuntime.jsx("option", {
+            value: choices[i].value,
+            children: choices[i].label
+          }, choices[i].value));
+        }
+        // 受控 <select>：value 取当前 state；state 里是脏值 / 缺省时退回第一个
+        // 选项，避免 React 受控组件拿到不存在的 value 而落到空白项
+        var current = enabled;
+        var matched = false;
+        for (i = 0; i < choices.length; i++) {
+          if (choices[i].value === current) { matched = true; break; }
+        }
+        if (!matched) current = choices.length > 0 ? choices[0].value : "";
+        control = jsxRuntime.jsx("select", {
+          className: "DTPD_select",
+          "aria-label": t.name,
+          value: current,
+          onChange: onChoiceChange,
+          children: options
+        });
+      } else {
+        control = jsxRuntime.jsx("input", {
+          type: "checkbox",
+          className: "DTPD_switch",
+          role: "switch",
+          "aria-label": t.name,
+          checked: !!enabled,
+          onChange: onToggle
+        });
+      }
+
       var children = [
         jsxRuntime.jsxs("div", {
           className: "DTPD_itemHead",
           children: [
             jsxRuntime.jsx("h3", { className: "DTPD_itemName", children: t.name }),
-            jsxRuntime.jsx("input", {
-              type: "checkbox",
-              className: "DTPD_switch",
-              role: "switch",
-              "aria-label": t.name,
-              checked: !!enabled,
-              onChange: onToggle
-            })
+            control
           ]
         })
       ];
@@ -3676,7 +4151,8 @@ window.__ModuleLoader__.load({
         title: t.description,
         children: children
       });
-    }    // ===== react-section =====
+    }
+    // ===== react-section =====
     /** 顶级 section 组件。自包含——内部 useState 用 loadState() 做 lazy init。 */
     function UiTweaksSection() {
       var stateState = react.useState(loadState);
@@ -3810,6 +4286,30 @@ window.__ModuleLoader__.load({
         };
       }
 
+      // 6h) v0.10.0：统计行位置 controller（stats-line-position tweak）
+      //     bottom = DSH 默认（controller 停机，无 CSS）；
+      //     hidden = 纯 CSS 隐藏底部 dock 出口（controller 仍停机）；
+      //     top    = 纯 CSS 隐藏底部 + controller 在顶部标题簇维护镜像。
+      //     sync() 内部做归一化，脏值 / 老布尔值都退回 bottom。
+      var statsLinePosition = createStatsLinePositionController();
+      statsLinePosition.sync(initialState.statsLinePosition);
+
+      // 6i) v0.10.0：诊断挂到 window.__dshUiTweaks.statsLinePosition()——
+      //     一次看清位置、镜像是否已建、两个锚点是否命中（DSH 升级后
+      //     若 slot key 改名，这里会直接显示 source/cluster 为 false）
+      if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
+        window[DEBUG_API_KEY].statsLinePosition = function () {
+          return {
+            position: statsNormalizePosition(loadState().statsLinePosition),
+            running: statsLinePosition.running,
+            sourceFound: statsFindSource() !== null,
+            titleClusterFound: statsFindTitleCluster() !== null,
+            mirrorMounted: typeof document !== "undefined" &&
+              document.querySelector("[" + STATS_MIRROR_ATTR + "]") !== null
+          };
+        };
+      }
+
       // 7) 监听 UI 状态变化
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
@@ -3854,6 +4354,9 @@ window.__ModuleLoader__.load({
         } else {
           if (disclosureEndCollapse.running) disclosureEndCollapse.stop();
         }
+        // v0.10.0：统计行位置——三态（bottom / top / hidden）由 sync() 内部
+        //   判定启停，不需要在这里读 running；隐藏与否已由 injectCSS 处理
+        statsLinePosition.sync(detail.statsLinePosition);
       }
       if (typeof window !== "undefined" && window.addEventListener) {
         window.addEventListener(STATE_EVENT, onStateChange);

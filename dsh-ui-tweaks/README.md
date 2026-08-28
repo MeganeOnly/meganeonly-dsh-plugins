@@ -4,7 +4,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 
 ## 功能
 
-当前包含九条微调：
+当前包含十条微调：
 
 | id | 名称 | 说明 |
 | --- | --- | --- |
@@ -17,10 +17,18 @@ DeepSeek Harness (DSH) web profile 的常驻插件：一组可独立开关的界
 | `first-message-jump` | 上一条我发的消息按钮（Shift+点击 = 回到最早） | 对话区右下角（输入框上方）的悬浮按钮——单击跳到当前视口内最顶部可见 user 消息的上一条，连续单击可一路向上直到第一个可见 user 行（v0.9.4 起 prev 跳过 hidden row——例如 simple-mode `display:none` 隐藏的 compaction 块里的旧 user 行，避免按钮"卡死"在看不见的位置；v0.9.2 起可见性放宽为 `rows.length >= 2`：2 条以上 user 行就显示作为视觉提示，即使已在顶部 click 也是 no-op）。**Shift+单击 = 一键回到最早一条可见 user 行**（v0.9.2 起跳过 compaction / context 容器里的旧 user 行，恢复 v0.8.0 的「回到最早」语义）。 |
 | `disclosure-end-collapse` | 展开块末尾收起按钮 | Think / 工具调用 / 上下文注入等折叠块展开后，末尾追加一个"收起"按钮——阅读到底部能直接收起，不用滚回头部再点行。点击调用 row.click() 触发 DSH React onToggle 折叠，body 与按钮一起被 React unmount，无需手动清理。 |
 | `sidebar-match-conversation-bg` | 侧栏背景与对话一致 | DSH 默认左侧栏（展示会话列表的区域）有独立的背景色，与对话区的 `--dsw-alias-bg-base` 不同——视觉上有明显分割。开启后把侧栏列容器背景设为对话区同款（用 `--dsw-alias-bg-base`，主题没定义时退化到 `--dsw-alias-bg-layer-1` 再退化到白），让两个区域在背景色上融合。会话项 / 按钮 / hover 态等子元素的视觉行为不变（只改列容器背景）。 |
+| `stats-line-position` | 统计行位置 | 对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置，**三选一**：`bottom`（DSH 默认）/ `top`（挪到顶部标题行「对话名 + 模式」右边）/ `hidden`（完全不显示）。非 `bottom` 时原生行用 `visibility` 隐藏而非移除，保留它原本占的 24px——输入框位置与 `bottom` 时完全一致。本插件唯一的非布尔微调——设置页渲染下拉框而不是开关。 |
 
-每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
+每条微调由 `lib/client.js` 中 `TWEAKS` 数组的一项定义，包含 id、名称、描述、配置键、默认值与 CSS 生成函数；带 `choices` 的条目在设置页渲染下拉框而不是开关。UI 控件、CSS 生成与持久化均以该数组为单一数据源。
 
-设置页每行附带“诊断”按钮，可输出当前状态、生成的 CSS 与命中元素；栏目顶部提供“复制状态到剪贴板”。运行时还暴露 `window.__dshUiTweaks` 调试接口（`getState` / `getInjectedCSS` / `getMatchedElements` / `debug` / `setState` / `reshim` / `firstMessageJump` / `disclosureEndCollapse`）。
+设置页每行附带"诊断"按钮，可输出当前状态、生成的 CSS 与命中元素；栏目顶部提供"复制状态到剪贴板"。运行时还暴露 `window.__dshUiTweaks` 调试接口（`getState` / `getInjectedCSS` / `getMatchedElements` / `debug` / `setState` / `reshim` / `firstMessageJump` / `disclosureEndCollapse` / `statsLinePosition`）。
+
+### `stats-line-position` 的实现约定与已知代价（v0.10.0 起）
+
+- **隐藏的是整个底部 dock 区域**：选 `top` 或 `hidden` 时，CSS 隐藏的是 slot 出口 `[data-slot="conversation.composer.dock"]`，而不是统计行自身的类名（后者是 CSS module hash，每次 DSH 构建都会变）。DSH 自己的 slot 目录记录该 slot 的唯一占位者就是统计行，所以两者当前等价——但若将来有别的插件也往这个位置放东西，会被一并隐藏。
+- **用 `visibility` 隐藏，不是 `display:none`**（v0.10.1 起）：统计行是输入框卡片的 footer，而卡片是贴着对话区底部的——把它从布局里移除会让卡片变矮 24px，输入框随之下移 24px。改用 `visibility:hidden` 后元素照常占位（React 也照常更新它的文本），输入框位置与 `bottom` 时**完全一致**。代价是输入框下方保留一条 24px 空白——这正是把输入框钉在原位所必须的空间。
+- **顶部显示的是「镜像」而不是原生节点**：原生统计行始终留在原位（只是被隐藏），插件另建一个自己的元素挂在标题簇末尾，按 400ms 周期克隆内容。这样做是为了不把 React 拥有的 DOM 节点搬走——搬走后 React 卸载它时会找不到父节点而报错。因此顶部统计的更新有最多约 0.4 秒延迟，且标题行放不下时会省略号截断（鼠标悬停看全文）。
+- **切换会话或刷新页面后自动恢复**：镜像随标题行被 DSH 重建而重建，同一时刻页面上只会存在一个。
 
 ### `first-message-jump` 启用后的额外副作用（v0.9.1 起）
 
@@ -94,4 +102,3 @@ pnpm install --no-frozen-lockfile
 ## 许可证
 
 [MIT](./LICENSE)
-

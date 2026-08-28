@@ -1,6 +1,106 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.1：stats-line-position 隐藏底部原生统计行时改用 `visibility:hidden`
+ *   而不是 `display:none`。
+ *
+ *   用户反馈 v0.10.0："这样就导致了发消息的框往下走了一点点，我希望它
+ *   还是处于原来的位置"。
+ *
+ *   根因：统计行是 composer 卡片的 footer（`conversation.composer.dock`
+ *   作为输入条的 footer prop 渲染），高 24px（DSH `.FJxK0a_root` 的
+ *   `line-height:20px` + `padding:4px ... 0px`）；而 composer seat 是
+ *   `position:sticky; bottom:0` 贴着滚动容器底部的（DSH
+ *   `.wSkVaW_composerSeat`）。`display:none` 把统计行从布局里彻底移除
+ *   → 卡片整体变矮 24px → 因为底边被钉住，顶边（也就是输入行）只能
+ *   往下挪 24px。
+ *
+ *   修法：`visibility:hidden` —— 元素的盒子仍然生成、仍然参与布局、
+ *   React 仍然照常更新它的文本，只是不渲染。24px 分毫不差地保留，
+ *   输入框位置与"底部"位置完全一致。比"补一个硬编码 24px padding"更稳：
+ *   不依赖 DSH 的字号 / 行高 / padding 具体数值，DSH 后续改统计行样式
+ *   也自动跟随。
+ *
+ *   CSS 从
+ *     [data-slot="conversation.composer.dock"]{display:none !important}
+ *   改为
+ *     [data-slot="conversation.composer.dock"],
+ *     [data-slot="conversation.composer.dock"] *{visibility:hidden !important}
+ *   两条选择器：出口自身 + 其所有后代。`visibility` 本身是继承属性，
+ *   出口那层 `display:contents` 不生成盒子但仍能把 `hidden` 传给子元素；
+ *   后代那条是显式兜底，防 DSH 将来给统计行自己写 `visibility`。
+ *   已核对 DSH 侧只有 `.wSkVaW_root[data-phase=settling] .wSkVaW_composerSeat
+ *   {visibility:hidden}` 一条 visibility 规则（settling 阶段整个 seat 都
+ *   隐藏），没有任何 `visibility:visible` 的后代重置会与本规则冲突。
+ *
+ *   代价（有意）：非"底部"位置时输入框下方保留一条 24px 空白——这正是
+ *   把输入框钉在原位所必须的空间。
+ *
+ *   兼容性：tweak id / choices / localStorage key / 镜像逻辑 / controller /
+ *   诊断 API / 设置页 UI 全部不动，只改 buildCSS 输出的隐藏属性。
+ *
+ *   改动文件：`25-tweaks.js` 的 stats-line-position buildCSS；
+ *     `20-constants.js` VERSION 0.10.0 → 0.10.1 + 头部注释；
+ *     `69-stats-line-position.js` 头部注释同步；`00-banner.js` 本段；
+ *     `package.json` / `README.md` / `CHANGELOG.md` / `docs/maintainability.md` 同步。
+ *
+ * v0.10.0：新增 stats-line-position tweak——对话底部那行运行统计
+ *   （"3 轮 · 45 步 | LLM 12m13s · 工具调用 1m21s | 首 token 平均 2.9s ·
+ *   71 tok/s | 缓存命中 96% | 输入 3.6M tok · 输出 42.7K tok"）现在三选一：
+ *
+ *     bottom（默认）  DSH 原样，零 CSS、controller 停机
+ *     top             底部整条隐藏，改在顶部标题行"对话名 + 模式"右边显示
+ *     hidden          底部整条隐藏，不再显示
+ *
+ *   这行统计由 DSH `dsh-client-ui-conversation` 的 StatsLine 组件渲染，
+ *   注册在 slot `conversation.composer.dock`（id "stats"，order 0）。
+ *
+ *   两个实现要点：
+ *
+ *   1) 隐藏走**纯 CSS**，锚点是 slot 出口属性而不是 CSS module 类名——
+ *      DSH renderer（`dsh-client-ui-renderer` SlotOutlet）给每个 slot 出口
+ *      包一层 `<div data-slot="<slot key>" style="display:contents">`，
+ *      这个属性不含构建 hash，跨 DSH 版本稳定；而统计行自身的类名
+ *      `.FJxK0a_root` 每次 DSH 构建都会变。DSH 自己的 slot 目录把
+ *      `conversation.composer.dock` 的 occupants 记为
+ *      `["client-ui-conversation StatsLine id 'stats'"]`——唯一占位者就是
+ *      统计行，所以隐藏整个出口 == 隐藏统计行。`!important` 必需：出口的
+ *      `display:contents` 是 inline style，普通样式表规则压不过它。
+ *
+ *   2) 顶部走**镜像**而不是搬 DOM——把 DSH 渲染的原生统计行 appendChild
+ *      到标题簇里，React 下次卸载它（StatsLine 在 groups 为空时
+ *      `return null`，新会话开局必然发生）会对**它记录的原父节点**调
+ *      removeChild → NotFoundError 崩掉 React 树。镜像方案：原生节点
+ *      始终留在原位（只是 `display:none`，React 照常更新它的文本），
+ *      本插件另建一个 React 不认识的尾部子节点，400ms 轮询把原生行的
+ *      子节点 `cloneNode(true)` 搬进去（保留 `_sep` 分隔符类名，DSH 自己
+ *      的分隔符样式继续生效；不搬克隆根，避免带上底部专用的居中 +
+ *      `max-width` + padding）。文本没变则整段跳过，不做无谓 DOM 重建。
+ *      与 v0.9.6 disclosure-end-collapse 往 body 末尾 appendChild 按钮
+ *      同一模式——已验证不干扰 React 协调。轮询同时兼任自愈：DSH 换会话
+ *      重建 header 后下一 tick 自动在新标题簇补上镜像。
+ *
+ *   顺带的框架能力：TweakRow 支持 `choices`（`[{value,label}]`）——有
+ *   choices 的 tweak 在设置页渲染 `<select>` 而不是开关，`configKeys.enabled`
+ *   存选项字符串。这是本插件第一条非布尔 tweak；开关型 tweak 走原路径，
+ *   行为零变化。脏值 / 老布尔值由 `statsNormalizePosition()` 统一退回
+ *   "bottom"，所以老用户升级后视觉零变化。
+ *
+ *   顺带的维护动作：`68-first-message-jump.js` / `68a-first-message-jump-utils.js`
+ *   / `75-react-tweak-row.js` 三个 source 文件末尾缺行尾换行（违反仓库
+ *   `docs/maintainability.md` § 五 "每个 source 文件末尾必须有 \n"），
+ *   导致拼接时下一个文件的 `// ===== marker =====` 首行被接到上一个文件
+ *   的 `}` 后面。补上换行（各 +1 字节），bundle 里所有 section marker
+ *   现在都独立成行。
+ *
+ *   改动文件：新增 `69-stats-line-position.js`（controller + 镜像逻辑）；
+ *     `20-constants.js` 加 STATS_* 常量 + VERSION 0.9.15 → 0.10.0；
+ *     `25-tweaks.js` 加 stats-line-position 条目（含 choices）；
+ *     `75-react-tweak-row.js` 支持 choices 下拉；`35-styles.js` 加
+ *     `.DTPD_select`；`85-apply.js` 接线 controller + 诊断
+ *     `window.__dshUiTweaks.statsLinePosition()`；`package.json` /
+ *     `README.md` / `CHANGELOG.md` / `docs/maintainability.md` 同步。
+ *
  * v0.9.15：sidebar-match-conversation-bg 用户实测"展开页面左上角的
  *   部分，过一会就会变成灰色，我鼠标光标移动到上面的时候，又变成了
  *   白色，移走一段时间，又变成灰色"——v0.9.9/v0.9.13/v0.9.14 三层修复
@@ -462,4 +562,3 @@
  *    getMatchedElements, debug, setState, reshim }`
  *  - TWEAKS 数组仍是 UI + CSS + 持久化的单一数据源
  */
-

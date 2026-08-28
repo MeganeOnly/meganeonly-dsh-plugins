@@ -93,6 +93,30 @@
         };
       }
 
+      // 6h) v0.10.0：统计行位置 controller（stats-line-position tweak）
+      //     bottom = DSH 默认（controller 停机，无 CSS）；
+      //     hidden = 纯 CSS 隐藏底部 dock 出口（controller 仍停机）；
+      //     top    = 纯 CSS 隐藏底部 + controller 在顶部标题簇维护镜像。
+      //     sync() 内部做归一化，脏值 / 老布尔值都退回 bottom。
+      var statsLinePosition = createStatsLinePositionController();
+      statsLinePosition.sync(initialState.statsLinePosition);
+
+      // 6i) v0.10.0：诊断挂到 window.__dshUiTweaks.statsLinePosition()——
+      //     一次看清位置、镜像是否已建、两个锚点是否命中（DSH 升级后
+      //     若 slot key 改名，这里会直接显示 source/cluster 为 false）
+      if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
+        window[DEBUG_API_KEY].statsLinePosition = function () {
+          return {
+            position: statsNormalizePosition(loadState().statsLinePosition),
+            running: statsLinePosition.running,
+            sourceFound: statsFindSource() !== null,
+            titleClusterFound: statsFindTitleCluster() !== null,
+            mirrorMounted: typeof document !== "undefined" &&
+              document.querySelector("[" + STATS_MIRROR_ATTR + "]") !== null
+          };
+        };
+      }
+
       // 7) 监听 UI 状态变化
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
@@ -137,6 +161,9 @@
         } else {
           if (disclosureEndCollapse.running) disclosureEndCollapse.stop();
         }
+        // v0.10.0：统计行位置——三态（bottom / top / hidden）由 sync() 内部
+        //   判定启停，不需要在这里读 running；隐藏与否已由 injectCSS 处理
+        statsLinePosition.sync(detail.statsLinePosition);
       }
       if (typeof window !== "undefined" && window.addEventListener) {
         window.addEventListener(STATE_EVENT, onStateChange);

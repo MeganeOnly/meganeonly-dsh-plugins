@@ -1,4 +1,30 @@
     // ===== constants =====
+        // v0.10.1：stats-line-position 隐藏底部原生行时改用 `visibility:hidden`
+        //   而不是 `display:none`——用户反馈 v0.10.0 "发消息的框往下走了一点点"。
+        //   根因：统计行是 composer 卡片的 footer（高 24px = line-height 20 +
+        //   padding-top 4），而 composer seat 是 `position:sticky;bottom:0` 贴底的
+        //   （DSH `.wSkVaW_composerSeat`），卡片变矮 24px 就等于输入行整体下移
+        //   24px。visibility 保留盒子（照常参与布局、React 照常更新其文本），
+        //   高度分毫不差地保留 → 输入框位置与"底部"位置完全一致；比补一个
+        //   硬编码 24px padding 更稳（不依赖 DSH 的字号 / 行高 / padding 数值）。
+        //   代价：非"底部"位置时输入框下方保留一条 24px 空白——这正是把输入框
+        //   钉在原位所必须的空间。详见 `25-tweaks.js` 的 stats-line-position
+        //   buildCSS v0.10.1 段 + `00-banner.js` v0.10.1 banner 段。
+        // v0.10.0：新增 stats-line-position tweak——对话底部那行统计
+        //   （"N 轮 · M 步 | LLM ... | 首 token ... | 缓存命中 ...% | 输入/输出 tok"）
+        //   现在可三选一：底部（DSH 默认）/ 顶部标题右侧 / 不显示。
+        //   这是本插件第一条**非布尔**的 tweak——configKeys.enabled 存的是
+        //   "bottom" / "top" / "hidden" 字符串；TweakRow 通过新增的
+        //   `choices` 字段判断渲染下拉框而非开关（有 choices 就不渲染开关）。
+        //   实现要点见 `69-stats-line-position.js` 头部注释：
+        //     - 隐藏走纯 CSS（`[data-slot="conversation.composer.dock"]`
+        //       出口 visibility:hidden !important，v0.10.1 起；v0.10.0 曾用
+        //       display:none 但会让贴底的输入框下移 24px）——DSH renderer
+        //       给每个 slot 出口包的 `data-slot` 属性不含 hash，比 CSS module
+        //       类名稳定
+        //     - 顶部走"镜像"（本插件 createElement 的元素 append 到标题簇
+        //       末尾，周期性克隆原生行内容）——不搬 React 拥有的 DOM 节点，
+        //       避免 React 卸载原节点时 removeChild 找不到父节点而崩树
         // v0.9.15：sidebar-match-conversation-bg 用户实测"展开页面左上角的
         //   部分，过一会就会变成灰色，我鼠标光标移动到上面的时候，又变成
         //   了白色，移走一段时间，又变成灰色"——v0.9.9/v0.9.13/v0.9.14 三层
@@ -129,7 +155,7 @@
         //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点。
         //   目标三类 DisclosureRow：ReasoningRow（Think, data-variant="think"）、
         //   GenericCommandCard（工具调用输出, data-variant="others"）、
-        var VERSION = "0.9.15";
+        //   ContextInjectionRow（上下文注入, class 含 _root 且 data-open）。
         //   button 在 body 元素里（wrapper div + button），点击时找 body 父元素
         //   里 rowClassName 那行调 .click()——DSH React onToggle 触发折叠，body 与
         //   按钮一起被卸载；stopPropagation 避免冒泡到 row（虽然 row 是 body 兄弟
@@ -142,6 +168,20 @@
           '[data-variant="others"] [class*="_body"]',
           '[class*="_root"][data-open] [class*="_body"]'
         ].join(", ");
+        // v0.10.0：统计行位置（stats-line-position tweak）。
+        //   锚点全部走 DSH renderer 的 slot 出口属性 `data-slot="<slot key>"`
+        //   （dsh-client-ui-renderer SlotOutlet 给每个出口包一层
+        //   `<div data-slot=... style="display:contents">`）——不含 CSS module
+        //   hash，跨 DSH 版本稳定；只有兜底选择器才用 `[class*="..."]` 子串匹配。
+        var STATS_DOCK_SEL = '[data-slot="conversation.composer.dock"]';          // 底部统计行出口（唯一占位者 = StatsLine）
+        var STATS_HEADER_ACTIONS_SEL = '[data-slot="conversation.session.header.actions"]'; // 顶部"模式"标签出口（其祖父 = 标题簇）
+        var STATS_TITLE_CLUSTER_HINT_SEL = '[class*="_titleCluster"]';            // 兜底：标题簇（对话名 + 模式那一簇）
+        var STATS_ROOT_HINT_SEL = '[class*="_root"]';                             // 出口内定位 StatsLine 根元素
+        var STATS_MIRROR_ATTR = "data-dsh-ui-tweaks-stats-mirror";                // 顶部镜像元素标记（本插件独占）
+        var STATS_POS_BOTTOM = "bottom";
+        var STATS_POS_TOP = "top";
+        var STATS_POS_HIDDEN = "hidden";
+        var STATS_POLL_MS = 400;   // 镜像同步轮询间隔（统计行按"步"更新，不必更密）
         // v0.5.3：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
         var SHIFT_TARGET_ATTR = "data-dsh-ui-tweaks-shift-target";
         var SHIFT_TARGET_CHATFLOW = "chatflow";
@@ -165,5 +205,4 @@
         var JUMP_BUTTON_TITLE = "上一条我发的消息（Shift+点击 = 回到最早）";  // title 属性（v0.9.1 新增）
         // SVG 上箭头（与 v0.8.0 同一 path：▲ 朝上表示"上一条"）
         var JUMP_SVG_UP = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5L8 6l4.5 4.5"/></svg>';
-
 

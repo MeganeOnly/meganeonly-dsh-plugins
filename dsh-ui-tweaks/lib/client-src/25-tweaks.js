@@ -667,4 +667,90 @@
             "}";
         }
       },
+      {
+        // v0.10.0 新增：统计行位置（本插件第一条三选一 tweak）。
+        //
+        // 用户反馈：对话底部那行统计（"3 轮 · 45 步 | LLM 12m13s · 工具调用
+        //   1m21s | 首 token 平均 2.9s · 71 tok/s | 缓存命中 96% | 输入
+        //   3.6M tok · 输出 42.7K tok"）想能选位置——保持底部 / 挪到顶部
+        //   "对话名 + 模式"右边 / 干脆不显示。
+        //
+        // 数据形态：与其它"仅开关型"tweak 一样 enabled 与 value 复用同一
+        //   key（localStorage 只存一个字段），但存的是**字符串**
+        //   "bottom" / "top" / "hidden" 而不是布尔。TweakRow 见到
+        //   `choices` 字段就渲染 <select> 而不是开关（见 75-react-tweak-row.js）。
+        //   老用户升级后该 key 不存在 → defaultState() 补 "bottom" → 视觉零变化。
+        //   脏值 / 老布尔值由 statsNormalizePosition() 统一退回 "bottom"。
+        //
+        // CSS 侧只负责"隐藏原生行"（top / hidden 两种位置都要隐藏）：
+        //   隐藏的是整个 `conversation.composer.dock` slot 出口。DSH 自己的
+        //   slot 目录把该 slot 的 occupants 记为
+        //   `["client-ui-conversation StatsLine id 'stats'"]`——唯一占位者
+        //   就是统计行，所以隐藏整个出口 == 隐藏统计行，且完全不依赖
+        //   CSS module hash 类名（`.FJxK0a_root` 每次 DSH 构建都会变）。
+        //
+        // **v0.10.1：用 `visibility:hidden` 而不是 `display:none`**——
+        //   用户反馈 v0.10.0 "发消息的框往下走了一点点"。根因：统计行是
+        //   composer 卡片的 footer（`conversation.composer.dock` 作为输入条的
+        //   footer prop 渲染），高 24px（`line-height:20px` + `padding-top:4px`）；
+        //   而 composer seat 是**贴着滚动容器底部**的（sticky bottom），卡片
+        //   变矮 24px 就等于输入行整体下移 24px。`display:none` 把元素从布局里
+        //   彻底移除 → 卡片变矮 → 输入框下移；`visibility:hidden` 保留元素的
+        //   盒子（照常参与布局、照常被 React 更新文本），只是不渲染 → 高度
+        //   分毫不差地保留，输入框位置与"底部"位置时完全一致。
+        //   比"补一个硬编码 24px padding"更稳：不依赖 DSH 的字号 / 行高 /
+        //   padding 数值，DSH 后续改统计行样式也自动跟随。
+        //   代价：非"底部"位置时输入框下方保留一条 24px 空白（这正是把输入框
+        //   钉在原位所必须的空间）。
+        //   两条选择器：出口自身 + 其所有后代。`visibility` 本身是继承属性，
+        //   出口那层 `display:contents` 不生成盒子但仍能把 `hidden` 传给子元素；
+        //   后代那条是显式兜底，防 DSH 将来给统计行显式写 `visibility`。
+        //   `!important` 必需：出口的 `display:contents` 是 **inline style**，
+        //   普通样式表规则压不过它（这里虽然改的是 visibility 而非 display，
+        //   但同规则组内保持一致的 !important 强度，避免 DSH 后续加规则时翻盘）。
+        //
+        // 顶部镜像的 DOM 维护由 69-stats-line-position.js 的 controller 负责
+        //   （apply() 按状态启停），这里只出镜像的外观 CSS。
+        id: "stats-line-position",
+        name: "统计行位置",
+        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
+        choices: [
+          { value: STATS_POS_BOTTOM, label: "底部（DSH 默认）" },
+          { value: STATS_POS_TOP, label: "顶部标题右侧" },
+          { value: STATS_POS_HIDDEN, label: "不显示" }
+        ],
+        configKeys: { enabled: "statsLinePosition", value: "statsLinePosition" },
+        defaults: { enabled: STATS_POS_BOTTOM, value: STATS_POS_BOTTOM },
+        buildCSS: function (state) {
+          var pos = statsNormalizePosition(state.statsLinePosition);
+          if (pos === STATS_POS_BOTTOM) return null;
+          // v0.10.1：visibility 而非 display——保留 24px 占位，输入框不下移
+          var css = "/* === stats-line-position v0.10.1 : " + pos + " —— 隐藏底部 composer.dock 出口（唯一占位者 = DSH StatsLine）；用 visibility 保留占位，输入框不下移 === */\n" +
+            STATS_DOCK_SEL + "," + STATS_DOCK_SEL + " *{visibility:hidden !important;}";
+          if (pos !== STATS_POS_TOP) return css;
+          // 顶部镜像外观：跟着标题簇的 flex 流排在"模式"标签右边（titleCluster
+          //   自带 gap:10px，无需额外 margin）。可收缩 + 省略号，避免长统计
+          //   把面包屑挤没；颜色 / 字号对齐 DSH 原生统计行（tertiary label /
+          //   12px / 20px 行高）；tabular-nums 让数字跳动时宽度稳定。
+          //   分隔符 `<span class="..._sep">` 是从原生行克隆来的，DSH 自己的
+          //   `_sep` 规则（color + margin:0 10px）继续生效，不用我们重写。
+          return css + "\n" +
+            "[" + STATS_MIRROR_ATTR + "]{" +
+              "flex:0 1 auto;" +
+              "min-width:0;" +
+              "overflow:hidden;" +
+              "white-space:nowrap;" +
+              "text-overflow:ellipsis;" +
+              "color:var(--dsw-alias-label-tertiary);" +
+              "font-size:12px;" +
+              "line-height:20px;" +
+              "font-variant-numeric:tabular-nums;" +
+              "cursor:default;" +
+            "}\n" +
+            // 无统计可显示时（新会话开局 StatsLine 返回 null）镜像为空——
+            //   连同 titleCluster 的 gap 一起去掉，标题行不留可疑空隙
+            "[" + STATS_MIRROR_ATTR + "]:empty{display:none;}";
+        }
+      }
     ];
+

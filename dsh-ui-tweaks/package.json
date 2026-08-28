@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.9.15",
+  "version": "0.10.1",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集（v0.9.15：sidebar-match-conversation-bg 的 --dsw-specific-sidebar-fill 变量级三层兜底修复——侧栏作用域内任何引用该变量的元素都解析为 transparent，从根上消除「灰 → hover 白 → 移走又灰」循环（用户实测展开页面左上角变灰、hover 变白、移走又变灰）。v0.9.14 同时保留：sidebar-match-conversation-bg v0.9.13 收起态 ends-with 选择器失效修复（[class$=\"_root\"] 改 [class*=\"_root\"]，与 className 拼接顺序无关）。v0.9.13 同时保留：sidebar-match-conversation-bg v0.9.9 列容器被内层 SidebarRoot 覆盖的修复（选择器扩为 column + [class*=\"_root\"] 双命中）。v0.9.12 / v0.9.11 / v0.9.10 同时保留：simple-mode 状态行的 JS 回退、layout zero 与 reset 加固。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump、disclosure-end-collapse、sidebar-match-conversation-bg 九条 tweak。状态由 client half 用 localStorage 自管。",
+  "description": "DSH 外观设计微调合集（v0.10.1：stats-line-position 隐藏底部原生统计行时改用 visibility:hidden 而不是 display:none——统计行是 composer 卡片的 footer（高 24px），而 composer seat 是 position:sticky;bottom:0 贴底的，display:none 把它从布局里移除会让卡片变矮 24px、输入行整体下移 24px（用户实测「发消息的框往下走了一点点」）；visibility 保留盒子照常参与布局、React 照常更新其文本，24px 分毫不差地保留，输入框位置与「底部」完全一致，且不依赖 DSH 的字号 / 行高 / padding 数值。v0.10.0 同时保留：新增 stats-line-position tweak——对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）三选一：底部（DSH 默认）/ 顶部标题右侧（对话名与模式标签右边）/ 不显示；锚点用 DSH renderer 的 slot 出口属性 data-slot=\"conversation.composer.dock\"（不含构建 hash，比 CSS module 类名稳定）；顶部走镜像——原生节点留在原位只隐藏，另建一个本插件独占的元素挂到标题簇末尾并周期性克隆内容，避免把 React 拥有的节点搬走导致其卸载时 removeChild 崩树；顺带给 TweakRow 加 choices 支持（有 choices 的 tweak 在设置页渲染下拉框而非开关）。v0.9.15 同时保留：sidebar-match-conversation-bg 的 --dsw-specific-sidebar-fill 变量级三层兜底修复。v0.9.14 同时保留：收起态 ends-with 选择器失效修复。v0.9.13 同时保留：列容器被内层 SidebarRoot 覆盖的修复。v0.9.12 / v0.9.11 / v0.9.10 同时保留：simple-mode 状态行的 JS 回退、layout zero 与 reset 加固。当前包含 conversation-shift、conversation-shift-debug、simple-mode、hide-sidebar-tooltip、hide-trajectory-tab、hide-chat-tab、first-message-jump、disclosure-end-collapse、sidebar-match-conversation-bg、stats-line-position 十条 tweak。状态由 client half 用 localStorage 自管。",
   "license": "MIT",
   "repository": {
     "type": "git",

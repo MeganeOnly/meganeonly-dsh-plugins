@@ -72,6 +72,10 @@
      * v0.7.5：description 从 `<p>` 收进 `title` 属性后，row 默认不再渲染描述——
      * 给 `.DTPD_item` 加 `cursor:help` 提示可悬停看说明；同时删除
      * `.DTPD_itemDesc` 规则（不再被任何 JSX 引用）。
+     *
+     * v0.10.0：加 `.DTPD_select`——"多选一"tweak（首例 stats-line-position）
+     * 头部右侧渲染下拉框而非开关。外观对齐已有的 `.DTPD_input` 数字框
+     * （同边框 / 圆角 / 内边距 / focus 色），只是宽度按内容给个下限。
      */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
@@ -90,7 +94,10 @@
       ".DTPD_valueRow{align-items:center;gap:8px;display:flex}\n" +
       ".DTPD_valueLabel{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;min-width:64px}\n" +
       ".DTPD_input{box-sizing:border-box;width:120px;color:var(--dsw-alias-label-primary);background:var(--dsw-specific-input-major,#fff);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:6px;padding:4px 8px;font-family:inherit;font-size:13px;line-height:20px}\n" +
-      ".DTPD_input:focus{border-color:var(--dsw-alias-state-business-primary,#2563eb);outline:none}";
+      ".DTPD_input:focus{border-color:var(--dsw-alias-state-business-primary,#2563eb);outline:none}\n" +
+      // v0.10.0：多选一 tweak 的下拉框（stats-line-position 首用）
+      ".DTPD_select{box-sizing:border-box;flex:none;min-width:150px;cursor:pointer;color:var(--dsw-alias-label-primary);background:var(--dsw-specific-input-major,#fff);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:6px;padding:4px 8px;font-family:inherit;font-size:13px;line-height:20px}\n" +
+      ".DTPD_select:focus{border-color:var(--dsw-alias-state-business-primary,#2563eb);outline:none}";
 
     function injectSectionCSS() {
       if (document.querySelector("style[data-plugin-css=\"" + SECTION_CSS_TAG_ID + "\"]")) return;

@@ -21,6 +21,12 @@
      *   才需要看描述。新实现：description 默认不渲染，鼠标悬停在 row 上（或键盘
      *   focus）时弹出浏览器原生 tooltip（HTML `title` 属性）——所见即所得、无
      *   额外 CSS、无 JS state。CSS 同步加 `cursor:help` 提示可悬停。
+     *
+     * v0.10.0：支持"多选一"tweak。tweak 带 `choices`（`[{value,label}]`）时，
+     *   头部右侧渲染 `<select>` 而不是开关——此时 `configKeys.enabled` 存的是
+     *   选项字符串而非布尔（首例：stats-line-position 的 bottom/top/hidden）。
+     *   数字输入行的判定不变（仍看 `k2 !== k1`），所以"多选一"tweak 天然不带
+     *   数字框；开关型 tweak 完全不受影响（没有 choices 就走原路径）。
      */
     function TweakRow(props) {
       var t = props.tweak;
@@ -31,11 +37,23 @@
       var enabled = state[k1];
       var value = state[k2];
       var hasValueInput = k2 !== k1;
+      var choices = t.choices || null;
+      var control = null;
+      var options = [];
+      var i;
 
       function onToggle(e) {
         var next = {};
         for (var k in state) next[k] = state[k];
         next[k1] = !!e.target.checked;
+        setState(next);
+      }
+
+      function onChoiceChange(e) {
+        var raw = e.target.value;
+        var next = {};
+        for (var k in state) next[k] = state[k];
+        next[k1] = raw;
         setState(next);
       }
 
@@ -51,19 +69,45 @@
         setState(next);
       }
 
+      if (choices !== null) {
+        for (i = 0; i < choices.length; i++) {
+          options.push(jsxRuntime.jsx("option", {
+            value: choices[i].value,
+            children: choices[i].label
+          }, choices[i].value));
+        }
+        // 受控 <select>：value 取当前 state；state 里是脏值 / 缺省时退回第一个
+        // 选项，避免 React 受控组件拿到不存在的 value 而落到空白项
+        var current = enabled;
+        var matched = false;
+        for (i = 0; i < choices.length; i++) {
+          if (choices[i].value === current) { matched = true; break; }
+        }
+        if (!matched) current = choices.length > 0 ? choices[0].value : "";
+        control = jsxRuntime.jsx("select", {
+          className: "DTPD_select",
+          "aria-label": t.name,
+          value: current,
+          onChange: onChoiceChange,
+          children: options
+        });
+      } else {
+        control = jsxRuntime.jsx("input", {
+          type: "checkbox",
+          className: "DTPD_switch",
+          role: "switch",
+          "aria-label": t.name,
+          checked: !!enabled,
+          onChange: onToggle
+        });
+      }
+
       var children = [
         jsxRuntime.jsxs("div", {
           className: "DTPD_itemHead",
           children: [
             jsxRuntime.jsx("h3", { className: "DTPD_itemName", children: t.name }),
-            jsxRuntime.jsx("input", {
-              type: "checkbox",
-              className: "DTPD_switch",
-              role: "switch",
-              "aria-label": t.name,
-              checked: !!enabled,
-              onChange: onToggle
-            })
+            control
           ]
         })
       ];
