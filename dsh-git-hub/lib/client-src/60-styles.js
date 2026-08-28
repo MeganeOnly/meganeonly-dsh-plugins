@@ -105,15 +105,6 @@
       ".DGH_pushInline{flex:none;margin-left:auto;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2);border-radius:5px;width:22px;height:22px;font:inherit;font-size:13px;line-height:1;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,border-color .12s,color .12s;}" +
       ".DGH_pushInline:hover:not(:disabled){background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
       ".DGH_pushInline:disabled{opacity:.35;cursor:not-allowed;}" +
-      // .DGH_repoActions / .DGH_actionBtn 保留（dead code，未来恢复推到对话等按钮时复用）
-      ".DGH_repoActions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);}" +
-      ".DGH_actionBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:4px 10px;font-size:12px;transition:background .12s,border-color .12s;display:inline-flex;align-items:center;gap:4px;}" +
-      ".DGH_actionBtn:hover{background:var(--dsw-specific-sidebar-nav-item-hover);border-color:var(--dsw-alias-label-dimmed);}" +
-      ".DGH_actionBtn:disabled{opacity:.45;cursor:not-allowed;}" +
-      ".DGH_actionBtn[data-variant=\"primary\"]{border-color:var(--dsw-alias-button-info-fill);background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);}" +
-      ".DGH_actionBtn[data-variant=\"primary\"]:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
-      ".DGH_pinBtn[data-active=\"true\"]{color:#b45309;}" +
-      ".DGH_hideBtn[data-active=\"true\"]{color:#9a3412;background:rgba(154,52,18,.1);}" +
       // v0.1.7：隐藏选择模式 — 卡片可点 + 已隐藏卡视觉
       ".DGH_repo[data-selecting=\"true\"]{cursor:pointer;border-color:rgba(234,88,12,.4);}" +
       ".DGH_repo[data-selecting=\"true\"]:hover{border-color:#ea580c;background:var(--dsw-alias-bg-layer-3);}" +
