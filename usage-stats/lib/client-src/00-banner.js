@@ -32,6 +32,7 @@
  * v0.3.3 客户端改用 `dayKey(d) = d.bucket != null ? d.bucket : d.day` 兼容 day/bucket 双 shape
  *（对齐 DayChart `bucketKey` 策略）+ 加 `days[di] == null` 守卫 + `HeatmapCalendar(d.byDay || [], ...)` 防御
  * + host `daySeries` 输出元素同时给 `day` + `bucket` 冗余字段。
+ * v0.3.4 治本：所有 `d.X` 直接访问改用顶部声明的 `safeX = d.X || fallback` 兜底（safeByTrend / safeTotals / safeByModel / safeTopSessions / safeTools 五条路径全覆盖）+ catch block 加 `console.error` self-diagn dump d 的关键字段，下次出错 DevTools Console 直接打印哪个字段 undefined / 数组长度 / keys，根来源定位无需 stack trace。
  * 模型筛选独立持久化（localStorage `dsh-usage-stats/heatmap-model-v1`，
  * null = 全部模型聚合；非 null = 仅该模型贡献的 input/output）。
  * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。

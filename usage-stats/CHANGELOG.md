@@ -4,6 +4,26 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.4] - 2026-09-03
+
+### 修复
+
+- **UsageStatsPageBody 渲染异常治本**：用户实测报 `Cannot read properties of undefined (reading 'day')`，stack trace 列号与 client.js 实际 line 不匹配（强说明浏览器缓存了中间版本）。v0.3.4 把所有 `d.X` 直接访问改用顶部声明的 `safeX = d.X || fallback` 局部变量兜底，覆盖所有 d.X 路径：
+    - `safeByTrend`（line 95 `d.byTrend[r.granularity]`）
+    - `safeTotals`（line 102 `d.totals` / line 185 `d.totals.outputTokens`）
+    - `safeByModel`（line 194 `.map` / line 265 `.length` / line 282 select `.map`）
+    - `safeTopSessions`（line 212 `.map` / line 341 `.length`）
+    - `safeTools`（line 226 `.map` / line 367 `.length`）
+- **自诊断 catch block**：v0.3.4 在 catch 内加 `console.error("[usage-stats] render exception; d shape:", { byDay / byTrend / byModel / totals / sessionCount / rawSessionCount / topSessions / tools / errors }, e)`，下次出错时 DevTools Console 会**直接打印 d 的精确字段状态**（哪个字段缺失、byModel 元素 keys、byTrend 各粒度长度），无需用户报告 stack trace 即可定位 root cause。
+
+### 兼容性
+
+- 客户端 100% 向后兼容（所有 d.X 路径都有 safeX 兜底）
+- host 半段 v0.2.x / v0.3.0 / v0.3.3 都能正常渲染（host 不需要重启）
+- self-diagn  log 是 dev-only console.error，生产环境无副作用
+
+---
+
 ## [0.3.3] - 2026-09-03
 
 ### 修复

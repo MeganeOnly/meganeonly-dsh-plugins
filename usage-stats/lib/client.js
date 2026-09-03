@@ -32,6 +32,7 @@
  * v0.3.3 客户端改用 `dayKey(d) = d.bucket != null ? d.bucket : d.day` 兼容 day/bucket 双 shape
  *（对齐 DayChart `bucketKey` 策略）+ 加 `days[di] == null` 守卫 + `HeatmapCalendar(d.byDay || [], ...)` 防御
  * + host `daySeries` 输出元素同时给 `day` + `bucket` 冗余字段。
+ * v0.3.4 治本：所有 `d.X` 直接访问改用顶部声明的 `safeX = d.X || fallback` 兜底（safeByTrend / safeTotals / safeByModel / safeTopSessions / safeTools 五条路径全覆盖）+ catch block 加 `console.error` self-diagn dump d 的关键字段，下次出错 DevTools Console 直接打印哪个字段 undefined / 数组长度 / keys，根来源定位无需 stack trace。
  * 模型筛选独立持久化（localStorage `dsh-usage-stats/heatmap-model-v1`，
  * null = 全部模型聚合；非 null = 仅该模型贡献的 input/output）。
  * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。
@@ -936,6 +937,21 @@
       try {
         return UsageStatsPageBody(d, function (force) { load(force); }, rangeState[0], setRange, visibilityState[0], setVisibility, panelOpenState[0], setPanelOpen, heatmapModelState[0], setHeatmapModel);
       } catch (e) {
+        // v0.3.4 治本：catch 时打印 d 的关键字段状态，DevTools Console 自动 dump
+        // 让下次出错时能从 console 直接看到 host 半段输出缺哪个字段
+        if (typeof console !== "undefined" && console.error) {
+          console.error("[usage-stats] render exception; d shape:", {
+            byDay: d.byDay ? d.byDay.length + " items, first.keys=" + (d.byDay[0] ? Object.keys(d.byDay[0]).join(",") : "null") : "undefined",
+            byTrend: d.byTrend ? Object.keys(d.byTrend).map(function (k) { return k + ":" + (d.byTrend[k] ? d.byTrend[k].length : 0) }).join(" | ") : "undefined",
+            byModel: d.byModel ? d.byModel.length + " items, first.keys=" + (d.byModel[0] ? Object.keys(d.byModel[0]).join(",") : "null") : "undefined",
+            totals: d.totals ? "present(" + d.totals.requests + " reqs)" : "undefined",
+            sessionCount: d.sessionCount,
+            rawSessionCount: d.rawSessionCount,
+            topSessions: d.topSessions ? d.topSessions.length + " items" : "undefined",
+            tools: d.tools ? d.tools.length + " items" : "undefined",
+            errors: d.errors
+          }, e);
+        }
         return React.createElement(
           "div",
           { style: { padding: "12px", color: C.err } },
@@ -948,15 +964,21 @@
 
     function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen, heatmapModel, setHeatmapModel) {
       // v0.3.0 时间窗口：粒度切换走 byTrend[r.granularity]，旧 'all' / '30' / '7' / '1' 由 rangeSpec() 兼容
+      // v0.3.4 治本：所有 d.X 访问加兜底，老 host 半段（v0.2.x）无 byTrend / totals 也不会抛错
+      var safeByTrend = d.byTrend || {};
+      var safeTotals = d.totals || sumBuckets([]);
+      var safeByModel = d.byModel || [];
+      var safeTopSessions = d.topSessions || [];
+      var safeTools = d.tools || [];
       var r = rangeSpec(range);
-      var seriesSource = d.byTrend[r.granularity] || [];
+      var seriesSource = safeByTrend[r.granularity] || [];
       var winSeries = r.window != null ? seriesSource.slice(-r.window) : seriesSource;
       var winSet = null;
       if (r.window != null) {
         winSet = {};
         for (var wi = 0; wi < winSeries.length; wi++) winSet[winSeries[wi].bucket] = true;
       }
-      var rangeTotals = r.window != null ? sumBuckets(winSeries) : d.totals;
+      var rangeTotals = r.window != null ? sumBuckets(winSeries) : safeTotals;
       var rangeLabel = r.label;
 
       // 顶部：标题 + 范围 tab + 操作（含"显示"按钮 + 弹出层）
@@ -1018,7 +1040,7 @@
         Card("未命中输入", fmtTokens(t.inputTokens), "缓存写 " + fmtTokens(t.cacheWriteTokens)),
         Card("输出", fmtTokens(t.outputTokens), "其中推理 " + fmtTokens(t.reasoningTokens)),
         Card("命中输入", fmtTokens(t.cacheReadTokens), "缓存读取"),
-        Card("生成速度", fmtSpeed(d.totals.outputTokens, d.llmMs), "全程输出 ÷ 模型时间")
+        Card("生成速度", fmtSpeed(safeTotals.outputTokens, d.llmMs || 0), "全程输出 ÷ 模型时间")
       );
 
       // 错误盒
@@ -1027,7 +1049,7 @@
         : null;
 
       // 按模型表
-      var modelRows = d.byModel.map(function (m) {
+      var modelRows = safeByModel.map(function (m) {
         var v = modelInView(m, winSet);
         return React.createElement(
           "tr",
@@ -1045,7 +1067,7 @@
 
       // 会话表
       // 注：回调形参避免用 `s`，以免遮蔽外层样式对象 `var s`
-      var sessionRows = d.topSessions.map(function (sess) {
+      var sessionRows = safeTopSessions.map(function (sess) {
         return React.createElement(
           "tr",
           { key: sess.id },
@@ -1059,7 +1081,7 @@
       });
 
       // 工具表
-      var toolRows = d.tools.map(function (tool) {
+      var toolRows = safeTools.map(function (tool) {
         return React.createElement(
           "tr",
           { key: tool.name },
@@ -1098,7 +1120,7 @@
       }
       if (visibility.heatmap) {
         // 模型筛选 select（始终显示，无 byModel 数据时不渲染）
-        var heatmapModelBar = d.byModel.length > 0
+        var heatmapModelBar = safeByModel.length > 0
           ? React.createElement(
               "div",
               { style: s.heatmapModelBar },
@@ -1115,7 +1137,7 @@
                   title: heatmapModel ? "当前只显示该模型的每日贡献" : "显示所有模型的每日贡献"
                 },
                 React.createElement("option", { value: "" }, "全部"),
-                d.byModel.map(function (m) {
+                safeByModel.map(function (m) {
                   return React.createElement("option", { key: m.model, value: m.model }, m.model);
                 })
               )
@@ -1174,7 +1196,7 @@
             React.createElement(
               "h3",
               { style: s.sectionTitle },
-              "会话用量 Top " + d.topSessions.length,
+              "会话用量 Top " + safeTopSessions.length,
               React.createElement("span", { style: s.sectionHint }, "· 全程")
             ),
             Table(
@@ -1200,7 +1222,7 @@
             React.createElement(
               "h3",
               { style: s.sectionTitle },
-              "工具调用 Top " + d.tools.length,
+              "工具调用 Top " + safeTools.length,
               React.createElement("span", { style: s.sectionHint }, "· 全程")
             ),
             Table(
