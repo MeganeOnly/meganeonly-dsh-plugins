@@ -4,6 +4,34 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-09-03
+
+### 新增
+
+- **子代理消耗归并**：host 端解析 DSH SessionHeader 的 `parentSession` / `delegationDepth` / `origin` 字段（schema 见 dsh-session-persistence-jsonl README § SessionHeader），把每个 subagent 的 token 沿 `parentSession` 链 rollup 到 root main session（**counts speak in main sessions only，token lands on its owner**）。`sessionCount` 改为 root 数；新增 `rawSessionCount` 保留原始 session 数（含被 rollup 的 subagent）供高级排查。`byModel.sessions` 字段语义相应改为"出现该模型的 main session 数"。
+- **多粒度趋势**：host 端 `aggregateSession` 同时写入 `hours` / `minutes` / `modelHours` / `modelMinutes` 桶；summary 输出 `byTrend = { minute / hour / day / week }` 四种粒度零填充序列（minute = 24h 滚动 / hour = 7d 滚动 / day = 30d 滚动 / week = 全部按 ISO 周一折叠）。客户端 RANGES 加 7 个 range（兼容 v0.2.x 旧 key）：'all' / '7' / '1' 按日 / 'h7' / 'h1' 按小时 / 'm1' 按分钟 / 'w12' 按周。`DayChart` 接受 `granularity` 参数自适应（柱宽 minute 3px / hour 8px / day/week 22px），minute 模式 N=1440 时 `chartWrap` overflow-x auto 横向滚动，X 轴标签按粒度格式（`fmtBucket`：`MM-DD` / `MM-DD HH` / `MM-DD HH:mm` / 周一日期）。
+
+### 兼容性
+
+- 客户端 schema 新增 `byTrend` 顶层字段 + `rawSessionCount` — v0.2.x 客户端渲染不依赖这两个字段（`byDay` 保留向后兼容），所以升级平滑
+- host 端聚合 shape 变化：`aggregateSession` 新增 `parentSession` / `delegationDepth` / `origin` / `hours` / `modelHours` / `minutes` / `modelMinutes` 字段，老字段全部保留
+- `CACHE_VERSION` v2 → v4 跳号（中间 v3 不暴露），避免用户白经历一次缓存作废重算
+- 增量缓存 `(size, mtimeMs)` 机制不变，z 8 多帧解析不变，美学度主对（蓝橙 + rose peak）不变
+- 显示设置 7 块 schema + 热力图模型筛选不变
+
+### bundle
+
+- v0.2.2 client.js = 54968 字节 → v0.3.0 client.js = 59653 字节
+- 净增 +4685 字节 / +4.6 KB（远低于 v0.2.2 → v0.3.0 估算的 +15 KB 误判；主要来自 DayChart 自适应 + fmtBucket + rangeSpec + banner）
+
+---
+
+## [0.2.2] - 2026-09-03
+
+本文件记录 `dsh-usage-stats` 的重要变更。
+
+格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+
 ## [0.2.2] - 2026-09-03
 
 ### 新增

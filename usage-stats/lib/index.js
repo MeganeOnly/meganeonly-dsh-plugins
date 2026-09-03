@@ -23,7 +23,7 @@ export const inject = ['webServer']
 
 const API_SUMMARY = '/api/usage-stats/summary'
 const CACHE_FILENAME = '.usage-stats-cache.json'
-const CACHE_VERSION = 2 // v2：聚合新增 modelDays（模型×日联合分桶），旧缓存整体作废重算
+const CACHE_VERSION = 4 // v3：跳过不暴露；v4 实际包含 (a) 子代理归并 (parentSession/delegationDepth) + hours/minutes 桶 + (b) 跨聚合聚合层重写 (root main session rollup + granularitySeries)。v0.2.x → v0.3.0 一次 bump；中间版本不暴露避免用户白经历一次缓存作废重算
 const ZSTD_MAGIC = 0xfd2fb528
 const BEIJING_OFFSET_MS = 8 * 3600 * 1000 // 统计按北京时间分日（UTC+8 无夏令时）
 const DAY_WINDOW = 30 // 按日趋势返回最近 30 天（含零填充）
@@ -147,12 +147,16 @@ function toolBucketOf(map, key) {
  * 工具耗时按 callId 配对 tool/call → tool/result；llmMs 按 step/start → assistant/message。
  */
 export function aggregateSession(events) {
-  const meta = { id: null, cwd: null, createdAt: null, preset: null }
+  const meta = { id: null, cwd: null, createdAt: null, preset: null, parentSession: null, delegationDepth: null, origin: null }
   let title = null
   let currentModel = 'unknown'
   const models = new Map()
   const days = new Map()
   const modelDays = new Map() // 'model|day' → bucket（按模型×按日联合分桶，供时间范围过滤）
+  const hours = new Map() // 'YYYY-MM-DDTHH' → bucket（v0.3.0 多粒度趋势：小时级，最近 7d 滚动）
+  const modelHours = new Map() // 'model|hourKey' → bucket（v0.3.0：按模型×小时联合分桶）
+  const minutes = new Map() // 'YYYY-MM-DDTHH:mm' → bucket（v0.3.0：分钟级，最近 24h 滚动）
+  const modelMinutes = new Map() // 'model|minuteKey' → bucket（v0.3.0：按模型×分钟联合分桶）
   const tools = new Map() // name -> { calls, ms }
   const pendingCalls = new Map() // callId -> { name, time }
   const callNames = new Map() // callId -> name（tool/result 里没有名字，靠这里补）
@@ -171,6 +175,15 @@ export function aggregateSession(events) {
         meta.cwd = event.cwd ?? meta.cwd
         meta.createdAt = event.createdAt ?? meta.createdAt
         meta.preset = event.agentPreset ?? meta.preset
+        // v0.3.0 子代理归并依据（DSH session header schema：parentSession
+        // / delegationDepth / origin 三个字段见 dsh-session-persistence-jsonl
+        // README § SessionHeader）。缺失 delegationDepth 时按 parentSession
+        // 推断（顶层 = 0），兼容 v0.2.x 之前生成的旧会话日志。
+        meta.parentSession = event.parentSession ?? meta.parentSession
+        meta.delegationDepth = typeof event.delegationDepth === 'number'
+          ? event.delegationDepth
+          : (meta.parentSession == null ? 0 : Math.max(1, meta.delegationDepth || 0))
+        meta.origin = event.origin ?? meta.origin
         break
       case 'session/title':
         if (typeof event.data?.title === 'string' && event.data.title.length > 0) title = event.data.title
@@ -192,6 +205,17 @@ export function aggregateSession(events) {
           const day = beijingDayKey(event.time ?? 0)
           addUsage(bucketOf(days, day), usage)
           addUsage(bucketOf(modelDays, `${currentModel}|${day}`), usage)
+          // v0.3.0 多粒度趋势：同时写入小时 / 分钟桶（北京时间对齐）
+          if (event.time != null) {
+            const dt = new Date(event.time + BEIJING_OFFSET_MS)
+            const pad = function (n) { return String(n).padStart(2, "0") }
+            const hourKey = day + "T" + pad(dt.getUTCHours())
+            const minuteKey = hourKey + ":" + pad(dt.getUTCMinutes())
+            addUsage(bucketOf(hours, hourKey), usage)
+            addUsage(bucketOf(modelHours, currentModel + "|" + hourKey), usage)
+            addUsage(bucketOf(minutes, minuteKey), usage)
+            addUsage(bucketOf(modelMinutes, currentModel + "|" + minuteKey), usage)
+          }
         }
         if (openStep != null && openStep.turn === event.data?.turn && openStep.step === event.data?.step) {
           llmMs += Math.max(0, (event.time ?? 0) - openStep.time)
@@ -244,11 +268,18 @@ export function aggregateSession(events) {
     cwd: meta.cwd,
     createdAt: meta.createdAt,
     preset: meta.preset,
+    parentSession: meta.parentSession,
+    delegationDepth: meta.delegationDepth,
+    origin: meta.origin,
     title,
     lastTs,
     models: Object.fromEntries(models),
     days: Object.fromEntries(days),
     modelDays: Object.fromEntries(modelDays),
+    hours: Object.fromEntries(hours),
+    modelHours: Object.fromEntries(modelHours),
+    minutes: Object.fromEntries(minutes),
+    modelMinutes: Object.fromEntries(modelMinutes),
     tools: Object.fromEntries(tools),
     totals,
     steps,
@@ -377,20 +408,225 @@ function totalTokensOf(bucket) {
   )
 }
 
-/** 最近 DAY_WINDOW 天（北京时间）零填充的日序列。 */
-function daySeries(aggs) {
-  const merged = new Map()
+/** 最近 DAY_WINDOW 天（北京时间）零填充的日序列。v0.3.0 改走 granularitySeries('day')。 */
+function daySeries(roots) {
+  // 兼容 v0.2.x 调用方（保持输出 shape 不变：{ day, ...bucket }）
+  const series = granularitySeries(roots, 'day')
+  return series.map(function (s) {
+    return { day: s.bucket, inputTokens: s.inputTokens, outputTokens: s.outputTokens, cacheReadTokens: s.cacheReadTokens, cacheWriteTokens: s.cacheWriteTokens, reasoningTokens: s.reasoningTokens, requests: s.requests }
+  })
+}
+
+/**
+ * 把所有 aggs rollup 到 root main session（v0.3.0 子代理归并）。
+ * root 定义：parentSession 为 null 的最顶层 main session（DSH session header schema
+ * 见 dsh-session-persistence-jsonl README § SessionHeader：parentSession / delegationDepth）。
+ * subagent token 全部归属 owner（caiyfa 描述："lands on its owner"），
+ * 不摊销到祖先链上的每个 main session——caiyfa 强调 counts speak in main sessions only。
+ *
+ * 防环：rootIdOf 走 parentSession 链时用 Set 跟踪已访问节点；遇到 orphan subagent
+ * （父不在本地）回退到自身 id（罕见，DSH 父会话跨 profile / 跨设备时）。
+ */
+function rollupByMainSession(aggs) {
+  const byId = new Map()
   for (const agg of aggs) {
-    for (const [day, bucket] of Object.entries(agg.days || {})) {
-      mergeBucket(bucketOf(merged, day), bucket)
+    if (agg.id != null) byId.set(agg.id, agg)
+  }
+  function rootIdOf(agg) {
+    const seen = new Set()
+    let cur = agg
+    while (cur != null && cur.parentSession != null) {
+      if (seen.has(cur.id)) break
+      seen.add(cur.id)
+      cur = byId.get(cur.parentSession)
+    }
+    return cur != null ? cur.id : (agg.id != null ? agg.id : null)
+  }
+  const rootIdMap = new Map()
+  for (const agg of aggs) {
+    if (agg.id != null) rootIdMap.set(agg.id, rootIdOf(agg))
+  }
+  const roots = new Map()
+  function ensureRoot(rootId) {
+    let r = roots.get(rootId)
+    if (r == null) {
+      r = {
+        id: rootId,
+        title: null,
+        cwd: null,
+        createdAt: null,
+        preset: null,
+        parentSession: null,
+        delegationDepth: 0,
+        origin: null,
+        lastTs: null,
+        models: new Map(),
+        days: new Map(),
+        modelDays: new Map(),
+        hours: new Map(),
+        modelHours: new Map(),
+        minutes: new Map(),
+        modelMinutes: new Map(),
+        tools: new Map(),
+        totals: emptyBucket(),
+        steps: 0,
+        turns: 0,
+        llmMs: 0,
+        toolMs: 0,
+        childIds: [],
+      }
+      roots.set(rootId, r)
+    }
+    return r
+  }
+  // 先把 root 主会话本身的元数据拷过来（main session 是 parentSession === null 的）
+  for (const agg of aggs) {
+    if (agg.parentSession == null && agg.id != null) {
+      const root = ensureRoot(agg.id)
+      root.title = agg.title || root.title
+      root.cwd = agg.cwd || root.cwd
+      root.createdAt = agg.createdAt || root.createdAt
+      root.preset = agg.preset || root.preset
+      root.delegationDepth = agg.delegationDepth || 0
+      root.origin = agg.origin || null
+      if (typeof agg.lastTs === 'number' && (root.lastTs == null || agg.lastTs > root.lastTs)) {
+        root.lastTs = agg.lastTs
+      }
     }
   }
+  // rollup 所有 bucket 到 root（含 main session 自身，counts speak in main sessions only）
+  for (const agg of aggs) {
+    const rootId = rootIdMap.get(agg.id)
+    if (rootId == null) continue
+    const root = ensureRoot(rootId)
+    for (const [k, b] of Object.entries(agg.models || {})) {
+      mergeBucket(bucketOf(root.models, k), b)
+    }
+    for (const [k, b] of Object.entries(agg.days || {})) {
+      mergeBucket(bucketOf(root.days, k), b)
+    }
+    for (const [k, b] of Object.entries(agg.modelDays || {})) {
+      const sep = k.indexOf('|')
+      const m = k.slice(0, sep)
+      const kk = k.slice(sep + 1)
+      mergeBucket(bucketOf(root.modelDays, m + '|' + kk), b)
+    }
+    for (const [k, b] of Object.entries(agg.hours || {})) {
+      mergeBucket(bucketOf(root.hours, k), b)
+    }
+    for (const [k, b] of Object.entries(agg.modelHours || {})) {
+      const sep = k.indexOf('|')
+      const m = k.slice(0, sep)
+      const kk = k.slice(sep + 1)
+      mergeBucket(bucketOf(root.modelHours, m + '|' + kk), b)
+    }
+    for (const [k, b] of Object.entries(agg.minutes || {})) {
+      mergeBucket(bucketOf(root.minutes, k), b)
+    }
+    for (const [k, b] of Object.entries(agg.modelMinutes || {})) {
+      const sep = k.indexOf('|')
+      const m = k.slice(0, sep)
+      const kk = k.slice(sep + 1)
+      mergeBucket(bucketOf(root.modelMinutes, m + '|' + kk), b)
+    }
+    for (const [k, b] of Object.entries(agg.tools || {})) {
+      const tb = toolBucketOf(root.tools, k)
+      tb.calls += b.calls || 0
+      tb.ms += b.ms || 0
+    }
+    mergeBucket(root.totals, agg.totals)
+    root.steps += agg.steps || 0
+    root.turns += agg.turns || 0
+    root.llmMs += agg.llmMs || 0
+    root.toolMs += agg.toolMs || 0
+    if (agg.id !== rootId && agg.id != null) {
+      root.childIds.push(agg.id)
+    }
+    if (typeof agg.lastTs === 'number' && (root.lastTs == null || agg.lastTs > root.lastTs)) {
+      root.lastTs = agg.lastTs
+    }
+  }
+  return roots
+}
+
+/**
+ * 多粒度趋势序列（v0.3.0）：
+ *   'minute' — 最近 24h（分钟级，1440 桶）
+ *   'hour'   — 最近 7d（小时级，168 桶）
+ *   'day'    — 最近 30d（日级）
+ *   'week'   — 全部数据按周折叠（ISO week，周一为周开始对齐北京时间约定）
+ *
+ * 输出 bucket shape：{ bucket: 'YYYY-MM-DD' | 'YYYY-MM-DDTHH' | 'YYYY-MM-DDTHH:mm' | 'YYYY-MM-DD' (周), ...bucket }
+ */
+function granularitySeries(roots, granularity) {
+  const list = [...roots.values()]
+  const merged = new Map()
+  if (granularity === 'minute') {
+    for (const root of list) {
+      for (const [k, b] of Object.entries(root.minutes || {})) {
+        mergeBucket(bucketOf(merged, k), b)
+      }
+    }
+  } else if (granularity === 'hour') {
+    for (const root of list) {
+      for (const [k, b] of Object.entries(root.hours || {})) {
+        mergeBucket(bucketOf(merged, k), b)
+      }
+    }
+  } else if (granularity === 'day') {
+    for (const root of list) {
+      for (const [k, b] of Object.entries(root.days || {})) {
+        mergeBucket(bucketOf(merged, k), b)
+      }
+    }
+  } else if (granularity === 'week') {
+    // 周：把 days 折叠到 ISO 周一对应的日期 key
+    for (const root of list) {
+      for (const [k, b] of Object.entries(root.days || {})) {
+        const parts = k.split('-')
+        const dt = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]))
+        const dow = (dt.getUTCDay() + 6) % 7 // 周一=0, 周日=6
+        const wkMs = dt.getTime() - dow * 86400000
+        const wk = beijingDayKey(wkMs)
+        mergeBucket(bucketOf(merged, wk), b)
+      }
+    }
+  } else {
+    return []
+  }
+
   const out = []
+  if (granularity === 'week') {
+    // 周：按 key 升序输出，不零填充（历史数据可能不连续）
+    const keys = [...merged.keys()].sort()
+    for (const k of keys) out.push({ bucket: k, ...merged.get(k) })
+    return out
+  }
+  // 分钟 / 小时 / 日：零填充对齐到当前 bucket 末
   const now = Date.now()
-  for (let i = DAY_WINDOW - 1; i >= 0; i--) {
-    const key = beijingDayKey(now - i * 24 * 3600 * 1000)
-    const bucket = merged.get(key) || emptyBucket()
-    out.push({ day: key, ...bucket })
+  const stepMs = granularity === 'minute' ? 60 * 1000 : (granularity === 'hour' ? 3600 * 1000 : 24 * 3600 * 1000)
+  const windowMs = granularity === 'minute' ? 24 * 3600 * 1000 : (granularity === 'hour' ? 7 * 24 * 3600 * 1000 : DAY_WINDOW * 24 * 3600 * 1000)
+  const steps = Math.floor(windowMs / stepMs)
+  const anchorMs = now - (now % stepMs)
+  function keyFn(ms) {
+    if (granularity === 'minute') {
+      const dt = new Date(ms + BEIJING_OFFSET_MS)
+      const pad = function (n) { return String(n).padStart(2, '0') }
+      const day = beijingDayKey(ms)
+      return day + 'T' + pad(dt.getUTCHours()) + ':' + pad(dt.getUTCMinutes())
+    }
+    if (granularity === 'hour') {
+      const dt = new Date(ms + BEIJING_OFFSET_MS)
+      const pad = function (n) { return String(n).padStart(2, '0') }
+      const day = beijingDayKey(ms)
+      return day + 'T' + pad(dt.getUTCHours())
+    }
+    return beijingDayKey(ms)
+  }
+  for (let i = steps - 1; i >= 0; i--) {
+    const k = keyFn(anchorMs - i * stepMs)
+    const b = merged.get(k) || emptyBucket()
+    out.push({ bucket: k, ...b })
   }
   return out
 }
@@ -523,18 +759,23 @@ export function apply(ctx) {
     let turns = 0
     let llmMs = 0
     let toolMs = 0
-    for (const agg of aggs) {
-      mergeBucket(totals, agg.totals)
-      steps += agg.steps || 0
-      turns += agg.turns || 0
-      llmMs += agg.llmMs || 0
-      toolMs += agg.toolMs || 0
+    // v0.3.0 子代理归并：所有聚合走 root main session（counts speak in main sessions only）
+    const rootAggs = rollupByMainSession(aggs)
+    const rootList = [...rootAggs.values()]
+    for (const root of rootList) {
+      mergeBucket(totals, root.totals)
+      steps += root.steps || 0
+      turns += root.turns || 0
+      llmMs += root.llmMs || 0
+      toolMs += root.toolMs || 0
     }
     return {
       ok: true,
       generatedAt: Date.now(),
       home: homeDir,
-      sessionCount: aggs.length,
+      // v0.3.0：sessionCount 改为 root 数（rollup 后）；保留 rawSessionCount 给高级排查
+      sessionCount: rootList.length,
+      rawSessionCount: aggs.length,
       decoded,
       reused,
       durationMs: Date.now() - startedAt,
@@ -544,10 +785,17 @@ export function apply(ctx) {
       turns,
       llmMs,
       toolMs,
-      byDay: daySeries(aggs),
-      byModel: modelTable(aggs),
-      topSessions: topSessions(aggs),
-      tools: toolTable(aggs),
+      byDay: daySeries(rootList),
+      // v0.3.0 多粒度趋势：四种粒度全部输出（客户端按用户选择显示一种）
+      byTrend: {
+        minute: granularitySeries(rootList, 'minute'),
+        hour: granularitySeries(rootList, 'hour'),
+        day: granularitySeries(rootList, 'day'),
+        week: granularitySeries(rootList, 'week'),
+      },
+      byModel: modelTable(rootList),
+      topSessions: topSessions(rootList),
+      tools: toolTable(rootList),
     }
   }
 

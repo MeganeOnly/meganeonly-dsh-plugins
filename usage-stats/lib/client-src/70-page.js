@@ -90,17 +90,17 @@
     }
 
     function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen, heatmapModel, setHeatmapModel) {
-      // 时间窗口
-      var winN = range === "all" ? null : parseInt(range, 10);
-      var fromIdx = winN == null ? 0 : Math.max(0, d.byDay.length - winN);
-      var winDays = d.byDay.slice(fromIdx);
+      // v0.3.0 时间窗口：粒度切换走 byTrend[r.granularity]，旧 'all' / '30' / '7' / '1' 由 rangeSpec() 兼容
+      var r = rangeSpec(range);
+      var seriesSource = d.byTrend[r.granularity] || [];
+      var winSeries = r.window != null ? seriesSource.slice(-r.window) : seriesSource;
       var winSet = null;
-      if (winN != null) {
+      if (r.window != null) {
         winSet = {};
-        for (var wi = 0; wi < winDays.length; wi++) winSet[winDays[wi].day] = true;
+        for (var wi = 0; wi < winSeries.length; wi++) winSet[winSeries[wi].bucket] = true;
       }
-      var rangeTotals = winN == null ? d.totals : sumDays(winDays);
-      var rangeLabel = winN == null ? "全程" : (winN === 1 ? "今日" : "近 " + winN + " 日");
+      var rangeTotals = r.window != null ? sumBuckets(winSeries) : d.totals;
+      var rangeLabel = r.label;
 
       // 顶部：标题 + 范围 tab + 操作（含"显示"按钮 + 弹出层）
       var header = React.createElement(
@@ -156,8 +156,8 @@
       var cardsNode = React.createElement(
         "div",
         { style: { display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "16px" } },
-        Card("会话", String(d.sessionCount), d.turns + " 轮对话（全程）"),
-        Card("模型请求" + (winN == null ? "" : " · " + rangeLabel), String(t.requests), "纯模型时间 " + fmtDuration(d.llmMs)),
+        Card("会话（main）", String(d.sessionCount), d.rawSessionCount != null && d.rawSessionCount !== d.sessionCount ? ("含 " + (d.rawSessionCount - d.sessionCount) + " 个 subagent 已 rollup") : d.turns + " 轮对话（全程）"),
+        Card("模型请求" + (r.window == null ? "" : " · " + rangeLabel), String(t.requests), "纯模型时间 " + fmtDuration(d.llmMs)),
         Card("未命中输入", fmtTokens(t.inputTokens), "缓存写 " + fmtTokens(t.cacheWriteTokens)),
         Card("输出", fmtTokens(t.outputTokens), "其中推理 " + fmtTokens(t.reasoningTokens)),
         Card("命中输入", fmtTokens(t.cacheReadTokens), "缓存读取"),
@@ -213,9 +213,11 @@
         );
       });
 
-      // 图表标题
-      var chartTitle = winN == null ? "近 30 天用量" : (winN === 1 ? "今日用量" : "近 " + winN + " 日用量");
-      var chartHint = winN == null ? "图表固定 30 天，切换范围看模型表" : null;
+      // 图表标题（v0.3.0 多粒度）
+      var chartTitle = r.label + "用量";
+      var chartHint = r.granularity === "week"
+        ? "按周折叠（周一为周开始，北京时间）"
+        : (r.granularity === "hour" ? "按小时（最近 7d × 24h）" : (r.granularity === "minute" ? "按分钟（最近 24h × 60min）" : null));
 
       // 各 section 按 visibility 过滤后顺序拼接，第一个不加 hr（紧跟 header/errorBox）
       var sectionNodes = [];
@@ -233,7 +235,7 @@
               React.createElement("h3", { style: s.sectionTitle }, chartTitle),
               chartHint ? React.createElement("span", { style: s.sectionHint }, "· ", chartHint) : null
             ),
-            DayChart(winN == null ? d.byDay : winDays)
+            DayChart(winSeries, r.granularity)
           )
         });
       }

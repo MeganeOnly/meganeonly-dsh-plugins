@@ -5,7 +5,9 @@ DeepSeek Harness (DSH) web profile 的常驻插件：在设置页汇总展示跨
 ## 功能
 
 - **总量卡片**：输入、输出、推理、缓存读取 token 数，以及请求数与生成速度。
-- **趋势与分解**：近 30 天用量柱状图、按模型分解表、会话用量排行、工具调用排行。
+- **多粒度趋势**（v0.3.0 新增）：用量柱状图支持按**分钟（最近 24h）/ 小时（最近 7d）/ 日（最近 30d）/ 周（全部，按 ISO 周一折叠）**切换粒度；柱宽自适应 + 分钟模式横向滚动。
+- **子代理归并**（v0.3.0 新增）：subagent 的 token 沿 DSH SessionHeader 的 `parentSession` 链 rollup 到 root main session，counts 只算 main session，token 全部归属 owner。
+- **趋势与分解**：按模型分解表、会话用量排行、工具调用排行。
 - **贡献热力图**（v0.2.2 新增）：GitHub 风格 53 周 × 7 日方格日历，5 级颜色按 token 量分级，可选模型筛选，悬停查看当日明细。
 - **精确数据源**：token 数取自会话日志中助手消息的 `usage` 字段，为模型侧返回的精确值而非估算。
 - **显示设置**：页面右上角「显示」按钮可独立隐藏/展示 7 个数据块（元信息、指标卡、柱状图、热力图、按模型表、会话 Top、工具 Top），支持「全选 / 全不选」快捷按钮，偏好持久化到 `localStorage`。
@@ -32,7 +34,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：在设置页汇总展示跨
 ```json
 {
   "dependencies": {
-    "dsh-usage-stats": "^0.2.2"
+    "dsh-usage-stats": "^0.3.0"
   }
 }
 ```

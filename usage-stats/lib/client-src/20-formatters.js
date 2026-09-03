@@ -51,9 +51,15 @@
 
     /** 近 N 日窗口内的逐日桶求和（byDay 已是零填充的最近 30 天）。 */
     function sumDays(days) {
+      return sumBuckets(days);
+    }
+
+    /** v0.3.0 多粒度桶求和：byTrend 各粒度共用 { bucket, ...bucket } shape。 */
+    function sumBuckets(buckets) {
       var out = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
-      for (var i = 0; i < days.length; i++) {
-        var b = days[i];
+      if (buckets == null) return out;
+      for (var i = 0; i < buckets.length; i++) {
+        var b = buckets[i];
         out.inputTokens += b.inputTokens || 0;
         out.outputTokens += b.outputTokens || 0;
         out.cacheReadTokens += b.cacheReadTokens || 0;
@@ -62,6 +68,29 @@
         out.requests += b.requests || 0;
       }
       return out;
+    }
+
+    /** v0.3.0 按桶 key 格式化（byTrend[granularity] 用）。 */
+    function fmtBucket(key, granularity) {
+      if (key == null) return "";
+      if (granularity === "minute") {
+        // YYYY-MM-DDTHH:mm → MM-DD HH:mm
+        var sp = key.split("T");
+        if (sp.length !== 2) return key;
+        return sp[0].slice(5) + " " + sp[1];
+      }
+      if (granularity === "hour") {
+        // YYYY-MM-DDTHH → MM-DD HH
+        var sp2 = key.split("T");
+        if (sp2.length !== 2) return key;
+        return sp2[0].slice(5) + " " + sp2[1] + "h";
+      }
+      if (granularity === "week") {
+        // 周一日期，按 MM-DD 显示（与日级一致）
+        return key.slice(5);
+      }
+      // day
+        return key.slice(5);
     }
 
     /** 模型在时间窗口内的用量（无按日数据时回退全程合计）。 */

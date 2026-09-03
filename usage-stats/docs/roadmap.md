@@ -8,8 +8,8 @@
 
 | 特性 | 状态 | 发布版本 |
 |---|---|---|
-| § 一 子代理消耗归并 | 待实施 | 计划 v0.3.0 |
-| § 二 多粒度趋势 | 待实施 | 计划 v0.3.0 |
+| § 一 子代理消耗归并 | ✅ 已实施 | v0.3.0（2026-09-03） |
+| § 二 多粒度趋势 | ✅ 已实施 | v0.3.0（2026-09-03） |
 | § 三 GitHub 风格贡献热力图 | ✅ 已实施 | v0.2.2（2026-09-03） |
 
 ---
@@ -247,7 +247,7 @@ yokesky/dsh-usage-lens / TenMilesSwordGod/dsh-token-stats / Make0209/dsh-usage-s
 
 **推荐批次 1**：§ 一（子代理归并）+ § 二（多粒度趋势）**同一次 bump**（`CACHE_VERSION` 从 2 直接到 4；中间 v3 跳过不暴露）。
 
-理由：两者都改 `aggregateSession` shape，分两次等于让用户白经历一次缓存作废重算。一次 bump + 一个 CHANGELOG entry 同时讲清两件事。
+理由：两者都改 `aggregateSession` shape，分两次等于让用户白经历一次缓存作废重算。一次 bump + 一个 CHANGELOG entry 同时讲清两件事。— ✅ **已在 v0.3.0 实施**（2026-09-03）。CACHE v2 → v4 跳号完成；实际增量 +4.6 KB（远低于 § 五 原估的 +15 KB 误判；v0.3.0 主机端改动量比 v0.2.2 客户端改动量小）。
 
 **推荐批次 2**：§ 三（热力图）— ✅ **已在 v0.2.2 实施**（2026-09-03）。纯前端，`CACHE_VERSION` 不动（v2 不变）。实际净增 +15206 字节 / +15 KB（roadmap 原估 +3-4 KB，偏低的根因是 HeatmapCalendar 内部循环 + 53 周对齐 + 详细 JSDoc 占的字节，比"画 53 个 div"的直觉多不少）。最终 client.js = 54968 字节，与 `dsh-git-hub` 102 KB / `dsh-task-pool` 46 KB 同范围。
 

@@ -27,4 +27,22 @@
  * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。
  * 详见 `lib/client-src/40-components.js` 的 HeatmapCalendar 与
  * `lib/client-src/50-config.js` 的 loadHeatmapModel / saveHeatmapModel。
+ *
+ * v0.3.0 两特性合并发布：
+ *   (a) 子代理消耗归并 — host 解析 DSH SessionHeader 的 parentSession /
+ *       delegationDepth / origin 字段（schema 见 dsh-session-persistence-jsonl
+ *       README § SessionHeader），把每个 subagent 的 token 沿 parentSession
+ *       chain rollup 到 root main session（counts speak in main sessions only，
+ *       token lands on its owner）。sessionCount 现在是 root 数；新增
+ *       rawSessionCount 保留原始 session 数供高级排查。
+ *   (b) 多粒度趋势 — host 端 aggregateSession 同时写 hours / /minutes 桶，
+ *       summary 输出 byTrend = { minute / /hour / /day / / /week } 四种粒度零填充序列。
+ *       客户端 RANGES 加 7 个 range（兼容 v0.2.x 'all' / '30' / '7' / '1'）：
+ *         'all' / '7' / '1' — 按日窗口（day）
+ *         'h7' / 'h1' — 按小时（hour / minute）
+ *         'm1' — 按分钟（minute）
+ *         'w12' — 按周（week，ISO 周一折叠）
+ *       DayChart 接受 granularity 参数自适应柱宽（minute 极窄 + overflow-x
+ *       auto 滚动）+ X 轴标签按粒度格式（MM-DD / MM-DD HH / MM-DD HH:mm / 周一日期）。
+ *       CACHE_VERSION v2 → v4 跳号（中间 v3 不暴露避免用户白经历一次缓存作废重算）。
  */

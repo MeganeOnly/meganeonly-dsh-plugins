@@ -27,6 +27,24 @@
  * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。
  * 详见 `lib/client-src/40-components.js` 的 HeatmapCalendar 与
  * `lib/client-src/50-config.js` 的 loadHeatmapModel / saveHeatmapModel。
+ *
+ * v0.3.0 两特性合并发布：
+ *   (a) 子代理消耗归并 — host 解析 DSH SessionHeader 的 parentSession /
+ *       delegationDepth / origin 字段（schema 见 dsh-session-persistence-jsonl
+ *       README § SessionHeader），把每个 subagent 的 token 沿 parentSession
+ *       chain rollup 到 root main session（counts speak in main sessions only，
+ *       token lands on its owner）。sessionCount 现在是 root 数；新增
+ *       rawSessionCount 保留原始 session 数供高级排查。
+ *   (b) 多粒度趋势 — host 端 aggregateSession 同时写 hours / /minutes 桶，
+ *       summary 输出 byTrend = { minute / /hour / /day / / /week } 四种粒度零填充序列。
+ *       客户端 RANGES 加 7 个 range（兼容 v0.2.x 'all' / '30' / '7' / '1'）：
+ *         'all' / '7' / '1' — 按日窗口（day）
+ *         'h7' / 'h1' — 按小时（hour / minute）
+ *         'm1' — 按分钟（minute）
+ *         'w12' — 按周（week，ISO 周一折叠）
+ *       DayChart 接受 granularity 参数自适应柱宽（minute 极窄 + overflow-x
+ *       auto 滚动）+ X 轴标签按粒度格式（MM-DD / MM-DD HH / MM-DD HH:mm / 周一日期）。
+ *       CACHE_VERSION v2 → v4 跳号（中间 v3 不暴露避免用户白经历一次缓存作废重算）。
  */window.__ModuleLoader__.load({
   id: "dsh-usage-stats",
   factory: (require) => {
@@ -90,9 +108,15 @@
 
     /** 近 N 日窗口内的逐日桶求和（byDay 已是零填充的最近 30 天）。 */
     function sumDays(days) {
+      return sumBuckets(days);
+    }
+
+    /** v0.3.0 多粒度桶求和：byTrend 各粒度共用 { bucket, ...bucket } shape。 */
+    function sumBuckets(buckets) {
       var out = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 };
-      for (var i = 0; i < days.length; i++) {
-        var b = days[i];
+      if (buckets == null) return out;
+      for (var i = 0; i < buckets.length; i++) {
+        var b = buckets[i];
         out.inputTokens += b.inputTokens || 0;
         out.outputTokens += b.outputTokens || 0;
         out.cacheReadTokens += b.cacheReadTokens || 0;
@@ -101,6 +125,29 @@
         out.requests += b.requests || 0;
       }
       return out;
+    }
+
+    /** v0.3.0 按桶 key 格式化（byTrend[granularity] 用）。 */
+    function fmtBucket(key, granularity) {
+      if (key == null) return "";
+      if (granularity === "minute") {
+        // YYYY-MM-DDTHH:mm → MM-DD HH:mm
+        var sp = key.split("T");
+        if (sp.length !== 2) return key;
+        return sp[0].slice(5) + " " + sp[1];
+      }
+      if (granularity === "hour") {
+        // YYYY-MM-DDTHH → MM-DD HH
+        var sp2 = key.split("T");
+        if (sp2.length !== 2) return key;
+        return sp2[0].slice(5) + " " + sp2[1] + "h";
+      }
+      if (granularity === "week") {
+        // 周一日期，按 MM-DD 显示（与日级一致）
+        return key.slice(5);
+      }
+      // day
+        return key.slice(5);
     }
 
     /** 模型在时间窗口内的用量（无按日数据时回退全程合计）。 */
@@ -199,7 +246,7 @@
       chartSection: { marginTop: "4px" },
       chartLegend: { display: "flex", alignItems: "center", gap: "14px", fontSize: "11px", color: C.text2, marginBottom: "12px" },
       chartLegendHint: { marginLeft: "auto", fontSize: "11px", color: C.text3 },
-      chartWrap: { position: "relative", height: "100px" },
+      chartWrap: { position: "relative", height: "100px", overflowX: "auto", overflowY: "hidden" },
       chartGridLine: { position: "absolute", left: 0, right: 0, borderTopStyle: "dashed", borderTopWidth: "1px", borderTopColor: C.gridDashed, pointerEvents: "none" },
       chartGridBase: { position: "absolute", left: 0, right: 0, borderTopStyle: "solid", borderTopWidth: "1px", borderTopColor: C.gridBase, pointerEvents: "none" },
       chartTodayLine: { position: "absolute", top: 0, bottom: 0, width: "1px", background: C.todayLine, opacity: 0.7, pointerEvents: "none" },
@@ -264,18 +311,28 @@
     }
 
     /**
-     * 近 N 日用量图：每天一根柱，输出（绿）堆在输入（灰）之上。
-     * 叠加 4 条参考线（25/50/75/100%）+ today 竖线 + peak 徽章 + 摘要脚注。
-     * 缓存读 / 推理 / 请求数走原生 title tooltip（hover 单柱）。
+     * 用量柱状图（v0.3.0 多粒度）：按 granularity（day / hour / minute / week）渲染。
+     * 输入 buckets 是 byTrend[granularity] 子集（零填充过的窗口序列）。
+     * 每桶一根柱，输出（橙）堆在输入（蓝）之上。minute 模式 N=1440 时容器
+     * 设 overflow-x: auto 让用户横向滚动；其它模式 wrap。
+     * X 轴标签按 granularity 用 fmtBucket 格式化（MM-DD / MM-DD HH / MM-DD HH:mm / 周一日期）。
+     * 峰值 / today 竖线 / 网格 / 4 条参考线 / 摘要脚注 行为同 v0.2.1。
      */
-    function DayChart(days) {
-      var N = days.length;
+    function DayChart(buckets, granularity) {
+      var N = buckets.length;
+      if (N === 0) {
+        return React.createElement(
+          "div",
+          { style: Object.assign({}, s.meta, { padding: "20px 0" }) },
+          "当前范围无用量。"
+        );
+      }
       var max = 0;
       var peakIdx = -1;
       var totalInput = 0;
       var totalOutput = 0;
       for (var i = 0; i < N; i++) {
-        var di = days[i];
+        var di = buckets[i];
         var tot = di.inputTokens + di.outputTokens;
         if (tot > max) { max = tot; peakIdx = i; }
         totalInput += di.inputTokens || 0;
@@ -285,19 +342,28 @@
         return React.createElement(
           "div",
           { style: Object.assign({}, s.meta, { padding: "20px 0" }) },
-          "近 " + N + " 天无用量。"
+          "当前范围 " + N + " 桶无用量。"
         );
       }
+      // 自适应柱宽（minute 极窄 / hour 中等 / day/week 较宽）+ 总容器宽度由 N 算
+      var pxPerBar = granularity === "minute" ? 3 : (granularity === "hour" ? 8 : 22);
+      var totalWidth = N * pxPerBar + (N - 1) * 2;
       var todayIdx = N - 1;
       var todayCenter = ((todayIdx + 0.5) / N) * 100;
       var peakCenter = ((peakIdx + 0.5) / N) * 100;
-      var peakLabel = "峰值 " + fmtTokens(days[peakIdx].inputTokens + days[peakIdx].outputTokens) +
-        " · " + days[peakIdx].day.slice(5);
+      function bucketKey(b) { return b.bucket != null ? b.bucket : b.day; }
       function hPx(v) { return Math.round((v / max) * 96); }
+      function axisLabel(b) { return fmtBucket(bucketKey(b), granularity); }
+      // X 轴稀疏显示：按 N 算步长，避免标签重叠（minute 每 120 标一次 / hour 每 12 / day 每 5）
+      var axisStep = N <= 12 ? 1 : (N <= 60 ? 5 : (N <= 168 ? 12 : (N <= 360 ? 30 : 120)));
+      function showAxis(i) {
+        return (i % axisStep === 0) || i === todayIdx;
+      }
+      var peakLabel = "峰值 " + fmtTokens(buckets[peakIdx].inputTokens + buckets[peakIdx].outputTokens) +
+        " · " + fmtBucket(bucketKey(buckets[peakIdx]), granularity);
       return React.createElement(
         "div",
         { style: s.chartSection },
-        // 内嵌图例 + 提示
         React.createElement(
           "div",
           { style: s.chartLegend },
@@ -313,60 +379,54 @@
             React.createElement("span", { style: { display: "inline-block", width: "10px", height: "3px", background: C.inputBar, borderRadius: "1px" } }),
             "输入"
           ),
-          React.createElement("span", { style: s.chartLegendHint }, "悬停查看缓存读 / 推理 / 请求数")
+          React.createElement("span", { style: s.chartLegendHint }, "悬停查看缓存读 / 推理 / 请求数 · " + (granularity || "day") + " · " + N + " 桶")
         ),
-        // 图表本体（绝对定位叠层：网格 / today / peak / 柱子）
         React.createElement(
           "div",
           { style: s.chartWrap },
-          // 网格：3 条虚线 + 1 条实线基线
           React.createElement("div", { style: Object.assign({}, s.chartGridLine, { top: "25%" }) }),
           React.createElement("div", { style: Object.assign({}, s.chartGridLine, { top: "50%" }) }),
           React.createElement("div", { style: Object.assign({}, s.chartGridLine, { top: "75%" }) }),
           React.createElement("div", { style: Object.assign({}, s.chartGridBase, { top: "100%" }) }),
-          // today 竖线
           React.createElement("div", { style: Object.assign({}, s.chartTodayLine, { left: todayCenter + "%" }) }),
-          // peak 竖线 + 徽章（始终在顶部 -2px，不与柱顶耦合）
           React.createElement("div", { style: Object.assign({}, s.chartPeakLine, { left: peakCenter + "%" }) }),
           React.createElement("div", {
             style: Object.assign({}, s.chartPeakBadge, { left: peakCenter + "%", top: "-2px" }),
-            title: "峰值日"
+            title: "峰值桶"
           }, peakLabel),
-          // 柱子（输出在上、输入在下）
           React.createElement(
             "div",
-            { style: s.chartBarsRow },
-            days.map(function (d, i) {
-              var title = d.day +
-                " · 输入 " + fmtTokens(d.inputTokens) +
-                " · 输出 " + fmtTokens(d.outputTokens) +
-                "\n缓存读 " + fmtTokens(d.cacheReadTokens) +
-                " · 推理 " + fmtTokens(d.reasoningTokens) +
-                " · 请求 " + d.requests + " 次";
+            { style: Object.assign({}, s.chartBarsRow, { width: totalWidth + "px" }) },
+            buckets.map(function (b, i) {
+              var k = bucketKey(b);
+              var title = k +
+                " · 输入 " + fmtTokens(b.inputTokens) +
+                " · 输出 " + fmtTokens(b.outputTokens) +
+                "\n缓存读 " + fmtTokens(b.cacheReadTokens) +
+                " · 推理 " + fmtTokens(b.reasoningTokens) +
+                " · 请求 " + b.requests + " 次";
               return React.createElement(
                 "div",
-                { key: d.day, title: title, style: s.chartBar },
-                React.createElement("div", { style: Object.assign({}, s.chartBarOut, { height: hPx(d.outputTokens) + "px", background: C.outputBar }) }),
-                React.createElement("div", { style: Object.assign({}, s.chartBarIn, { height: hPx(d.inputTokens) + "px", background: C.inputBar }) })
+                { key: k, title: title, style: Object.assign({}, s.chartBar, { width: pxPerBar + "px" }) },
+                React.createElement("div", { style: Object.assign({}, s.chartBarOut, { height: hPx(b.outputTokens) + "px", background: C.outputBar }) }),
+                React.createElement("div", { style: Object.assign({}, s.chartBarIn, { height: hPx(b.inputTokens) + "px", background: C.inputBar }) })
               );
             })
           )
         ),
-        // X 轴日期（today 加粗；每 5 天 + 末位显示）
         React.createElement(
           "div",
-          { style: s.chartAxisRow },
-          days.map(function (d, i) {
-            var show = parseInt(d.day.slice(8), 10) % 5 === 0 || i === todayIdx;
+          { style: Object.assign({}, s.chartAxisRow, { width: totalWidth + "px" }) },
+          buckets.map(function (b, i) {
+            var k = bucketKey(b);
             var isToday = i === todayIdx;
             return React.createElement("div", {
-              key: d.day,
-              style: isToday ? s.chartAxisToday : s.chartAxis,
-              title: d.day
-            }, show ? d.day.slice(5) : "");
+              key: k,
+              style: Object.assign({}, isToday ? s.chartAxisToday : s.chartAxis, { width: pxPerBar + "px" }),
+              title: k
+            }, showAxis(i) ? axisLabel(b) : "");
           })
         ),
-        // 摘要：总量 + 输出（强调色） + 峰值日（陶土色）
         React.createElement(
           "div",
           { style: s.chartSummary },
@@ -588,12 +648,28 @@
         )
       );
     }    // ===== config =====
+    // v0.3.0 RANGES 扩 granularity + window 字段。每个 range 决定页面上图与按模型表按哪个粒度切片。
+    //   granularity ∈ 'day' | 'hour' | 'minute' | 'week'
+    //   window 是在该粒度下取末尾多少桶；null = 该粒度默认（day=30, hour=168=7d, minute=1440=24h, week=全部）
     var RANGES = [
-      { key: "all", label: "全部" },
-      { key: "30", label: "近 30 日" },
-      { key: "7", label: "近 7 日" },
-      { key: "1", label: "今日" }
+      { key: "all", label: "全部·日", granularity: "day", window: 30 },
+      { key: "7", label: "近 7 日", granularity: "day", window: 7 },
+      { key: "1", label: "今日", granularity: "day", window: 1 },
+      { key: "h7", label: "近 7 日·小时", granularity: "hour", window: 168 },
+      { key: "h1", label: "今日·小时", granularity: "hour", window: 24 },
+      { key: "m1", label: "今日·分钟", granularity: "minute", window: 1440 },
+      { key: "w12", label: "近 12 周", granularity: "week", window: 12 }
     ];
+
+    /**
+     * 兼容 v0.2.x 旧 localStorage 值：'all' / '30' / '7' / '1' 仍按日；其他 key 在 RANGES 找不到则回退到 'all'。
+     */
+    function rangeSpec(rangeKey) {
+      for (var i = 0; i < RANGES.length; i++) {
+        if (RANGES[i].key === rangeKey) return RANGES[i];
+      }
+      return RANGES[0];
+    }
 
     /* ---------- 显示设置：可隐藏/展示各数据块，偏好持久化 ---------- */
 
@@ -836,17 +912,17 @@
     }
 
     function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen, heatmapModel, setHeatmapModel) {
-      // 时间窗口
-      var winN = range === "all" ? null : parseInt(range, 10);
-      var fromIdx = winN == null ? 0 : Math.max(0, d.byDay.length - winN);
-      var winDays = d.byDay.slice(fromIdx);
+      // v0.3.0 时间窗口：粒度切换走 byTrend[r.granularity]，旧 'all' / '30' / '7' / '1' 由 rangeSpec() 兼容
+      var r = rangeSpec(range);
+      var seriesSource = d.byTrend[r.granularity] || [];
+      var winSeries = r.window != null ? seriesSource.slice(-r.window) : seriesSource;
       var winSet = null;
-      if (winN != null) {
+      if (r.window != null) {
         winSet = {};
-        for (var wi = 0; wi < winDays.length; wi++) winSet[winDays[wi].day] = true;
+        for (var wi = 0; wi < winSeries.length; wi++) winSet[winSeries[wi].bucket] = true;
       }
-      var rangeTotals = winN == null ? d.totals : sumDays(winDays);
-      var rangeLabel = winN == null ? "全程" : (winN === 1 ? "今日" : "近 " + winN + " 日");
+      var rangeTotals = r.window != null ? sumBuckets(winSeries) : d.totals;
+      var rangeLabel = r.label;
 
       // 顶部：标题 + 范围 tab + 操作（含"显示"按钮 + 弹出层）
       var header = React.createElement(
@@ -902,8 +978,8 @@
       var cardsNode = React.createElement(
         "div",
         { style: { display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "16px" } },
-        Card("会话", String(d.sessionCount), d.turns + " 轮对话（全程）"),
-        Card("模型请求" + (winN == null ? "" : " · " + rangeLabel), String(t.requests), "纯模型时间 " + fmtDuration(d.llmMs)),
+        Card("会话（main）", String(d.sessionCount), d.rawSessionCount != null && d.rawSessionCount !== d.sessionCount ? ("含 " + (d.rawSessionCount - d.sessionCount) + " 个 subagent 已 rollup") : d.turns + " 轮对话（全程）"),
+        Card("模型请求" + (r.window == null ? "" : " · " + rangeLabel), String(t.requests), "纯模型时间 " + fmtDuration(d.llmMs)),
         Card("未命中输入", fmtTokens(t.inputTokens), "缓存写 " + fmtTokens(t.cacheWriteTokens)),
         Card("输出", fmtTokens(t.outputTokens), "其中推理 " + fmtTokens(t.reasoningTokens)),
         Card("命中输入", fmtTokens(t.cacheReadTokens), "缓存读取"),
@@ -959,9 +1035,11 @@
         );
       });
 
-      // 图表标题
-      var chartTitle = winN == null ? "近 30 天用量" : (winN === 1 ? "今日用量" : "近 " + winN + " 日用量");
-      var chartHint = winN == null ? "图表固定 30 天，切换范围看模型表" : null;
+      // 图表标题（v0.3.0 多粒度）
+      var chartTitle = r.label + "用量";
+      var chartHint = r.granularity === "week"
+        ? "按周折叠（周一为周开始，北京时间）"
+        : (r.granularity === "hour" ? "按小时（最近 7d × 24h）" : (r.granularity === "minute" ? "按分钟（最近 24h × 60min）" : null));
 
       // 各 section 按 visibility 过滤后顺序拼接，第一个不加 hr（紧跟 header/errorBox）
       var sectionNodes = [];
@@ -979,7 +1057,7 @@
               React.createElement("h3", { style: s.sectionTitle }, chartTitle),
               chartHint ? React.createElement("span", { style: s.sectionHint }, "· ", chartHint) : null
             ),
-            DayChart(winN == null ? d.byDay : winDays)
+            DayChart(winSeries, r.granularity)
           )
         });
       }

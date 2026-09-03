@@ -78,7 +78,7 @@
       chartSection: { marginTop: "4px" },
       chartLegend: { display: "flex", alignItems: "center", gap: "14px", fontSize: "11px", color: C.text2, marginBottom: "12px" },
       chartLegendHint: { marginLeft: "auto", fontSize: "11px", color: C.text3 },
-      chartWrap: { position: "relative", height: "100px" },
+      chartWrap: { position: "relative", height: "100px", overflowX: "auto", overflowY: "hidden" },
       chartGridLine: { position: "absolute", left: 0, right: 0, borderTopStyle: "dashed", borderTopWidth: "1px", borderTopColor: C.gridDashed, pointerEvents: "none" },
       chartGridBase: { position: "absolute", left: 0, right: 0, borderTopStyle: "solid", borderTopWidth: "1px", borderTopColor: C.gridBase, pointerEvents: "none" },
       chartTodayLine: { position: "absolute", top: 0, bottom: 0, width: "1px", background: C.todayLine, opacity: 0.7, pointerEvents: "none" },

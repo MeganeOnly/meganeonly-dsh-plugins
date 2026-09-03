@@ -1,10 +1,26 @@
     // ===== config =====
+    // v0.3.0 RANGES 扩 granularity + window 字段。每个 range 决定页面上图与按模型表按哪个粒度切片。
+    //   granularity ∈ 'day' | 'hour' | 'minute' | 'week'
+    //   window 是在该粒度下取末尾多少桶；null = 该粒度默认（day=30, hour=168=7d, minute=1440=24h, week=全部）
     var RANGES = [
-      { key: "all", label: "全部" },
-      { key: "30", label: "近 30 日" },
-      { key: "7", label: "近 7 日" },
-      { key: "1", label: "今日" }
+      { key: "all", label: "全部·日", granularity: "day", window: 30 },
+      { key: "7", label: "近 7 日", granularity: "day", window: 7 },
+      { key: "1", label: "今日", granularity: "day", window: 1 },
+      { key: "h7", label: "近 7 日·小时", granularity: "hour", window: 168 },
+      { key: "h1", label: "今日·小时", granularity: "hour", window: 24 },
+      { key: "m1", label: "今日·分钟", granularity: "minute", window: 1440 },
+      { key: "w12", label: "近 12 周", granularity: "week", window: 12 }
     ];
+
+    /**
+     * 兼容 v0.2.x 旧 localStorage 值：'all' / '30' / '7' / '1' 仍按日；其他 key 在 RANGES 找不到则回退到 'all'。
+     */
+    function rangeSpec(rangeKey) {
+      for (var i = 0; i < RANGES.length; i++) {
+        if (RANGES[i].key === rangeKey) return RANGES[i];
+      }
+      return RANGES[0];
+    }
 
     /* ---------- 显示设置：可隐藏/展示各数据块，偏好持久化 ---------- */
 
