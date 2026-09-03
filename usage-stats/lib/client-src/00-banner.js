@@ -18,4 +18,13 @@
  * （#3b82f6 输入 / #f59e0b 输出），rose-600 单独强调峰值日。
  * 色盲安全（blue/orange 主对）+ 与非图表绿色 accent 拉开层次。
  * 见 `lib/client-src/30-styles.js` 头部注释的设计原则与参考来源。
+ *
+ * v0.2.2 新增「贡献热力图」：GitHub 风格 53 周 × 7 日方格日历，
+ * 颜色严控色板（L1-L3 蓝主对浅→深 / L4 橙爆日 / L5 rose 异常日，
+ * 复用 v0.2.1 inputBar / outputBar / peakLine 同色，不引入新色板）。
+ * 模型筛选独立持久化（localStorage `dsh-usage-stats/heatmap-model-v1`，
+ * null = 全部模型聚合；非 null = 仅该模型贡献的 input/output）。
+ * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。
+ * 详见 `lib/client-src/40-components.js` 的 HeatmapCalendar 与
+ * `lib/client-src/50-config.js` 的 loadHeatmapModel / saveHeatmapModel。
  */

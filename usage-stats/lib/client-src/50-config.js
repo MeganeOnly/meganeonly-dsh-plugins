@@ -8,17 +8,41 @@
 
     /* ---------- 显示设置：可隐藏/展示各数据块，偏好持久化 ---------- */
 
-    // 6 个数据块的可见性开关（key → 中文标签）。新增 section 时在此追加并配合 UsageStatsPageBody 渲染。
-    var VISIBLE_KEYS = ["meta", "cards", "chart", "byModel", "topSessions", "tools"];
+    // 7 个数据块的可见性开关（key → 中文标签）。新增 section 时在此追加并配合 UsageStatsPageBody 渲染。
+    // v0.2.2 新增 `heatmap`（GitHub 风格贡献热力图），插入在 chart 与 byModel 之间。
+    var VISIBLE_KEYS = ["meta", "cards", "chart", "heatmap", "byModel", "topSessions", "tools"];
     var VISIBLE_LABELS = {
       meta: "顶部元信息（数据源 / 解码 / 生成耗时）",
       cards: "指标卡（6 张：会话 / 请求 / 未命中 / 输出 / 命中 / 速度）",
       chart: "近 30 天用量柱状图",
+      heatmap: "贡献热力图（53 周 × 7 日）",
       byModel: "按模型分解表",
       topSessions: "会话用量 Top",
       tools: "工具调用 Top"
     };
     var STORAGE_VISIBLE_KEY = "dsh-usage-stats/visible-v1";
+
+    /* ---------- 热力图模型筛选：独立 key 持久化（与 visibility 解耦） ---------- */
+    // null = 全部模型聚合；非 null = 仅该 model 的 input/output 投影到每日。
+    // schema 单值（model 字符串），不做版本号——任何非字符串值视为 null。
+    var STORAGE_HEATMAP_MODEL_KEY = "dsh-usage-stats/heatmap-model-v1";
+    function loadHeatmapModel() {
+      if (!STORAGE_OK) return null;
+      try {
+        var v = localStorage.getItem(STORAGE_HEATMAP_MODEL_KEY);
+        if (v == null || v === "null") return null;
+        return typeof v === "string" && v.length > 0 ? v : null;
+      } catch (e) { return null; }
+    }
+    function saveHeatmapModel(model) {
+      if (!STORAGE_OK) return;
+      try {
+        if (model == null) localStorage.removeItem(STORAGE_HEATMAP_MODEL_KEY);
+        else localStorage.setItem(STORAGE_HEATMAP_MODEL_KEY, String(model));
+      } catch (e) {
+        console.warn("[usage-stats] 保存热力图模型筛选失败:", e && e.message);
+      }
+    }
 
     function defaultVisible() {
       var out = {};

@@ -4,6 +4,23 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.2] - 2026-09-03
+
+### 新增
+
+- **贡献热力图（GitHub 风格）**：设置页新增 53 周 × 7 日方格日历，按当日 token 量 5 级着色（L1-L3 蓝主对浅→深 / L4 橙爆日 / L5 rose 异常日）。严控色板膨胀，5 级颜色复用 v0.2.1 `inputBar` / `outputBar` / `peakLine` 同色，不引入新色板。Monday-on-top 对齐国际化 + 北京时间约定。超出 53 周自动左截（最近 53 周）。悬停 title 显示日期 + 输入/输出 + 请求数 + 当前筛选模型。
+- **模型筛选**（独立持久化）：热力图正上方新增 `<select>` 下拉，切换后只显示该模型每日贡献的 input/output。localStorage key `dsh-usage-stats/heatmap-model-v1`，与 visibility 偏好解耦。`null` = 全部模型聚合。schema 单值，无版本号——任何非字符串值视为 null。
+- **显示设置 7 块 schema 扩 `heatmap` 字段**：插在 `chart` 与 `byModel` 之间，隐式迁移（缺字段默认 `true`），老用户升级零感知。
+
+### 兼容性
+
+- host half 不变 — `aggregateSession` / `/api/usage-stats/summary` 输出不变；热力图直接消费现有 `byDay` + `byModel[].days`，无新字段
+- `CACHE_VERSION` 不变（v2）— 无缓存作废重算
+- bundle：v0.2.1 client.js = 39762 字节 → v0.2.2 client.js = 54968 字节，**净增 +15206 字节 / +15 KB**。超出 30 KB 拆分阈值（v0.2.1 已踩），但与仓库 `dsh-git-hub` 102 KB / `dsh-ui-tweaks` 264 KB / `dsh-task-pool` 46 KB 同范围
+- 6 块独立隐藏 / 增量缓存 / 美学度 token / `beijingDayKey` UTC+8 约定 / zstd 多帧解析 全部不变
+
+---
+
 ## [0.2.1] - 2026-08-27
 
 ### 变更

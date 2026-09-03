@@ -35,7 +35,17 @@
       // 参考线（保留灰色 hierarchy，不与数据色竞争）
       todayLine: "rgba(128,128,128,0.40)",
       gridDashed: "rgba(128,128,128,0.10)",
-      gridBase: "rgba(128,128,128,0.20)"
+      gridBase: "rgba(128,128,128,0.20)",
+      // 热力图（5 级：L1-L3 蓝主对浅→深、L4 橙爆日、L5 rose 异常日。严控色板膨胀，
+      // L4/L5 复用 outputBar / peakLine 同色；L1-L3 复用 inputBarSoft 渐进浓度）
+      heatmapL0: "transparent",
+      heatmapL1: "rgba(59,130,246,0.18)",
+      heatmapL2: "rgba(59,130,246,0.42)",
+      heatmapL3: "#3b82f6",
+      heatmapL4: "#f59e0b",
+      heatmapL5: "#e11d48",
+      heatmapCellBorder: "rgba(128,128,128,0.06)",
+      heatmapLabel: "rgba(128,128,128,0.45)"
     };
 
     var s = {
@@ -98,5 +108,27 @@
       panelRow: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", fontSize: "12px", cursor: "pointer", userSelect: "none" },
       panelCheck: { width: "13px", height: "13px", margin: 0, cursor: "pointer", accentColor: C.accent },
       panelToggleRow: { display: "flex", gap: "6px", marginBottom: "6px" },
-      panelToggleBtn: { padding: "3px 9px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: C.text2, cursor: "pointer" }
+      panelToggleBtn: { padding: "3px 9px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: C.text2, cursor: "pointer" },
+      // 热力图（v0.2.2）：53 周 × 7 日方格，5 级颜色复用 v0.2.1 蓝橙主对 + rose peak token
+      heatmapSection: { marginTop: "4px" },
+      heatmapLegend: { display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: C.text2, marginBottom: "12px", flexWrap: "wrap" },
+      heatmapLegendHint: { marginLeft: "auto", fontSize: "11px", color: C.text3 },
+      heatmapWrap: { display: "inline-block", padding: "10px 12px 8px", border: "1px solid " + C.hairline, borderRadius: "6px", background: "var(--ds-bg-elevated, #ffffff)" },
+      heatmapMonthRow: { display: "flex", fontSize: "10px", color: C.heatmapLabel, marginBottom: "4px", letterSpacing: "0.02em", height: "12px" },
+      heatmapMonthCell: { position: "absolute", fontSize: "10px", color: C.heatmapLabel },
+      heatmapBodyRow: { display: "flex" },
+      heatmapDowCol: { display: "flex", flexDirection: "column", gap: "2px", paddingRight: "4px" },
+      heatmapDowLabel: { height: "11px", fontSize: "10px", color: C.heatmapLabel, textAlign: "right", lineHeight: "11px" },
+      heatmapGrid: { display: "flex", gap: "2px" },
+      heatmapWeekCol: { display: "flex", flexDirection: "column", gap: "2px" },
+      heatmapCell: { width: "11px", height: "11px", borderRadius: "2px", background: C.heatmapL0, border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box", cursor: "default" },
+      heatmapCellL1: { background: C.heatmapL1 },
+      heatmapCellL2: { background: C.heatmapL2 },
+      heatmapCellL3: { background: C.heatmapL3 },
+      heatmapCellL4: { background: C.heatmapL4 },
+      heatmapCellL5: { background: C.heatmapL5 },
+      heatmapScaleCell: { width: "11px", height: "11px", borderRadius: "2px", border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box" },
+      heatmapModelBar: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", fontSize: "11px", color: C.text2 },
+      heatmapModelSelect: { padding: "3px 8px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: "inherit", cursor: "pointer", fontVariantNumeric: "tabular-nums" },
+      heatmapEmpty: { fontSize: "11px", color: C.text3, padding: "16px 0" }
     };

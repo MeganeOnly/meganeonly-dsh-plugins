@@ -6,12 +6,14 @@
       var rangeState = React.useState("all");
       var visibilityState = React.useState(loadVisible());
       var panelOpenState = React.useState(false);
+      var heatmapModelState = React.useState(loadHeatmapModel());
       var setLoading = loading[1];
       var setData = data[1];
       var setError = error[1];
       var setRange = rangeState[1];
       var setVisibility = visibilityState[1];
       var setPanelOpen = panelOpenState[1];
+      var setHeatmapModel = heatmapModelState[1];
 
       var load = React.useCallback(function (force) {
         setLoading(true);
@@ -35,6 +37,11 @@
       React.useEffect(function () {
         saveVisible(visibilityState[0]);
       }, [visibilityState[0]]);
+
+      // 热力图模型筛选偏好持久化（独立 key，与 visibility 解耦）
+      React.useEffect(function () {
+        saveHeatmapModel(heatmapModelState[0]);
+      }, [heatmapModelState[0]]);
 
       // 弹出层打开时挂全局 mousedown，点 panel 外部或按钮外部则关闭。
       // 用 data-usage-stats-panel / data-usage-stats-panel-btn 标记避坑（DSH DOM 结构不稳）
@@ -70,7 +77,7 @@
       }
       if (d == null) return React.createElement("h2", { style: s.pageTitle }, "使用统计");
       try {
-        return UsageStatsPageBody(d, function (force) { load(force); }, rangeState[0], setRange, visibilityState[0], setVisibility, panelOpenState[0], setPanelOpen);
+        return UsageStatsPageBody(d, function (force) { load(force); }, rangeState[0], setRange, visibilityState[0], setVisibility, panelOpenState[0], setPanelOpen, heatmapModelState[0], setHeatmapModel);
       } catch (e) {
         return React.createElement(
           "div",
@@ -82,7 +89,7 @@
       }
     }
 
-    function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen) {
+    function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen, heatmapModel, setHeatmapModel) {
       // 时间窗口
       var winN = range === "all" ? null : parseInt(range, 10);
       var fromIdx = winN == null ? 0 : Math.max(0, d.byDay.length - winN);
@@ -227,6 +234,47 @@
               chartHint ? React.createElement("span", { style: s.sectionHint }, "· ", chartHint) : null
             ),
             DayChart(winN == null ? d.byDay : winDays)
+          )
+        });
+      }
+      if (visibility.heatmap) {
+        // 模型筛选 select（始终显示，无 byModel 数据时不渲染）
+        var heatmapModelBar = d.byModel.length > 0
+          ? React.createElement(
+              "div",
+              { style: s.heatmapModelBar },
+              React.createElement("span", null, "模型筛选"),
+              React.createElement(
+                "select",
+                {
+                  style: s.heatmapModelSelect,
+                  value: heatmapModel || "",
+                  onChange: function (e) {
+                    var v = e.target.value;
+                    setHeatmapModel(v === "" ? null : v);
+                  },
+                  title: heatmapModel ? "当前只显示该模型的每日贡献" : "显示所有模型的每日贡献"
+                },
+                React.createElement("option", { value: "" }, "全部"),
+                d.byModel.map(function (m) {
+                  return React.createElement("option", { key: m.model, value: m.model }, m.model);
+                })
+              )
+            )
+          : null;
+        sectionNodes.push({
+          key: "heatmap",
+          node: React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "div",
+              { style: { display: "flex", alignItems: "baseline" } },
+              React.createElement("h3", { style: s.sectionTitle }, "贡献热力图"),
+              React.createElement("span", { style: s.sectionHint }, "· 过去 53 周 · 5 级颜色对应 token 量（基于窗口 max 归一）")
+            ),
+            heatmapModelBar,
+            HeatmapCalendar(d.byDay, heatmapModel, d.byModel)
           )
         });
       }

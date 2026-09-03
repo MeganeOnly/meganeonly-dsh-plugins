@@ -18,6 +18,15 @@
  * （#3b82f6 输入 / #f59e0b 输出），rose-600 单独强调峰值日。
  * 色盲安全（blue/orange 主对）+ 与非图表绿色 accent 拉开层次。
  * 见 `lib/client-src/30-styles.js` 头部注释的设计原则与参考来源。
+ *
+ * v0.2.2 新增「贡献热力图」：GitHub 风格 53 周 × 7 日方格日历，
+ * 颜色严控色板（L1-L3 蓝主对浅→深 / L4 橙爆日 / L5 rose 异常日，
+ * 复用 v0.2.1 inputBar / outputBar / peakLine 同色，不引入新色板）。
+ * 模型筛选独立持久化（localStorage `dsh-usage-stats/heatmap-model-v1`，
+ * null = 全部模型聚合；非 null = 仅该模型贡献的 input/output）。
+ * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。
+ * 详见 `lib/client-src/40-components.js` 的 HeatmapCalendar 与
+ * `lib/client-src/50-config.js` 的 loadHeatmapModel / saveHeatmapModel。
  */window.__ModuleLoader__.load({
   id: "dsh-usage-stats",
   factory: (require) => {
@@ -147,7 +156,17 @@
       // 参考线（保留灰色 hierarchy，不与数据色竞争）
       todayLine: "rgba(128,128,128,0.40)",
       gridDashed: "rgba(128,128,128,0.10)",
-      gridBase: "rgba(128,128,128,0.20)"
+      gridBase: "rgba(128,128,128,0.20)",
+      // 热力图（5 级：L1-L3 蓝主对浅→深、L4 橙爆日、L5 rose 异常日。严控色板膨胀，
+      // L4/L5 复用 outputBar / peakLine 同色；L1-L3 复用 inputBarSoft 渐进浓度）
+      heatmapL0: "transparent",
+      heatmapL1: "rgba(59,130,246,0.18)",
+      heatmapL2: "rgba(59,130,246,0.42)",
+      heatmapL3: "#3b82f6",
+      heatmapL4: "#f59e0b",
+      heatmapL5: "#e11d48",
+      heatmapCellBorder: "rgba(128,128,128,0.06)",
+      heatmapLabel: "rgba(128,128,128,0.45)"
     };
 
     var s = {
@@ -210,7 +229,29 @@
       panelRow: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", fontSize: "12px", cursor: "pointer", userSelect: "none" },
       panelCheck: { width: "13px", height: "13px", margin: 0, cursor: "pointer", accentColor: C.accent },
       panelToggleRow: { display: "flex", gap: "6px", marginBottom: "6px" },
-      panelToggleBtn: { padding: "3px 9px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: C.text2, cursor: "pointer" }
+      panelToggleBtn: { padding: "3px 9px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: C.text2, cursor: "pointer" },
+      // 热力图（v0.2.2）：53 周 × 7 日方格，5 级颜色复用 v0.2.1 蓝橙主对 + rose peak token
+      heatmapSection: { marginTop: "4px" },
+      heatmapLegend: { display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: C.text2, marginBottom: "12px", flexWrap: "wrap" },
+      heatmapLegendHint: { marginLeft: "auto", fontSize: "11px", color: C.text3 },
+      heatmapWrap: { display: "inline-block", padding: "10px 12px 8px", border: "1px solid " + C.hairline, borderRadius: "6px", background: "var(--ds-bg-elevated, #ffffff)" },
+      heatmapMonthRow: { display: "flex", fontSize: "10px", color: C.heatmapLabel, marginBottom: "4px", letterSpacing: "0.02em", height: "12px" },
+      heatmapMonthCell: { position: "absolute", fontSize: "10px", color: C.heatmapLabel },
+      heatmapBodyRow: { display: "flex" },
+      heatmapDowCol: { display: "flex", flexDirection: "column", gap: "2px", paddingRight: "4px" },
+      heatmapDowLabel: { height: "11px", fontSize: "10px", color: C.heatmapLabel, textAlign: "right", lineHeight: "11px" },
+      heatmapGrid: { display: "flex", gap: "2px" },
+      heatmapWeekCol: { display: "flex", flexDirection: "column", gap: "2px" },
+      heatmapCell: { width: "11px", height: "11px", borderRadius: "2px", background: C.heatmapL0, border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box", cursor: "default" },
+      heatmapCellL1: { background: C.heatmapL1 },
+      heatmapCellL2: { background: C.heatmapL2 },
+      heatmapCellL3: { background: C.heatmapL3 },
+      heatmapCellL4: { background: C.heatmapL4 },
+      heatmapCellL5: { background: C.heatmapL5 },
+      heatmapScaleCell: { width: "11px", height: "11px", borderRadius: "2px", border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box" },
+      heatmapModelBar: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", fontSize: "11px", color: C.text2 },
+      heatmapModelSelect: { padding: "3px 8px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: "inherit", cursor: "pointer", fontVariantNumeric: "tabular-nums" },
+      heatmapEmpty: { fontSize: "11px", color: C.text3, padding: "16px 0" }
     };    // ===== components =====
     function Card(label, value, sub) {
       return React.createElement(
@@ -349,6 +390,203 @@
         ),
         React.createElement("tbody", null, rows)
       );
+    }
+
+    /**
+     * GitHub 风格贡献热力图（v0.2.2）：53 周 × 7 日方格日历。
+     *
+     * 输入：
+     *   days — byDay 数组（任意顺序，内部排序；可空）
+     *   modelFilter — 模型筛选字符串，null = 全部模型聚合
+     *   byModel — 完整按模型数组，用于构造 modelDays 索引
+     *
+     * 渲染：53 周 × 7 日方格（周一在上），5 级颜色严控色板膨胀——
+     *   L1-L3 蓝主对浅→深（复用 inputBarSoft 渐进浓度）
+     *   L4 橙（outputBar 同色）= 爆日（≥60% max）
+     *   L5 rose（peakLine 同色）= 异常日（≥90% max）
+     *
+     * 月份标签：每跨周首日落新月份时显示「N 月」，absolute 定位到 grid 上方。
+     * 悬停 title：日期 + 输入 / 输出 / 请求数 + 当前筛选模型。
+     */
+    function HeatmapCalendar(days, modelFilter, byModel) {
+      if (days == null || days.length === 0) {
+        return React.createElement("div", { style: s.heatmapEmpty }, "暂无日级用量。");
+      }
+      // 预构造 modelDays 索引（按 model name → { day → bucket }）
+      var modelIndex = null;
+      if (modelFilter != null && byModel != null) {
+        modelIndex = {};
+        for (var mi = 0; mi < byModel.length; mi++) {
+          var m = byModel[mi];
+          if (m && m.model) modelIndex[m.model] = m.days || {};
+        }
+      }
+      // dayMap: YYYY-MM-DD → { input, output, requests, total }
+      var dayMap = {};
+      var max = 0;
+      for (var di = 0; di < days.length; di++) {
+        var day = days[di];
+        var input = day.inputTokens || 0;
+        var output = day.outputTokens || 0;
+        var requests = day.requests || 0;
+        if (modelIndex != null && modelIndex[modelFilter] && modelIndex[modelFilter][day.day]) {
+          var md = modelIndex[modelFilter][day.day];
+          input = md.inputTokens || 0;
+          output = md.outputTokens || 0;
+        }
+        var tot = input + output;
+        if (tot > max) max = tot;
+        dayMap[day.day] = { input: input, output: output, requests: requests, total: tot };
+      }
+      if (max === 0) {
+        return React.createElement("div", { style: s.heatmapEmpty }, "暂无用量。");
+      }
+
+      // 时间范围：days 内最早 → 最晚
+      var firstDay = null;
+      var lastDay = null;
+      for (var di2 = 0; di2 < days.length; di2++) {
+        var d2 = days[di2].day;
+        if (firstDay == null || d2 < firstDay) firstDay = d2;
+        if (lastDay == null || d2 > lastDay) lastDay = d2;
+      }
+      var fp = firstDay.split("-");
+      var firstDate = new Date(Date.UTC(+fp[0], +fp[1] - 1, +fp[2]));
+      var lp = lastDay.split("-");
+      var lastDate = new Date(Date.UTC(+lp[0], +lp[1] - 1, +lp[2]));
+      // 周一在上 → UTC dow (0=Sun..6=Sat) 转为 0=Mon..6=Sun
+      var firstDow = (firstDate.getUTCDay() + 6) % 7;
+
+      // 总周数（含 firstDow 偏移的左侧空列）
+      var totalDaysSpan = Math.floor((lastDate.getTime() - firstDate.getTime()) / 86400000) + 1;
+      var totalWeeks = Math.ceil((totalDaysSpan + firstDow) / 7);
+      // 限 53 周：超出则左截，firstDate 后移到 skipWeeks 周之后
+      if (totalWeeks > 53) {
+        var skipWeeks = totalWeeks - 53;
+        firstDate = new Date(firstDate.getTime() + skipWeeks * 7 * 86400000);
+        firstDow = (firstDate.getUTCDay() + 6) % 7;
+        totalWeeks = 53;
+      }
+
+      // 5 级阈值（基于 max 归一）
+      function levelFor(tot) {
+        if (tot <= 0) return 0;
+        var r = tot / max;
+        if (r >= 0.9) return 5;
+        if (r >= 0.6) return 4;
+        if (r >= 0.3) return 3;
+        if (r >= 0.1) return 2;
+        return 1;
+      }
+      function cellBgStyle(lv) {
+        if (lv === 1) return s.heatmapCellL1;
+        if (lv === 2) return s.heatmapCellL2;
+        if (lv === 3) return s.heatmapCellL3;
+        if (lv === 4) return s.heatmapCellL4;
+        if (lv === 5) return s.heatmapCellL5;
+        return null;
+      }
+
+      // 月份切换标签收集（每跨周首日落新月份时显示「N 月」）
+      var monthLabels = [];
+      var prevMonth = -1;
+      var weekCols = [];
+      for (var wi = 0; wi < totalWeeks; wi++) {
+        var weekStart = new Date(firstDate.getTime() + (wi * 7 - firstDow) * 86400000);
+        var m = weekStart.getUTCMonth();
+        if (m !== prevMonth && weekStart.getTime() <= lastDate.getTime()) {
+          monthLabels.push({ weekIdx: wi, label: (m + 1) + "月" });
+          prevMonth = m;
+        }
+        var dayCells = [];
+        for (var dwi = 0; dwi < 7; dwi++) {
+          var dayOffset = wi * 7 + dwi - firstDow;
+          var cellDate = new Date(firstDate.getTime() + dayOffset * 86400000);
+          if (dayOffset < 0 || cellDate.getTime() > lastDate.getTime()) {
+            // 左侧留白（firstDow 之前）或右侧留白
+            dayCells.push(React.createElement("div", { key: dwi, style: s.heatmapCell }));
+            continue;
+          }
+          var ck = cellDate.getUTCFullYear() + "-" +
+            ("0" + (cellDate.getUTCMonth() + 1)).slice(-2) + "-" +
+            ("0" + cellDate.getUTCDate()).slice(-2);
+          var info = dayMap[ck];
+          var lv = info ? levelFor(info.total) : 0;
+          var bg = cellBgStyle(lv);
+          var cellStyleMerged = bg ? Object.assign({}, s.heatmapCell, bg) : s.heatmapCell;
+          var titleText;
+          if (info) {
+            titleText = ck + "\n输入 " + fmtTokens(info.input) + "\n输出 " + fmtTokens(info.output) +
+              "\n请求 " + info.requests + " 次" +
+              (modelFilter ? "\n模型 " + modelFilter : "");
+          } else {
+            titleText = ck + "（无用量）";
+          }
+          dayCells.push(React.createElement("div", { key: dwi, title: titleText, style: cellStyleMerged }));
+        }
+        weekCols.push(React.createElement("div", { key: wi, style: s.heatmapWeekCol }, dayCells));
+      }
+
+      // 月份行（absolute 定位到 grid 上方，与周列同左对齐）
+      var weekColWidth = 11; // cell width
+      var weekGap = 2;
+      var weekStride = weekColWidth + weekGap;
+      var monthRowNodes = monthLabels.map(function (ml) {
+        return React.createElement(
+          "div",
+          {
+            key: ml.weekIdx,
+            style: Object.assign({}, s.heatmapMonthCell, { left: (ml.weekIdx * weekStride) + "px" })
+          },
+          ml.label
+        );
+      });
+
+      // 星期标签（周一/三/五可见，其余 hidden 占位对齐）
+      var dowLabels = ["一", "", "三", "", "五", "", ""];
+      var dowLabelNodes = dowLabels.map(function (lbl, i) {
+        return React.createElement(
+          "div",
+          { key: i, style: Object.assign({}, s.heatmapDowLabel, { visibility: lbl === "" ? "hidden" : "visible" }) },
+          lbl
+        );
+      });
+
+      // 图例
+      var legend = React.createElement(
+        "div",
+        { style: s.heatmapLegend },
+        React.createElement("span", null, "少"),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL1) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL2) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL3) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL4) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL5) }),
+        React.createElement("span", null, "多"),
+        React.createElement("span", { style: s.heatmapLegendHint }, "过去 53 周 · 悬停查看当日明细")
+      );
+
+      return React.createElement(
+        "div",
+        { style: s.heatmapSection },
+        legend,
+        React.createElement(
+          "div",
+          { style: Object.assign({}, s.heatmapWrap, { position: "relative" }) },
+          React.createElement(
+            "div",
+            { style: Object.assign({}, s.heatmapMonthRow, { position: "relative", height: "12px" }) },
+            monthRowNodes
+          ),
+          React.createElement(
+            "div",
+            { style: s.heatmapBodyRow },
+            React.createElement("div", { style: s.heatmapDowCol }, dowLabelNodes),
+            React.createElement("div", { style: s.heatmapGrid }, weekCols)
+          )
+        )
+      );
     }    // ===== config =====
     var RANGES = [
       { key: "all", label: "全部" },
@@ -359,17 +597,41 @@
 
     /* ---------- 显示设置：可隐藏/展示各数据块，偏好持久化 ---------- */
 
-    // 6 个数据块的可见性开关（key → 中文标签）。新增 section 时在此追加并配合 UsageStatsPageBody 渲染。
-    var VISIBLE_KEYS = ["meta", "cards", "chart", "byModel", "topSessions", "tools"];
+    // 7 个数据块的可见性开关（key → 中文标签）。新增 section 时在此追加并配合 UsageStatsPageBody 渲染。
+    // v0.2.2 新增 `heatmap`（GitHub 风格贡献热力图），插入在 chart 与 byModel 之间。
+    var VISIBLE_KEYS = ["meta", "cards", "chart", "heatmap", "byModel", "topSessions", "tools"];
     var VISIBLE_LABELS = {
       meta: "顶部元信息（数据源 / 解码 / 生成耗时）",
       cards: "指标卡（6 张：会话 / 请求 / 未命中 / 输出 / 命中 / 速度）",
       chart: "近 30 天用量柱状图",
+      heatmap: "贡献热力图（53 周 × 7 日）",
       byModel: "按模型分解表",
       topSessions: "会话用量 Top",
       tools: "工具调用 Top"
     };
     var STORAGE_VISIBLE_KEY = "dsh-usage-stats/visible-v1";
+
+    /* ---------- 热力图模型筛选：独立 key 持久化（与 visibility 解耦） ---------- */
+    // null = 全部模型聚合；非 null = 仅该 model 的 input/output 投影到每日。
+    // schema 单值（model 字符串），不做版本号——任何非字符串值视为 null。
+    var STORAGE_HEATMAP_MODEL_KEY = "dsh-usage-stats/heatmap-model-v1";
+    function loadHeatmapModel() {
+      if (!STORAGE_OK) return null;
+      try {
+        var v = localStorage.getItem(STORAGE_HEATMAP_MODEL_KEY);
+        if (v == null || v === "null") return null;
+        return typeof v === "string" && v.length > 0 ? v : null;
+      } catch (e) { return null; }
+    }
+    function saveHeatmapModel(model) {
+      if (!STORAGE_OK) return;
+      try {
+        if (model == null) localStorage.removeItem(STORAGE_HEATMAP_MODEL_KEY);
+        else localStorage.setItem(STORAGE_HEATMAP_MODEL_KEY, String(model));
+      } catch (e) {
+        console.warn("[usage-stats] 保存热力图模型筛选失败:", e && e.message);
+      }
+    }
 
     function defaultVisible() {
       var out = {};
@@ -490,12 +752,14 @@
       var rangeState = React.useState("all");
       var visibilityState = React.useState(loadVisible());
       var panelOpenState = React.useState(false);
+      var heatmapModelState = React.useState(loadHeatmapModel());
       var setLoading = loading[1];
       var setData = data[1];
       var setError = error[1];
       var setRange = rangeState[1];
       var setVisibility = visibilityState[1];
       var setPanelOpen = panelOpenState[1];
+      var setHeatmapModel = heatmapModelState[1];
 
       var load = React.useCallback(function (force) {
         setLoading(true);
@@ -519,6 +783,11 @@
       React.useEffect(function () {
         saveVisible(visibilityState[0]);
       }, [visibilityState[0]]);
+
+      // 热力图模型筛选偏好持久化（独立 key，与 visibility 解耦）
+      React.useEffect(function () {
+        saveHeatmapModel(heatmapModelState[0]);
+      }, [heatmapModelState[0]]);
 
       // 弹出层打开时挂全局 mousedown，点 panel 外部或按钮外部则关闭。
       // 用 data-usage-stats-panel / data-usage-stats-panel-btn 标记避坑（DSH DOM 结构不稳）
@@ -554,7 +823,7 @@
       }
       if (d == null) return React.createElement("h2", { style: s.pageTitle }, "使用统计");
       try {
-        return UsageStatsPageBody(d, function (force) { load(force); }, rangeState[0], setRange, visibilityState[0], setVisibility, panelOpenState[0], setPanelOpen);
+        return UsageStatsPageBody(d, function (force) { load(force); }, rangeState[0], setRange, visibilityState[0], setVisibility, panelOpenState[0], setPanelOpen, heatmapModelState[0], setHeatmapModel);
       } catch (e) {
         return React.createElement(
           "div",
@@ -566,7 +835,7 @@
       }
     }
 
-    function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen) {
+    function UsageStatsPageBody(d, reload, range, setRange, visibility, setVisibility, panelOpen, setPanelOpen, heatmapModel, setHeatmapModel) {
       // 时间窗口
       var winN = range === "all" ? null : parseInt(range, 10);
       var fromIdx = winN == null ? 0 : Math.max(0, d.byDay.length - winN);
@@ -711,6 +980,47 @@
               chartHint ? React.createElement("span", { style: s.sectionHint }, "· ", chartHint) : null
             ),
             DayChart(winN == null ? d.byDay : winDays)
+          )
+        });
+      }
+      if (visibility.heatmap) {
+        // 模型筛选 select（始终显示，无 byModel 数据时不渲染）
+        var heatmapModelBar = d.byModel.length > 0
+          ? React.createElement(
+              "div",
+              { style: s.heatmapModelBar },
+              React.createElement("span", null, "模型筛选"),
+              React.createElement(
+                "select",
+                {
+                  style: s.heatmapModelSelect,
+                  value: heatmapModel || "",
+                  onChange: function (e) {
+                    var v = e.target.value;
+                    setHeatmapModel(v === "" ? null : v);
+                  },
+                  title: heatmapModel ? "当前只显示该模型的每日贡献" : "显示所有模型的每日贡献"
+                },
+                React.createElement("option", { value: "" }, "全部"),
+                d.byModel.map(function (m) {
+                  return React.createElement("option", { key: m.model, value: m.model }, m.model);
+                })
+              )
+            )
+          : null;
+        sectionNodes.push({
+          key: "heatmap",
+          node: React.createElement(
+            "div",
+            null,
+            React.createElement(
+              "div",
+              { style: { display: "flex", alignItems: "baseline" } },
+              React.createElement("h3", { style: s.sectionTitle }, "贡献热力图"),
+              React.createElement("span", { style: s.sectionHint }, "· 过去 53 周 · 5 级颜色对应 token 量（基于窗口 max 归一）")
+            ),
+            heatmapModelBar,
+            HeatmapCalendar(d.byDay, heatmapModel, d.byModel)
           )
         });
       }
