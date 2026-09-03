@@ -1,7 +1,5 @@
     // ===== react-tweak-row =====
-    // ====================================================================
     // React 组件
-    // ====================================================================
 
     /**
      * 单条 tweak 的 row：标题 + 开关 + 可选数字输入。description 隐藏在
@@ -139,7 +137,6 @@
       return jsxRuntime.jsx("li", {
         className: "DTPD_item",
         "data-tweak-id": t.id,
-        // v0.7.5：description 改 HTML title（浏览器原生 tooltip）—悬停时显示，无需额外 CSS/JS
         title: t.description,
         children: children
       });

@@ -1,7 +1,5 @@
     // ===== apply =====
-    // ====================================================================
     // apply（loader 调一次，DSH 启动时执行）
-    // ====================================================================
 
     function apply(ctx) {
       // 1) self-shim（先于 CSS 注入，让 [data-pane="conversation"] 选择器在第一次 injectCSS 时就命中）
@@ -26,7 +24,7 @@
         window[DEBUG_API_KEY] = createDebugAPI();
       }
 
-      // 4) 注册 settings.section slot
+      // 4) settings.panel 挂载点（order:5）
       ctx.slots.inject("settings.section", function () {
         return ctx.slots.register({
           name: "settings.section",
@@ -65,28 +63,28 @@
       });
       if (initialState.hideChatTab) chatHider.start();
 
-      // 6c) v0.6.2：侧栏 HoverCard 隐藏 controller
+      // 6c) 侧栏 HoverCard 隐藏 controller（v0.6.2）
       var hoverCardHider = createSidebarHoverCardHider();
       if (initialState.hideSidebarTooltip) hoverCardHider.start();
 
-      // 6d) v0.8.0：「回到最早消息」按钮 controller（first-message-jump tweak）
+      // 6d) first-message-jump 按钮 controller（v0.8.0）
       var firstMessageJump = createFirstMessageJumpController();
       if (initialState.firstMessageJump) firstMessageJump.start();
 
-      // 6e) v0.8.0：把按钮诊断挂到 window.__dshUiTweaks.firstMessageJump()
+      // 6e) 把按钮诊断挂到 window.__dshUiTweaks.firstMessageJump()
       if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
         window[DEBUG_API_KEY].firstMessageJump = function () {
           return firstMessageJump.getState();
         };
       }
 
-      // 6f) v0.9.6：折叠块末尾收起按钮 controller（disclosure-end-collapse tweak）
-      //     覆盖三类 DisclosureRow 展开块：ReasoningRow (Think) / GenericCommandCard
-      //     （工具调用输出）/ ContextInjectionRow（上下文注入）。详见 67-...js 头部注释。
+      // 6f) disclosure-end-collapse controller（v0.9.6）——覆盖三类 DisclosureRow
+      //     展开块：ReasoningRow (Think) / GenericCommandCard（工具调用输出）/
+      //     ContextInjectionRow（上下文注入）。详见 67-...js 头部注释。
       var disclosureEndCollapse = createDisclosureEndCollapseController();
       if (initialState.disclosureEndCollapse) disclosureEndCollapse.start();
 
-      // 6g) v0.9.6：诊断挂到 window.__dshUiTweaks.disclosureEndCollapse() 看 running 状态
+      // 6g) 诊断挂到 window.__dshUiTweaks.disclosureEndCollapse() 看 running 状态
       if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
         window[DEBUG_API_KEY].disclosureEndCollapse = function () {
           return { running: disclosureEndCollapse.running };
@@ -117,7 +115,7 @@
         };
       }
 
-      // 7) 监听 UI 状态变化
+      // 7) UI 状态变化 → 启停各 controller
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
         if (!detail || typeof detail !== "object") return;

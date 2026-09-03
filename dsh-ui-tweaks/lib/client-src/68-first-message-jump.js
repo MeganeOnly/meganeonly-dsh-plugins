@@ -50,13 +50,7 @@
     // ====================================================================
 
     function createFirstMessageJumpController() {
-      // 纯 finder/scanner 函数（jumpFindScrollport / jumpAllUserRows /
-      // jumpFindFirstUserRow / jumpFindLastUserRow / jumpIsRowInCompaction /
-      // jumpFindFirstRealUserRow / jumpFindLastVisibleUserRow /
-      // jumpFindTopVisibleUserRow / jumpFindPrevUserRow /
-      // jumpFindNextUserRow / jumpIsDrawerOpen / jumpDrawerWidth）由
-      // 68a-first-message-jump-utils.js 提供——本文件仅保留依赖闭包状态
-      // 的控制器逻辑（定位 / 显隐 / 点击 / 生命周期 / 诊断）。
+      // 控制器逻辑（定位 / 显隐 / 点击 / 生命周期 / 诊断）；纯 finder/scanner 见 68a
 
       var button = null;
       var scrollport = null;
@@ -182,12 +176,10 @@
         }
         var contentRight = jumpComputeNativeRight();
         if (contentRight === null) return;
-        // 从未见过原生按钮：估算其顶边。原生槽位 CSS 是
+        // 从未见过原生按钮：估算其顶边——原生槽位 CSS 是
         //   position:sticky; bottom:calc(var(--dsh-composer-height) + 16px)，按钮 34px
         // → 按钮顶边 = 滚动容器底 - composerHeight - (16 + 34)。
         // 16 = 原生槽位底部到 seat 顶的额外间距；34 = DSH 自带「回到底部」按钮高。
-        // 历史上有 JUMP_COMPOSER_CLEARANCE = 58 = 16 + 34 + 8 常量作"兜底间隙"，
-        // v0.9.0 起改"锚定原生按钮 rect + 记忆"路径后已无引用方。
         // --dsh-composer-height 由 DSH 内联设置在滚动容器上（seat.offsetHeight），
         // 与原生槽位用的是同一个值——保证兜底与锚定位置完全重合。
         var portRect = scrollport.getBoundingClientRect();
@@ -454,9 +446,9 @@
         button.id = JUMP_BTN_ID;
         button.setAttribute("data-dsh-ui-tweaks-jump", "");
         button.setAttribute("aria-label", JUMP_LABEL);
-        button.setAttribute("title", JUMP_BUTTON_TITLE);  // v0.9.1：title 加 Shift 修饰提示
+        button.setAttribute("title", JUMP_BUTTON_TITLE);
         button.innerHTML = JUMP_SVG_UP;
-        button.addEventListener("click", jumpOnButtonClick);  // v0.9.1：分发到 jumpOnButtonClick
+        button.addEventListener("click", jumpOnButtonClick);
         document.body.appendChild(button);
       }
 

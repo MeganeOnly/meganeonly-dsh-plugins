@@ -1,7 +1,5 @@
     // ===== chatflow-marks =====
-    // ====================================================================
     // v0.5.3 + v0.5.5：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
-    // --------------------------------------------------------------------
     // 背景：v0.5.2 用 `> *` 选择器假设 centerCol 直接子元素是 chatflow 容器
     //   ——实测 DSH centerCol 实际 DOM 结构可能更深（chatflow 可能在子级的子级，
     //   或用 portal 渲染），`> *` 命中 0 个元素 → 对话"根本不移动"。
@@ -30,8 +28,6 @@
     //   3) **CSS 在 v0.10.2 buildCSS 同步改成 min(Npx, 40%)**——保留用户在
     //      全屏的偏好像素，窄屏自动收紧到对话列宽度的 40%，聊天气泡始终
     //      可读（748px max 在 408px 内容区也能水平居中显示）。
-    // ====================================================================
-
     /**
      * 在 centerCol 列容器内探测 chatflow 容器和输入框。
      * 探测策略（v0.10.2 起）：
@@ -172,13 +168,12 @@
         return found;
       }
 
-      // 需要更新：清理旧标记
+      // 需要更新：清理旧标记 + 打新标记
       for (var k = 0; k < existingMarks.length; k++) {
         existingMarks[k].removeAttribute(SHIFT_TARGET_ATTR);
       }
       if (existingColMark) col.removeAttribute(SHIFT_TARGET_ATTR);
 
-      // 打新标记
       if (found.found) {
         if (found.chatflow) {
           found.chatflow.setAttribute(SHIFT_TARGET_ATTR, SHIFT_TARGET_CHATFLOW);

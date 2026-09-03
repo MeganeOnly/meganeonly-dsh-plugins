@@ -915,17 +915,8 @@ window.__ModuleLoader__.load({
         // 两个不同的 key。
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
-        // v0.9.3 美术度升级：状态行三轴叠加——
-        //   A) 圆角胶囊 (pill)：border-radius 999 + 水平 padding 8/10 + 极淡背景
-        //   B) 呼吸点 (::before)：6px 圆点 + @keyframes 仅透明度循环（无 scale）
-        //   C) 语义色 ([data-dsh-activity]=...)：8 类活动对应 8 色；点继承 currentColor
-        // 单一设计语言：JS 在 tick() 给 span 写 data-dsh-activity，CSS 命中着色；
-        // 背景用 color-mix(currentColor 8%, transparent) 跟着 accent 色淡出。
-        //
-        // v0.9.3 hotfix：去垂直 padding（保持总高 18px 与 DSH 原生「Deep diving...」
-        // 等 turnStatus 文案严格对齐）+ 去 scale 动画 + 去 color transition + 减弱
-        // 呼吸幅度（opacity 0.6↔0.9 取代 0.35↔0.95）+ 减慢周期（2.4s 取代 1.6s）——
-        // 解决 v0.9.3 首版的「闪烁 + 高度膨胀」问题。
+        // v0.9.3 三轴（pill + 呼吸 @keyframes + 8 类活动色）已在 v0.9.7 撤掉；
+        // 当前是纯静态圆点 + 8 类活动色（见下方 ::before 注释）。
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
           return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +
@@ -1897,9 +1888,7 @@ window.__ModuleLoader__.load({
     }
 
     // ===== chatflow-marks =====
-    // ====================================================================
     // v0.5.3 + v0.5.5：动态探测 chatflow 容器 + 输入框，打标记给 CSS 命中
-    // --------------------------------------------------------------------
     // 背景：v0.5.2 用 `> *` 选择器假设 centerCol 直接子元素是 chatflow 容器
     //   ——实测 DSH centerCol 实际 DOM 结构可能更深（chatflow 可能在子级的子级，
     //   或用 portal 渲染），`> *` 命中 0 个元素 → 对话"根本不移动"。
@@ -1928,8 +1917,6 @@ window.__ModuleLoader__.load({
     //   3) **CSS 在 v0.10.2 buildCSS 同步改成 min(Npx, 40%)**——保留用户在
     //      全屏的偏好像素，窄屏自动收紧到对话列宽度的 40%，聊天气泡始终
     //      可读（748px max 在 408px 内容区也能水平居中显示）。
-    // ====================================================================
-
     /**
      * 在 centerCol 列容器内探测 chatflow 容器和输入框。
      * 探测策略（v0.10.2 起）：
@@ -2070,13 +2057,12 @@ window.__ModuleLoader__.load({
         return found;
       }
 
-      // 需要更新：清理旧标记
+      // 需要更新：清理旧标记 + 打新标记
       for (var k = 0; k < existingMarks.length; k++) {
         existingMarks[k].removeAttribute(SHIFT_TARGET_ATTR);
       }
       if (existingColMark) col.removeAttribute(SHIFT_TARGET_ATTR);
 
-      // 打新标记
       if (found.found) {
         if (found.chatflow) {
           found.chatflow.setAttribute(SHIFT_TARGET_ATTR, SHIFT_TARGET_CHATFLOW);
@@ -2246,9 +2232,7 @@ window.__ModuleLoader__.load({
     }
 
     // ===== simple-mode =====
-    // ====================================================================
     // 简洁模式：状态行 DOM controller（从原 dsh-simple-mode/lib/client.js 移植）
-    // ====================================================================
     //
     // v0.9.12 关键修复：v0.9.10 三层 CSS reset 不够（用户反馈 v0.9.10 / v0.9.11
     //   后底部状态行还是会一闪一闪的，且 think / 工具调用穿插几次后会"首行缩进"）。
@@ -2607,9 +2591,7 @@ window.__ModuleLoader__.load({
     }
 
     // ===== tab-hider =====
-    // ====================================================================
     // v0.7.0 + v0.7.2：通用 tab hider 工厂（hide-trajectory-tab + hide-chat-tab 副作用）
-    // --------------------------------------------------------------------
     // DSH 对话顶部有 [role="tablist"] 包含 "对话"(Chat) + "轨迹"(Trajectory)
     // 两个标签（renderSlot("conversation.view", ...) 注册的两个 view entry）。
     // 用户点击"轨迹"会进入 TrajectoryView——开发者视角的事件账本。
@@ -2629,7 +2611,6 @@ window.__ModuleLoader__.load({
     //
     // MutationObserver 观察 document.body 子树——DSH React 重渲或切换会话
     // 会重建 tablist，必须重新巡检。
-    // ====================================================================
 
     // 多语言匹配集合。DSH 用 zh / en 两种 UI 语言；其它 locale 暂不支持。
     var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];
@@ -2743,9 +2724,7 @@ window.__ModuleLoader__.load({
     }
 
     // ===== hover-card-hider =====
-    // ====================================================================
     // v0.6.2：侧栏 HoverCard 隐藏 controller（hide-sidebar-tooltip 副作用）
-    // --------------------------------------------------------------------
     // DSH HoverCard 组件（`@deepseek-ai/dsh-client-ui-primitives/lib/types/HoverCard.js`）
     // 在侧栏会话项 / 工作窗口 hover 500ms 后，通过 `createPortal(card, document.body)`
     // 渲染一个 div 到 body 直接子级。card 本身没有 className（HoverCard.module.css
@@ -2777,7 +2756,6 @@ window.__ModuleLoader__.load({
     //
     // MutationObserver 观察 document.body 子树——DSH React hover 行为会让
     // HoverCard 动态 mount/unmount portal div，必须重新巡检。
-    // ====================================================================
 
     // HoverCard 内部内容用到的 CSS Module hash 类名（DSH workspace 包）。
     // 包含 _hoverContent（外层 wrapper）+ _hoverTitle / _hoverTime / _hoverStatus
@@ -3089,13 +3067,7 @@ window.__ModuleLoader__.load({
     // ====================================================================
 
     function createFirstMessageJumpController() {
-      // 纯 finder/scanner 函数（jumpFindScrollport / jumpAllUserRows /
-      // jumpFindFirstUserRow / jumpFindLastUserRow / jumpIsRowInCompaction /
-      // jumpFindFirstRealUserRow / jumpFindLastVisibleUserRow /
-      // jumpFindTopVisibleUserRow / jumpFindPrevUserRow /
-      // jumpFindNextUserRow / jumpIsDrawerOpen / jumpDrawerWidth）由
-      // 68a-first-message-jump-utils.js 提供——本文件仅保留依赖闭包状态
-      // 的控制器逻辑（定位 / 显隐 / 点击 / 生命周期 / 诊断）。
+      // 控制器逻辑（定位 / 显隐 / 点击 / 生命周期 / 诊断）；纯 finder/scanner 见 68a
 
       var button = null;
       var scrollport = null;
@@ -3221,12 +3193,10 @@ window.__ModuleLoader__.load({
         }
         var contentRight = jumpComputeNativeRight();
         if (contentRight === null) return;
-        // 从未见过原生按钮：估算其顶边。原生槽位 CSS 是
+        // 从未见过原生按钮：估算其顶边——原生槽位 CSS 是
         //   position:sticky; bottom:calc(var(--dsh-composer-height) + 16px)，按钮 34px
         // → 按钮顶边 = 滚动容器底 - composerHeight - (16 + 34)。
         // 16 = 原生槽位底部到 seat 顶的额外间距；34 = DSH 自带「回到底部」按钮高。
-        // 历史上有 JUMP_COMPOSER_CLEARANCE = 58 = 16 + 34 + 8 常量作"兜底间隙"，
-        // v0.9.0 起改"锚定原生按钮 rect + 记忆"路径后已无引用方。
         // --dsh-composer-height 由 DSH 内联设置在滚动容器上（seat.offsetHeight），
         // 与原生槽位用的是同一个值——保证兜底与锚定位置完全重合。
         var portRect = scrollport.getBoundingClientRect();
@@ -3493,9 +3463,9 @@ window.__ModuleLoader__.load({
         button.id = JUMP_BTN_ID;
         button.setAttribute("data-dsh-ui-tweaks-jump", "");
         button.setAttribute("aria-label", JUMP_LABEL);
-        button.setAttribute("title", JUMP_BUTTON_TITLE);  // v0.9.1：title 加 Shift 修饰提示
+        button.setAttribute("title", JUMP_BUTTON_TITLE);
         button.innerHTML = JUMP_SVG_UP;
-        button.addEventListener("click", jumpOnButtonClick);  // v0.9.1：分发到 jumpOnButtonClick
+        button.addEventListener("click", jumpOnButtonClick);
         document.body.appendChild(button);
       }
 
@@ -4075,9 +4045,7 @@ window.__ModuleLoader__.load({
     }
 
     // ===== debug-api =====
-    // ====================================================================
     // 诊断 API（暴露 window.__dshUiTweaks）
-    // ====================================================================
 
     function createDebugAPI() {
       return {
@@ -4143,9 +4111,7 @@ window.__ModuleLoader__.load({
     }
 
     // ===== react-tweak-row =====
-    // ====================================================================
     // React 组件
-    // ====================================================================
 
     /**
      * 单条 tweak 的 row：标题 + 开关 + 可选数字输入。description 隐藏在
@@ -4283,7 +4249,6 @@ window.__ModuleLoader__.load({
       return jsxRuntime.jsx("li", {
         className: "DTPD_item",
         "data-tweak-id": t.id,
-        // v0.7.5：description 改 HTML title（浏览器原生 tooltip）—悬停时显示，无需额外 CSS/JS
         title: t.description,
         children: children
       });
@@ -4328,9 +4293,7 @@ window.__ModuleLoader__.load({
     }
 
     // ===== apply =====
-    // ====================================================================
     // apply（loader 调一次，DSH 启动时执行）
-    // ====================================================================
 
     function apply(ctx) {
       // 1) self-shim（先于 CSS 注入，让 [data-pane="conversation"] 选择器在第一次 injectCSS 时就命中）
@@ -4355,7 +4318,7 @@ window.__ModuleLoader__.load({
         window[DEBUG_API_KEY] = createDebugAPI();
       }
 
-      // 4) 注册 settings.section slot
+      // 4) settings.panel 挂载点（order:5）
       ctx.slots.inject("settings.section", function () {
         return ctx.slots.register({
           name: "settings.section",
@@ -4394,28 +4357,28 @@ window.__ModuleLoader__.load({
       });
       if (initialState.hideChatTab) chatHider.start();
 
-      // 6c) v0.6.2：侧栏 HoverCard 隐藏 controller
+      // 6c) 侧栏 HoverCard 隐藏 controller（v0.6.2）
       var hoverCardHider = createSidebarHoverCardHider();
       if (initialState.hideSidebarTooltip) hoverCardHider.start();
 
-      // 6d) v0.8.0：「回到最早消息」按钮 controller（first-message-jump tweak）
+      // 6d) first-message-jump 按钮 controller（v0.8.0）
       var firstMessageJump = createFirstMessageJumpController();
       if (initialState.firstMessageJump) firstMessageJump.start();
 
-      // 6e) v0.8.0：把按钮诊断挂到 window.__dshUiTweaks.firstMessageJump()
+      // 6e) 把按钮诊断挂到 window.__dshUiTweaks.firstMessageJump()
       if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
         window[DEBUG_API_KEY].firstMessageJump = function () {
           return firstMessageJump.getState();
         };
       }
 
-      // 6f) v0.9.6：折叠块末尾收起按钮 controller（disclosure-end-collapse tweak）
-      //     覆盖三类 DisclosureRow 展开块：ReasoningRow (Think) / GenericCommandCard
-      //     （工具调用输出）/ ContextInjectionRow（上下文注入）。详见 67-...js 头部注释。
+      // 6f) disclosure-end-collapse controller（v0.9.6）——覆盖三类 DisclosureRow
+      //     展开块：ReasoningRow (Think) / GenericCommandCard（工具调用输出）/
+      //     ContextInjectionRow（上下文注入）。详见 67-...js 头部注释。
       var disclosureEndCollapse = createDisclosureEndCollapseController();
       if (initialState.disclosureEndCollapse) disclosureEndCollapse.start();
 
-      // 6g) v0.9.6：诊断挂到 window.__dshUiTweaks.disclosureEndCollapse() 看 running 状态
+      // 6g) 诊断挂到 window.__dshUiTweaks.disclosureEndCollapse() 看 running 状态
       if (typeof window !== "undefined" && window[DEBUG_API_KEY]) {
         window[DEBUG_API_KEY].disclosureEndCollapse = function () {
           return { running: disclosureEndCollapse.running };
@@ -4446,7 +4409,7 @@ window.__ModuleLoader__.load({
         };
       }
 
-      // 7) 监听 UI 状态变化
+      // 7) UI 状态变化 → 启停各 controller
       function onStateChange(e) {
         var detail = (e && e.detail) || null;
         if (!detail || typeof detail !== "object") return;

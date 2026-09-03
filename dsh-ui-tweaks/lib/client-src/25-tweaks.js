@@ -60,17 +60,8 @@
         // 两个不同的 key。
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
-        // v0.9.3 美术度升级：状态行三轴叠加——
-        //   A) 圆角胶囊 (pill)：border-radius 999 + 水平 padding 8/10 + 极淡背景
-        //   B) 呼吸点 (::before)：6px 圆点 + @keyframes 仅透明度循环（无 scale）
-        //   C) 语义色 ([data-dsh-activity]=...)：8 类活动对应 8 色；点继承 currentColor
-        // 单一设计语言：JS 在 tick() 给 span 写 data-dsh-activity，CSS 命中着色；
-        // 背景用 color-mix(currentColor 8%, transparent) 跟着 accent 色淡出。
-        //
-        // v0.9.3 hotfix：去垂直 padding（保持总高 18px 与 DSH 原生「Deep diving...」
-        // 等 turnStatus 文案严格对齐）+ 去 scale 动画 + 去 color transition + 减弱
-        // 呼吸幅度（opacity 0.6↔0.9 取代 0.35↔0.95）+ 减慢周期（2.4s 取代 1.6s）——
-        // 解决 v0.9.3 首版的「闪烁 + 高度膨胀」问题。
+        // v0.9.3 三轴（pill + 呼吸 @keyframes + 8 类活动色）已在 v0.9.7 撤掉；
+        // 当前是纯静态圆点 + 8 类活动色（见下方 ::before 注释）。
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
           return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +

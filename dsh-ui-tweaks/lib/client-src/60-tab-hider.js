@@ -1,7 +1,5 @@
     // ===== tab-hider =====
-    // ====================================================================
     // v0.7.0 + v0.7.2：通用 tab hider 工厂（hide-trajectory-tab + hide-chat-tab 副作用）
-    // --------------------------------------------------------------------
     // DSH 对话顶部有 [role="tablist"] 包含 "对话"(Chat) + "轨迹"(Trajectory)
     // 两个标签（renderSlot("conversation.view", ...) 注册的两个 view entry）。
     // 用户点击"轨迹"会进入 TrajectoryView——开发者视角的事件账本。
@@ -21,7 +19,6 @@
     //
     // MutationObserver 观察 document.body 子树——DSH React 重渲或切换会话
     // 会重建 tablist，必须重新巡检。
-    // ====================================================================
 
     // 多语言匹配集合。DSH 用 zh / en 两种 UI 语言；其它 locale 暂不支持。
     var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];

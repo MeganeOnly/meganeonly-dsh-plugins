@@ -1,7 +1,5 @@
     // ===== hover-card-hider =====
-    // ====================================================================
     // v0.6.2：侧栏 HoverCard 隐藏 controller（hide-sidebar-tooltip 副作用）
-    // --------------------------------------------------------------------
     // DSH HoverCard 组件（`@deepseek-ai/dsh-client-ui-primitives/lib/types/HoverCard.js`）
     // 在侧栏会话项 / 工作窗口 hover 500ms 后，通过 `createPortal(card, document.body)`
     // 渲染一个 div 到 body 直接子级。card 本身没有 className（HoverCard.module.css
@@ -33,7 +31,6 @@
     //
     // MutationObserver 观察 document.body 子树——DSH React hover 行为会让
     // HoverCard 动态 mount/unmount portal div，必须重新巡检。
-    // ====================================================================
 
     // HoverCard 内部内容用到的 CSS Module hash 类名（DSH workspace 包）。
     // 包含 _hoverContent（外层 wrapper）+ _hoverTitle / _hoverTime / _hoverStatus
