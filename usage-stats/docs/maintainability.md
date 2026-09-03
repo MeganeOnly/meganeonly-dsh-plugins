@@ -13,7 +13,7 @@ dsh-usage-stats 的 `lib/client-src/` 现行结构（v0.3.0 拆解）：
 | `00-banner.js`      | 顶部 JSDoc 注释块（功能说明 + v0.2.0 显示设置 + v0.2.1 调色板 + v0.2.2 热力图 + **v0.3.0 子代理归并 / 多粒度趋势**） |
 | `10-loader-open.js` | `__ModuleLoader__.load({...})` 开头 + `var inject = ["slots"]` + `var API = "..."`（envelope opening，不加 marker） |
 | `20-formatters.js`  | 格式化与聚合：`fmtTokens` / `fmtDuration` / `fmtDate` / `fmtTime` / `fmtSpeed` / `fmtRatio` / `sumDays` / `sumBuckets`（v0.3.0 给 byTrend 用）/ `fmtBucket`（v0.3.0 多粒度 X 轴格式化）/ `modelInView` |
-| `30-styles.js`      | 样式 token：`C` 颜色变量 + `s` 样式对象（含 panel + heatmap + chartWrap overflow-x auto v0.3.0）    |
+| `30-styles.js`      | 样式 token：`C` 颜色变量 + `s` 样式对象（含 panel + heatmap + chartWrap overflow-x auto v0.3.0；**v0.3.1** heatmap 5 级 token 改为绿色单色相；**v0.3.2** 扩 5 → 7 级）    |
 | `40-components.js`  | 复用子组件：`Card` / `DayChart`（v0.3.0 接受 granularity 自适应柱宽 + 横向滚动）/ `Table` / `HeatmapCalendar` |
 | `50-config.js`      | 常量与持久化：`RANGES`（v0.3.0 扩 granularity + window）+ `rangeSpec(range)` helper + 显示设置 7 键配置 + `defaultVisible` / `loadVisible` / `saveVisible` / `setAllVisible` / `toggleOne` + `loadHeatmapModel` / `saveHeatmapModel` |
 | `60-panel.js`       | `VisibilityPanel` 组件（复选框面板）                         |
@@ -23,10 +23,10 @@ dsh-usage-stats 的 `lib/client-src/` 现行结构（v0.3.0 拆解）：
 
 ## 二、本插件特殊项
 
-- **bundle 大小**：v0.2.0 拆解完成（含 marker preflight）后是 33344 字节。原 commit `756defa` 提交的 v0.2.0 单文件是 33076 字节（净增量约 268 字节，全部来自 `// ===== X =====` marker 替换原 `/* ---------- xxx ---------- */` 注释；功能字节不变）。后续按通用规范 § 三半把 7 个 section 首行 marker 补 4 空格缩进（`    // ===== X =====`），bundle 增至 33372 字节（净增 28 字节 = 7 × 4）。v0.2.1 调色板升级 + 图表参考线 / today 竖线 / peak 徽章，bundle 增至 39762 字节（净增 6390 字节）。v0.2.2 GitHub 风格热力图，bundle 增至 54968 字节（净增 +15206 字节 / +15 KB）。**v0.3.0** 子代理归并 + 多粒度趋势（host 半段改动 `aggregateSession` + `rollupByMainSession` + `granularitySeries` + `daySeries` 重构；client 半段 `rangeSpec` / `sumBuckets` / `fmtBucket` / `DayChart` 扩 granularity 自适应 / `chartWrap` overflow-x auto / RANGES 扩 7 range），bundle 增至 59653 字节（净增 +4685 字节 / +4.6 KB）。所有同类约束在通用 `maintainability.md` § 五。
+- **bundle 大小**：v0.2.0 拆解完成（含 marker preflight）后是 33344 字节。原 commit `756defa` 提交的 v0.2.0 单文件是 33076 字节（净增量约 268 字节，全部来自 `// ===== X =====` marker 替换原 `/* ---------- xxx ---------- */` 注释；功能字节不变）。后续按通用规范 § 三半把 7 个 section 首行 marker 补 4 空格缩进（`    // ===== X =====`），bundle 增至 33372 字节（净增 28 字节 = 7 × 4）。v0.2.1 调色板升级 + 图表参考线 / today 竖线 / peak 徽章，bundle 增至 39762 字节（净增 6390 字节）。v0.2.2 GitHub 风格热力图，bundle 增至 54968 字节（净增 +15206 字节 / +15 KB）。**v0.3.0** 子代理归并 + 多粒度趋势，bundle 增至 59653 字节（净增 +4685 字节 / +4.6 KB）。**v0.3.1** 热力图调色板改为绿色单色相，bundle 字节不变。**v0.3.2** 级别扩 5 → 7（多 2 个 token 字面量 + 2 个 cellBgStyle case + 2 个 legend scaleCell），bundle 增至 60402 字节（净增 +749 字节）。所有同类约束在通用 `maintainability.md` § 五。
 - **显示设置持久化**：`localStorage` key `dsh-usage-stats/visible-v1`，schema `{ meta: boolean, cards: boolean, chart: boolean, heatmap: boolean（v0.2.2 新增）, byModel: boolean, topSessions: boolean, tools: boolean }`。`loadVisible` 用隐式迁移（缺字段默认 `true`）。详见 `50-config.js`
 - **热力图模型筛选独立持久化**（v0.2.2 新增）：`localStorage` key `dsh-usage-stats/heatmap-model-v1`，单值（模型名字符串）或 `null`（全部模型聚合）。schema 不带版本号——任何非字符串值视为 null。详见 `50-config.js`
-- **热力图 5 级颜色 token**（v0.2.2 新增）：`heatmapL0`（透明，空格子）/ `heatmapL1-L3`（蓝主对浅→深，复用 `inputBarSoft` 渐进浓度）/ `heatmapL4`（橙 = `outputBar` 同色，爆日）/ `heatmapL5`（rose = `peakLine` 同色，异常日）。严控色板膨胀——全部由 v0.2.1 已有主对衍生，不引入新色。详见 `30-styles.js` 顶部注释
+- **热力图 7 级颜色 token**（v0.2.2 蓝橙 / v0.3.1 绿 / **v0.3.2 扩 7 级**）：`heatmapL0`（透明，空格子）/ `heatmapL1-L7`（GitHub 经典绿色 7 级平滑明度梯度：`#c6e6ce` / `#9be9a8` / `#7ac281` / `#40c463` / `#30a14e` / `#216e39` / `#0e4429`）。严控色板膨胀——色阶是 GitHub 经典 4 级中间插 3 档平滑过渡，不引入新色相。详见 `30-styles.js` 顶部注释
 - **localStorage 降级**：`STORAGE_OK` 在模块装载时一次性检测 QuotaExceededError / SecurityError；不可用时偏好不持久化但功能仍可用并 `console.warn`。详见 `50-config.js` IIFE
 - **click-outside 协议**：显示设置面板挂 `[data-usage-stats-panel]` 标记；按钮 wrap 挂 `[data-usage-stats-panel-btn]`；点击 document.mousedown 时 `closest("[data-...])` 判断是否在内部 → 不用 React refs，避坑 DSH DOM 结构不稳。详见 `70-page.js` useEffect
 - **本插件用 React.createElement**：与 dsh-git-hub（vanilla DOM）不同。`Object.assign({}, style1, style2)` 用于样式合并（ES5 兼容）

@@ -227,14 +227,16 @@
         totalWeeks = 53;
       }
 
-      // 5 级阈值（基于 max 归一）
+      // 7 级阈值（基于 max 归一）——v0.3.2 用户反馈"级别多一点"，从 5 级扩 7 级
       function levelFor(tot) {
         if (tot <= 0) return 0;
         var r = tot / max;
-        if (r >= 0.9) return 5;
-        if (r >= 0.6) return 4;
-        if (r >= 0.3) return 3;
-        if (r >= 0.1) return 2;
+        if (r >= 0.9) return 7;
+        if (r >= 0.7) return 6;
+        if (r >= 0.5) return 5;
+        if (r >= 0.3) return 4;
+        if (r >= 0.15) return 3;
+        if (r >= 0.05) return 2;
         return 1;
       }
       function cellBgStyle(lv) {
@@ -243,6 +245,8 @@
         if (lv === 3) return s.heatmapCellL3;
         if (lv === 4) return s.heatmapCellL4;
         if (lv === 5) return s.heatmapCellL5;
+        if (lv === 6) return s.heatmapCellL6;
+        if (lv === 7) return s.heatmapCellL7;
         return null;
       }
 
@@ -322,6 +326,8 @@
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL3) }),
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL4) }),
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL5) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL6) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL7) }),
         React.createElement("span", null, "多"),
         React.createElement("span", { style: s.heatmapLegendHint }, "过去 53 周 · 悬停查看当日明细")
       );

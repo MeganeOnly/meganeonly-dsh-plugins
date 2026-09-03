@@ -19,9 +19,14 @@
  * 色盲安全（blue/orange 主对）+ 与非图表绿色 accent 拉开层次。
  * 见 `lib/client-src/30-styles.js` 头部注释的设计原则与参考来源。
  *
- * v0.2.2 新增「贡献热力图」：GitHub 风格 53 周 × 7 日方格日历，
- * 颜色严控色板（L1-L3 蓝主对浅→深 / L4 橙爆日 / L5 rose 异常日，
- * 复用 v0.2.1 inputBar / outputBar / peakLine 同色，不引入新色板）。
+ * v0.2.2 新增「贡献热力图」：GitHub 风格 53 周 × 7 日方格日历。
+ * v0.3.1 调色板改为绿色单色相（用户反馈"大的颜色不改变，只要绿色"）：5 级
+ * 仅改明度，不切色相，对齐 GitHub 贡献日历视觉语言。
+ * v0.3.2 级别扩 5 → 7（用户反馈"级别多一点"）：阈值细分
+ * （1-5% / 5-15% / 15-30% / 30-50% / 50-70% / 70-90% / ≥90%），
+ * 中间多插 3 档让日常用量（1-30%）明暗变化更细腻。色阶
+ *（`#c6e6ce` / `#9be9a8` / `#7ac281` / `#40c463` / `#30a14e` /
+ * `#216e39` / `#0e4429`）。
  * 模型筛选独立持久化（localStorage `dsh-usage-stats/heatmap-model-v1`，
  * null = 全部模型聚合；非 null = 仅该模型贡献的 input/output）。
  * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。
@@ -204,14 +209,24 @@
       todayLine: "rgba(128,128,128,0.40)",
       gridDashed: "rgba(128,128,128,0.10)",
       gridBase: "rgba(128,128,128,0.20)",
-      // 热力图（5 级：L1-L3 蓝主对浅→深、L4 橙爆日、L5 rose 异常日。严控色板膨胀，
-      // L4/L5 复用 outputBar / peakLine 同色；L1-L3 复用 inputBarSoft 渐进浓度）
+      // 热力图（v0.3.1：5 级绿色单色相，仅明度梯度，不切色相——对齐 GitHub 贡献日历视觉
+      // 语言；用户反馈"大的颜色不改变，只要绿色"后改）。
+      //   L0 transparent         无用量
+      //   L1 #9be9a8             极淡（1-10% max）
+      //   L2 #40c463             中淡（10-30% max）
+      //   L3 #30a14e             中深（30-60% max，主绿）
+      //   L4 #216e39             深（60-90% max，爆日）
+      //   L5 #0e4429             最深（≥90% max，异常日）
+      // 严控色板：仅复用 v0.2.1 accent (#16a34a) 衍生，accentSolid / btnPrimary 等保持绿色
+      // 一致（"什么都是绿色"在图表外反而成加分项——和图表视觉锚点统一）。
       heatmapL0: "transparent",
-      heatmapL1: "rgba(59,130,246,0.18)",
-      heatmapL2: "rgba(59,130,246,0.42)",
-      heatmapL3: "#3b82f6",
-      heatmapL4: "#f59e0b",
-      heatmapL5: "#e11d48",
+      heatmapL1: "#c6e6ce",
+      heatmapL2: "#9be9a8",
+      heatmapL3: "#7ac281",
+      heatmapL4: "#40c463",
+      heatmapL5: "#30a14e",
+      heatmapL6: "#216e39",
+      heatmapL7: "#0e4429",
       heatmapCellBorder: "rgba(128,128,128,0.06)",
       heatmapLabel: "rgba(128,128,128,0.45)"
     };
@@ -295,6 +310,8 @@
       heatmapCellL3: { background: C.heatmapL3 },
       heatmapCellL4: { background: C.heatmapL4 },
       heatmapCellL5: { background: C.heatmapL5 },
+      heatmapCellL6: { background: C.heatmapL6 },
+      heatmapCellL7: { background: C.heatmapL7 },
       heatmapScaleCell: { width: "11px", height: "11px", borderRadius: "2px", border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box" },
       heatmapModelBar: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", fontSize: "11px", color: C.text2 },
       heatmapModelSelect: { padding: "3px 8px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: "inherit", cursor: "pointer", fontVariantNumeric: "tabular-nums" },
@@ -528,14 +545,16 @@
         totalWeeks = 53;
       }
 
-      // 5 级阈值（基于 max 归一）
+      // 7 级阈值（基于 max 归一）——v0.3.2 用户反馈"级别多一点"，从 5 级扩 7 级
       function levelFor(tot) {
         if (tot <= 0) return 0;
         var r = tot / max;
-        if (r >= 0.9) return 5;
-        if (r >= 0.6) return 4;
-        if (r >= 0.3) return 3;
-        if (r >= 0.1) return 2;
+        if (r >= 0.9) return 7;
+        if (r >= 0.7) return 6;
+        if (r >= 0.5) return 5;
+        if (r >= 0.3) return 4;
+        if (r >= 0.15) return 3;
+        if (r >= 0.05) return 2;
         return 1;
       }
       function cellBgStyle(lv) {
@@ -544,6 +563,8 @@
         if (lv === 3) return s.heatmapCellL3;
         if (lv === 4) return s.heatmapCellL4;
         if (lv === 5) return s.heatmapCellL5;
+        if (lv === 6) return s.heatmapCellL6;
+        if (lv === 7) return s.heatmapCellL7;
         return null;
       }
 
@@ -623,6 +644,8 @@
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL3) }),
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL4) }),
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL5) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL6) }),
+        React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL7) }),
         React.createElement("span", null, "多"),
         React.createElement("span", { style: s.heatmapLegendHint }, "过去 53 周 · 悬停查看当日明细")
       );

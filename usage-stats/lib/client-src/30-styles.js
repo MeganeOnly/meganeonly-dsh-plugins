@@ -36,14 +36,24 @@
       todayLine: "rgba(128,128,128,0.40)",
       gridDashed: "rgba(128,128,128,0.10)",
       gridBase: "rgba(128,128,128,0.20)",
-      // 热力图（5 级：L1-L3 蓝主对浅→深、L4 橙爆日、L5 rose 异常日。严控色板膨胀，
-      // L4/L5 复用 outputBar / peakLine 同色；L1-L3 复用 inputBarSoft 渐进浓度）
+      // 热力图（v0.3.1：5 级绿色单色相，仅明度梯度，不切色相——对齐 GitHub 贡献日历视觉
+      // 语言；用户反馈"大的颜色不改变，只要绿色"后改）。
+      //   L0 transparent         无用量
+      //   L1 #9be9a8             极淡（1-10% max）
+      //   L2 #40c463             中淡（10-30% max）
+      //   L3 #30a14e             中深（30-60% max，主绿）
+      //   L4 #216e39             深（60-90% max，爆日）
+      //   L5 #0e4429             最深（≥90% max，异常日）
+      // 严控色板：仅复用 v0.2.1 accent (#16a34a) 衍生，accentSolid / btnPrimary 等保持绿色
+      // 一致（"什么都是绿色"在图表外反而成加分项——和图表视觉锚点统一）。
       heatmapL0: "transparent",
-      heatmapL1: "rgba(59,130,246,0.18)",
-      heatmapL2: "rgba(59,130,246,0.42)",
-      heatmapL3: "#3b82f6",
-      heatmapL4: "#f59e0b",
-      heatmapL5: "#e11d48",
+      heatmapL1: "#c6e6ce",
+      heatmapL2: "#9be9a8",
+      heatmapL3: "#7ac281",
+      heatmapL4: "#40c463",
+      heatmapL5: "#30a14e",
+      heatmapL6: "#216e39",
+      heatmapL7: "#0e4429",
       heatmapCellBorder: "rgba(128,128,128,0.06)",
       heatmapLabel: "rgba(128,128,128,0.45)"
     };
@@ -127,6 +137,8 @@
       heatmapCellL3: { background: C.heatmapL3 },
       heatmapCellL4: { background: C.heatmapL4 },
       heatmapCellL5: { background: C.heatmapL5 },
+      heatmapCellL6: { background: C.heatmapL6 },
+      heatmapCellL7: { background: C.heatmapL7 },
       heatmapScaleCell: { width: "11px", height: "11px", borderRadius: "2px", border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box" },
       heatmapModelBar: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", fontSize: "11px", color: C.text2 },
       heatmapModelSelect: { padding: "3px 8px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: "inherit", cursor: "pointer", fontVariantNumeric: "tabular-nums" },
