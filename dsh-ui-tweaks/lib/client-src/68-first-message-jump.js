@@ -185,6 +185,9 @@
         // 从未见过原生按钮：估算其顶边。原生槽位 CSS 是
         //   position:sticky; bottom:calc(var(--dsh-composer-height) + 16px)，按钮 34px
         // → 按钮顶边 = 滚动容器底 - composerHeight - (16 + 34)。
+        // 16 = 原生槽位底部到 seat 顶的额外间距；34 = DSH 自带「回到底部」按钮高。
+        // 历史上有 JUMP_COMPOSER_CLEARANCE = 58 = 16 + 34 + 8 常量作"兜底间隙"，
+        // v0.9.0 起改"锚定原生按钮 rect + 记忆"路径后已无引用方。
         // --dsh-composer-height 由 DSH 内联设置在滚动容器上（seat.offsetHeight），
         // 与原生槽位用的是同一个值——保证兜底与锚定位置完全重合。
         var portRect = scrollport.getBoundingClientRect();

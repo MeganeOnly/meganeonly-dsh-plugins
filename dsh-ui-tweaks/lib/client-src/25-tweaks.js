@@ -40,8 +40,11 @@
         description: "开启后给命中的对话列加 4px 黄色 outline + 黑底白字浮动标签（标签显示当前右缩像素值）。调试用——对话右缩关闭时也能开。",
         configKeys: { enabled: "conversationShiftDebug", value: "conversationShiftDebug" },
         defaults: { enabled: false, value: false },
-        // 调试高亮的 CSS 由 buildCSSMain() 统一生成（依赖 conversationShiftPx），
+        // 调试高亮的 CSS 由 buildDebugHighlightCSS() 统一生成（依赖 conversationShiftPx），
         // 这里返回 null。apply() 在切调试模式时调用 applyDebugMode() 处理。
+        // 保留这条 buildCSS 是为了满足 TWEAKS 数据契约（每条 tweak 必须有 buildCSS 字段），
+        // 抽掉会让 buildCSS() 内需要 if (id === "conversation-shift-debug") 分支，
+        // 反而破坏"数组即唯一真理"的约定。
         buildCSS: function (state) {
           return null;
         }

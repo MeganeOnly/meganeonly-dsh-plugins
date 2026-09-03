@@ -785,7 +785,6 @@ window.__ModuleLoader__.load({
         var SHELL_DETAILS_ATTR_VALUE = "details";
         var STATE_EVENT = "dsh-ui-tweaks-state-change";
         var DEBUG_API_KEY = "__dshUiTweaks";
-        var SHIM_RESOLVED_FLAG = "__dshUiTweaks_shimResolved";
         var SIMPLE_STATUS_ID = "dsh-ui-tweaks-status-row";
         var SIMPLE_STATUS_CLASS = "dsh-ui-tweaks-status";
         // v0.9.3：tick() 给状态 span 写 data-dsh-activity 标记当前活动类目（think / read /
@@ -845,10 +844,7 @@ window.__ModuleLoader__.load({
         var JUMP_COMPOSER_SEL = "[data-composer-seat]";        // 输入框 seat（sticky bottom）
         var JUMP_DRAWER_ATTR = "data-dsh-any-side-drawer-open"; // 右侧抽屉互斥统一 attr
         var JUMP_TOP_PADDING = 12;   // 跳转后目标 user 行顶部与视口顶部的留白
-        // 按钮底缘距输入框顶部的总高度：58 = 16（DSH toBottom slot bottom）+ 34（DSH 自带
-        // "回到底部"按钮高）+ 8 间隙——窄会话列下也不会与 DSH 自带按钮重叠
-        var JUMP_COMPOSER_CLEARANCE = 58;  // 兜底：底缘距输入框顶 = 16 slot + 34 原生按钮高 + 8 间隙
-        var JUMP_NATIVE_GAP = 8;          // 主路径：按钮底缘悬在原生「回到底部」按钮顶部的间距
+        var JUMP_NATIVE_GAP = 8;     // 主路径：按钮底缘悬在原生「回到底部」按钮顶部的间距
         // v0.9.2：可见性放宽（rows.length >= 2）+ Shift+点击跳过 compaction 块直达"当前会话第一条"
         var JUMP_LABEL = "上一条我发的消息";  // aria-label（单一语义，与 v0.9.0 / v0.9.1 同）
         // v0.9.1：title 加 Shift 修饰提示——浏览器原生 tooltip 悬停时显示；
@@ -899,8 +895,11 @@ window.__ModuleLoader__.load({
         description: "开启后给命中的对话列加 4px 黄色 outline + 黑底白字浮动标签（标签显示当前右缩像素值）。调试用——对话右缩关闭时也能开。",
         configKeys: { enabled: "conversationShiftDebug", value: "conversationShiftDebug" },
         defaults: { enabled: false, value: false },
-        // 调试高亮的 CSS 由 buildCSSMain() 统一生成（依赖 conversationShiftPx），
+        // 调试高亮的 CSS 由 buildDebugHighlightCSS() 统一生成（依赖 conversationShiftPx），
         // 这里返回 null。apply() 在切调试模式时调用 applyDebugMode() 处理。
+        // 保留这条 buildCSS 是为了满足 TWEAKS 数据契约（每条 tweak 必须有 buildCSS 字段），
+        // 抽掉会让 buildCSS() 内需要 if (id === "conversation-shift-debug") 分支，
+        // 反而破坏"数组即唯一真理"的约定。
         buildCSS: function (state) {
           return null;
         }
@@ -3225,6 +3224,9 @@ window.__ModuleLoader__.load({
         // 从未见过原生按钮：估算其顶边。原生槽位 CSS 是
         //   position:sticky; bottom:calc(var(--dsh-composer-height) + 16px)，按钮 34px
         // → 按钮顶边 = 滚动容器底 - composerHeight - (16 + 34)。
+        // 16 = 原生槽位底部到 seat 顶的额外间距；34 = DSH 自带「回到底部」按钮高。
+        // 历史上有 JUMP_COMPOSER_CLEARANCE = 58 = 16 + 34 + 8 常量作"兜底间隙"，
+        // v0.9.0 起改"锚定原生按钮 rect + 记忆"路径后已无引用方。
         // --dsh-composer-height 由 DSH 内联设置在滚动容器上（seat.offsetHeight），
         // 与原生槽位用的是同一个值——保证兜底与锚定位置完全重合。
         var portRect = scrollport.getBoundingClientRect();
@@ -4332,10 +4334,10 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       // 1) self-shim（先于 CSS 注入，让 [data-pane="conversation"] 选择器在第一次 injectCSS 时就命中）
-      var shimResult = applyShellShim();
+      applyShellShim();
       // v0.5.3：探测 chatflow 容器 + 输入框并打标记（在 CSS 注入之前——
       //   CSS 选择器是 [data-dsh-ui-tweaks-shift-target]，必须先有标记才能命中）
-      var chatflowMarks = applyChatflowShiftMarks();
+      applyChatflowShiftMarks();
       startShellShimObserver();
       // v0.5.4：MutationObserver 在 DSH React 重渲时同时重新打 chatflow 标记
       //   （之前的 startShellShimObserver 只负责 self-shim——现在扩展，但实际交给

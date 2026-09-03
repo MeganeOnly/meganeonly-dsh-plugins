@@ -5,10 +5,10 @@
 
     function apply(ctx) {
       // 1) self-shim（先于 CSS 注入，让 [data-pane="conversation"] 选择器在第一次 injectCSS 时就命中）
-      var shimResult = applyShellShim();
+      applyShellShim();
       // v0.5.3：探测 chatflow 容器 + 输入框并打标记（在 CSS 注入之前——
       //   CSS 选择器是 [data-dsh-ui-tweaks-shift-target]，必须先有标记才能命中）
-      var chatflowMarks = applyChatflowShiftMarks();
+      applyChatflowShiftMarks();
       startShellShimObserver();
       // v0.5.4：MutationObserver 在 DSH React 重渲时同时重新打 chatflow 标记
       //   （之前的 startShellShimObserver 只负责 self-shim——现在扩展，但实际交给

@@ -152,7 +152,6 @@
         var SHELL_DETAILS_ATTR_VALUE = "details";
         var STATE_EVENT = "dsh-ui-tweaks-state-change";
         var DEBUG_API_KEY = "__dshUiTweaks";
-        var SHIM_RESOLVED_FLAG = "__dshUiTweaks_shimResolved";
         var SIMPLE_STATUS_ID = "dsh-ui-tweaks-status-row";
         var SIMPLE_STATUS_CLASS = "dsh-ui-tweaks-status";
         // v0.9.3：tick() 给状态 span 写 data-dsh-activity 标记当前活动类目（think / read /
@@ -212,10 +211,7 @@
         var JUMP_COMPOSER_SEL = "[data-composer-seat]";        // 输入框 seat（sticky bottom）
         var JUMP_DRAWER_ATTR = "data-dsh-any-side-drawer-open"; // 右侧抽屉互斥统一 attr
         var JUMP_TOP_PADDING = 12;   // 跳转后目标 user 行顶部与视口顶部的留白
-        // 按钮底缘距输入框顶部的总高度：58 = 16（DSH toBottom slot bottom）+ 34（DSH 自带
-        // "回到底部"按钮高）+ 8 间隙——窄会话列下也不会与 DSH 自带按钮重叠
-        var JUMP_COMPOSER_CLEARANCE = 58;  // 兜底：底缘距输入框顶 = 16 slot + 34 原生按钮高 + 8 间隙
-        var JUMP_NATIVE_GAP = 8;          // 主路径：按钮底缘悬在原生「回到底部」按钮顶部的间距
+        var JUMP_NATIVE_GAP = 8;     // 主路径：按钮底缘悬在原生「回到底部」按钮顶部的间距
         // v0.9.2：可见性放宽（rows.length >= 2）+ Shift+点击跳过 compaction 块直达"当前会话第一条"
         var JUMP_LABEL = "上一条我发的消息";  // aria-label（单一语义，与 v0.9.0 / v0.9.1 同）
         // v0.9.1：title 加 Shift 修饰提示——浏览器原生 tooltip 悬停时显示；
