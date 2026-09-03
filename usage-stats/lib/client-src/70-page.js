@@ -276,7 +276,7 @@
               React.createElement("span", { style: s.sectionHint }, "· 过去 53 周 · 5 级颜色对应 token 量（基于窗口 max 归一）")
             ),
             heatmapModelBar,
-            HeatmapCalendar(d.byDay, heatmapModel, d.byModel)
+            HeatmapCalendar(d.byDay || [], heatmapModel, d.byModel || [])
           )
         });
       }

@@ -27,6 +27,11 @@
  * 中间多插 3 档让日常用量（1-30%）明暗变化更细腻。色阶
  *（`#c6e6ce` / `#9be9a8` / `#7ac281` / `#40c463` / `#30a14e` /
  * `#216e39` / `#0e4429`）。
+ * v0.3.3 修复 HeatmapCalendar 渲染异常：`Cannot read properties of undefined (reading 'day')`——
+ * v0.3.0 重构 daySeries 后 HeatmapCalendar 内部硬编码 `day.day` 在 host 半段中间状态时抛错；
+ * v0.3.3 客户端改用 `dayKey(d) = d.bucket != null ? d.bucket : d.day` 兼容 day/bucket 双 shape
+ *（对齐 DayChart `bucketKey` 策略）+ 加 `days[di] == null` 守卫 + `HeatmapCalendar(d.byDay || [], ...)` 防御
+ * + host `daySeries` 输出元素同时给 `day` + `bucket` 冗余字段。
  * 模型筛选独立持久化（localStorage `dsh-usage-stats/heatmap-model-v1`，
  * null = 全部模型聚合；非 null = 仅该模型贡献的 input/output）。
  * 显示设置 7 块 schema 扩 `heatmap` 字段，隐式迁移（缺字段默认 true）。

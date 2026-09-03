@@ -408,12 +408,14 @@ function totalTokensOf(bucket) {
   )
 }
 
-/** 最近 DAY_WINDOW 天（北京时间）零填充的日序列。v0.3.0 改走 granularitySeries('day')。 */
+/** 最近 DAY_WINDOW 天（北京时间）零填充的日序列。v0.3.0 改走 granularitySeries('day')。
+ *  v0.3.3：输出元素同时给 `day` 和 `bucket` 两个 key，兼容老客户端读 `.day` 与 v0.3.3 客户端读 `.bucket`。
+ */
 function daySeries(roots) {
-  // 兼容 v0.2.x 调用方（保持输出 shape 不变：{ day, ...bucket }）
+  // 兼容 v0.2.x 调用方（保持输出 shape 不变：{ day, bucket, ...bucket }）
   const series = granularitySeries(roots, 'day')
   return series.map(function (s) {
-    return { day: s.bucket, inputTokens: s.inputTokens, outputTokens: s.outputTokens, cacheReadTokens: s.cacheReadTokens, cacheWriteTokens: s.cacheWriteTokens, reasoningTokens: s.reasoningTokens, requests: s.requests }
+    return { day: s.bucket, bucket: s.bucket, inputTokens: s.inputTokens, outputTokens: s.outputTokens, cacheReadTokens: s.cacheReadTokens, cacheWriteTokens: s.cacheWriteTokens, reasoningTokens: s.reasoningTokens, requests: s.requests }
   })
 }
 

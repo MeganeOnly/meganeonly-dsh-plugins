@@ -181,21 +181,27 @@
         }
       }
       // dayMap: YYYY-MM-DD → { input, output, requests, total }
+      // v0.3.3：用 bucketKey 兼容 day / bucket 双 shape（host v0.3.0 daySeries 输出 { day, ... }，
+      // v0.3.3 防御性添加 bucket 字段 → 客户端硬编码 .day 也能跑）
+      function dayKey(d) { return d != null ? (d.bucket != null ? d.bucket : d.day) : null; }
       var dayMap = {};
       var max = 0;
       for (var di = 0; di < days.length; di++) {
         var day = days[di];
+        if (day == null) continue;
+        var k = dayKey(day);
+        if (k == null) continue;
         var input = day.inputTokens || 0;
         var output = day.outputTokens || 0;
         var requests = day.requests || 0;
-        if (modelIndex != null && modelIndex[modelFilter] && modelIndex[modelFilter][day.day]) {
-          var md = modelIndex[modelFilter][day.day];
+        if (modelIndex != null && modelIndex[modelFilter] && modelIndex[modelFilter][k]) {
+          var md = modelIndex[modelFilter][k];
           input = md.inputTokens || 0;
           output = md.outputTokens || 0;
         }
         var tot = input + output;
         if (tot > max) max = tot;
-        dayMap[day.day] = { input: input, output: output, requests: requests, total: tot };
+        dayMap[k] = { input: input, output: output, requests: requests, total: tot };
       }
       if (max === 0) {
         return React.createElement("div", { style: s.heatmapEmpty }, "暂无用量。");
@@ -205,7 +211,8 @@
       var firstDay = null;
       var lastDay = null;
       for (var di2 = 0; di2 < days.length; di2++) {
-        var d2 = days[di2].day;
+        var d2 = dayKey(days[di2]);
+        if (d2 == null) continue;
         if (firstDay == null || d2 < firstDay) firstDay = d2;
         if (lastDay == null || d2 > lastDay) lastDay = d2;
       }

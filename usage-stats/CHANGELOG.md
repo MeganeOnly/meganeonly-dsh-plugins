@@ -4,6 +4,23 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.3] - 2026-09-03
+
+### 修复
+
+- **HeatmapCalendar 渲染异常 `Cannot read properties of undefined (reading 'day')`**：v0.3.0 重构把 `daySeries` 输出元素从 `{ day, ... }` 改成 `{ day, ... }`（day 字段保留），但 HeatmapCalendar 内部对 days 数组元素硬编码 `day.day` 访问——当 host 半段处于中间状态（老版本输出无 day 字段、或 byDay 数组为空但存在）时会抛 `undefined reading 'day'`。v0.3.3 三重修复：
+    1. 客户端 `HeatmapCalendar(days, ...)` 内部所有 `day.day` / `days[di].day` 改用 `dayKey(d) = d.bucket != null ? d.bucket : d.day` 兼容 `{ day, ... }` / `{ bucket, ... }` 两种 shape（对齐 DayChart 已用的 `bucketKey` 策略）
+    2. 客户端 `HeatmapCalendar(d.byDay || [], ...)` 加防御性 fallback，防止 host 半段未升级时 `d.byDay` 为 undefined
+    3. host 半段 `daySeries` 输出元素同时给 `day` + `bucket` 两个 key（冗余），让客户端不论读哪个字段都能 work
+- **诊断兜底**：每个 `days[di]` 加 `if (day == null) continue;` 守卫，防止老会话日志解析出的 null 元素造成渲染崩溃。
+
+### 兼容性
+
+- 客户端 100% 兼容（host 半段无论是 v0.2.x / v0.3.0 / v0.3.2 / v0.3.3 都能正常渲染）
+- host 半段 daySeries 输出 shape 兼容 v0.3.0（仅多一个冗余 `bucket` 字段，老客户端不依赖新字段）
+
+---
+
 ## [0.3.2] - 2026-09-03
 
 ### 变更
