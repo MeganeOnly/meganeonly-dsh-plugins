@@ -4,7 +4,7 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.1.3] - 2026-09-04
 
 ### 新增
 
@@ -19,6 +19,10 @@
 
 - 设置页升级过程中显示全屏遮罩 + "请勿关闭 DSH 或浏览器"提示，避免用户在 npm 解包窗口期关闭页面导致 shim 半完成状态。
 - 升级完成提示更明确：自动恢复时附加 "dsh shim 曾被中断，已自动重试 N 次恢复"；失败时附加 "dsh shim 升级后丢失，请手动执行 `npm install -g @deepseek-ai/dsh` 修复"。
+
+### 兼容性
+
+- DSH 0.1.2-rc.1 实测：`/api/dsh-update/*` 路由在浏览器 cookie 鉴权下正常返回；DSH 0.1.2 的"一次性 token 鉴权"是连接层特性，对 host 端 `ctx.webServer.register` 路径注册无影响。
 
 ## [0.1.1] - 2026-08-19
 
