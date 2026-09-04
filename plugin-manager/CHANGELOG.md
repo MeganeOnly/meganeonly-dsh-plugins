@@ -4,7 +4,7 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.3.0] - 2026-09-04
 
 ### 新增
 
@@ -19,6 +19,11 @@
 
 - 路由守卫：注册 `/api/plugin-manager/*` 前检测路由是否已被其他插件占用（如 `@linxin666/dsh-client-ui-plugin-manager`），占用则跳过注册并打警告，避免 duplicate exact route 导致 DSH 启动崩溃。
 - scoped npm id（`@scope/name`）的作者解析此前因早返回始终为空，现已放开：候选路径 `node_modules/<id>/package.json`（即 `node_modules/@scope/name/package.json`）直接生效，可正常读取这些插件的 `author` 字段。
+
+### 兼容性
+
+- host 半端零新增破坏性改动；client bundle 是单文件 100 行级别不受 § 三三 拆分阈值约束。
+- DSH 0.1.2-rc.1 实测：路由守卫对 `/api/plugin-manager/list` 在 web-ui-plugin-manager 已占用时正确跳过（web profile 当前同时启用了自建 dsh-plugin-manager 与 linxin 版——按 cordis.patch.yml line 64-65，linxin 版已禁用，本路由唯一）。
 
 ## [0.2.0] - 2026-08-19
 
