@@ -4,7 +4,7 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.1.1] - 2026-09-04
 
 ### 修复
 
@@ -14,6 +14,11 @@
 
 - 插件视图新增"预设组件（.mjs）"分组：预设组合行（`.mjs` 相对路径）从常规分组移出，带"预设"徽标、说明文字且不可在此启停（与 dsh-plugin-manager 同步）。
 - tab 按服务可用性条件显示：某管理插件被停用（其 API 返回 404）时对应 tab 自动隐藏，其余 tab 不受影响；重新启用后刷新页面即恢复显示。
+
+### 兼容性
+
+- host 半端零副作用占位保持；client bundle 仍是单文件 + 拆包两套（v0.1.0 已拆）。
+- DSH 0.1.2-rc.1 实测：聚合 tab 调用三个老插件 API，启停响应 manager-hub（与 dsh-plugin-manager v0.3.0 / dsh-skill-manager v0.1.1 / dsh-mcp-manager v0.1.1 同步发布）。
 
 ## [0.1.0] - 2026-08-21
 
