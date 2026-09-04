@@ -29,12 +29,31 @@
 
 - **显示选项菜单 CSS 定位 bug**（v0.5.0 引入）：下拉菜单设 `position:absolute` 但 `position:relative` 加在了 `.DGH_commitToggle` 按钮上；菜单 DOM 实际是 `.DGH_header` 的子元素、不是按钮的子元素，所以 reference 链找不到按钮、向上 reference 到 `<body>`——菜单渲染了内容但视觉上跑到屏幕外，点了按钮看似无反应。Fix：把 `position:relative` 从按钮移到 `.DGH_header`（菜单的直接父容器）。
 
-## [Unreleased]
+## [0.5.1] - 2026-09-04
 
 ### 修复
 
 - **drive root（盘符根）在 `normalizePath` 被尾部一刀切剥光**：用户输入 `E:\` 想扫整盘 E，保存后 round-trip 回 `E:` —— Windows 上两者不等价，`readdirSync('E:')` 是"E 盘当前工作目录"（依赖 Node cwd），`readdirSync('E:\\')` 才是"E 盘根"。scanner 拿前者扫不到用户预期范围，前端体感"保存按钮无效：明明存的是 `E:\` 怎么 reload 变 `E:`"。修复：`lib/index.js#normalizePath` 改为三步——① 全 `/` 转 `\`；② 末尾单 `\` 剥离，但若剥光剩 `<letter>:`（drive root 标点形式）必须保留；③ 兜底：纯 `<letter>:`（无尾随 `\`）主动补 `\` 把语义锁到 drive root。20 个用例（drive root / subdir / UNC / 空值 / 非字符串输入）全部 round-trip 通过。**需要重启 DSH** 让新 `normalizePath` 载入（与本段上一条 fix 同款 ESM 缓存约束，已运行进程继续走旧代码）。已保存的 `.git-hub-config.json` 里若有残留 `E:` 形式，用户下次在面板里点一次保存即被自动升级为 `E:\`。
 - **配置路径修复 + 修正此前的 ReferenceError**：上次的「配置保存写到错位置」修复（v0.5.x 早期实现）改用了 `ctx.baseUrl` 解析 profile 根（正确方向），但实现细节选错了层级——把 `loadConfig` / `saveConfig` 定义在 `apply(ctx)` 闭包内，遗漏了 `getAllRepos` / `listChangedRepos` / `listMergeableRepos` 这 3 个**模块顶层**声明的函数也在引用 `loadConfig`，结果 `apply` 闭包里的 `loadConfig` 对它们不可见，`/api/git-hub/repos` 等接口一调就抛 `ReferenceError: loadConfig is not defined`，前端看到「扫描失败 internal」，抽屉仓库列表为空。本条修正实现：保留 `ctx.baseUrl` 解析（不再 `import.meta.url` 上溯），`configPath` 改为模块级 `let` mutable 引用（取代原顶层 `const`），`apply(ctx)` 同步写入一次后供模块顶层共享；`loadConfig` / `saveConfig` 回归模块顶层，`getAllRepos` 等调用方零改动。两层互相矛盾的「修复」合在一起最终落地：路径正确 + 不再 ReferenceError。重启 DSH 即可看到仓库列表重新扫描成功。
+
+### 维护
+
+- **80-controller.js 二级拆分**：v0.5.0 之后，原 `80-controller.js` 单文件 497 行 / 24 KB，已顶到通用规范 § 八的 50-500 行软目标上限。同 B0-view.js 拆分前一样，AI 局部改多次因全文件过大误伤同变量引用。沿"按域拆分"思路收敛：
+  - `pushRepo` / `pushAll` / `pollPushStatus` / `startPushPoll` / `stopPushPoll` 抽出到 `82-controller-push.js`（101 行）
+  - `loadCommitStatus` / `commit` 抽出到 `84-controller-commit.js`（62 行）
+  - `loadMergeStatus` / `mergeRepo` / `pullRepo` / `abortMerge` / `sendRepoToSession` 抽出到 `86-controller-merge.js`（含域内 `/* ===== v0.3.0 merge / pull / abort ===== */` 注释）
+  - `80-controller.js` 收敛到 203 行，仅保留构造器 + 状态切换 + `refresh` / `loadConfig` / `saveConfig` 三个 config 入口
+  - 三个 commit 逐步执行，每步 `node --check` + `npm run build/verify:client` 验证；bundle 字节由 104088 → 104197（+109 字节，全是新文件首行 marker + 节边界换行，语义零变化）。`docs/maintainability.md` 同步更新 section 索引
+- **B0-view.js 二级拆分**：v0.5.0 之后，原 `B0-view.js` 单文件 639 行 / 38 KB，超出 50-500 行软目标一倍以上，AI 局部改多次因全文件过大误伤同变量引用。进一步收敛：
+  - `buildRepoCard(repo, snap, controller)` 抽出到 `B5-repo-card.js`（131 行，独立成文件，无 `renderDrawerView` 闭包依赖）
+  - `renderCommitSection` + `renderMergeSection` 抽出到 `B7-sections.js`（185 行，commit / merge-pull 工具区集中）
+  - `escapeHtml` 从 `renderDrawerView` 内部上移到 `30-utils.js` 工厂体层级（与 `apiFetch` / `showToast` 同作用域，更便于跨 section 共享）
+  - `B0-view.js` 收敛到 336 行，回到 50-500 行目标
+  - bundle 字节由 103288 → 104088（+800 字节，来自 JSDoc 注释 + 新文件首行 marker；语义零变化）。`docs/maintainability.md` 同步更新 section 索引
+
+### 兼容性
+
+- DSH 0.1.2-rc.1 实测：浏览器 `/?token=...` 拿到 cookie 后所有 `/api/git-hub/*` 路由正常；`ctx.webServer.register` + `ctx.timer` 契约保持不变。DSH 0.1.2 新增的"完整历史回合导航"是右侧新元素，与本插件右侧 FAB + 抽屉共存（面板互斥协议不变）。
 
 ### 维护
 
