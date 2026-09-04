@@ -4,6 +4,75 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-09-05
+
+### 变更
+
+#### host 半段：用 DSH 官方 `ctx.sessionQuery` 替手写 zstd 解码器
+
+DSH 0.1.2-rc.1 引入了官方 session 查询框架（`@deepseek-ai/dsh-session-query-sqlite`），web profile 已挂载 `ctx.sessionQuery` 服务。本版本迁移 plugin 到官方 API：
+
+- **`inject` 数组扩展**：`['webServer']` → `['webServer', 'sessionQuery']`，framework 的 sessionQuery 自己依赖 `sessions` / persistence，cordis 自动链式注入。
+- **删除手写代码**（~150 行）：
+  - `scanZstdFrames()`（zstd 容器 frame 头解析，~45 行）
+  - `decodeSessionEvents()`（zstd 多帧解压 + JSONL 解析，~15 行）
+  - `parsePlainJsonl()`（明文 JSONL 兜底，~12 行）
+  - `collectSessionFiles()`（`~/.dsh/sessions` 文件枚举，~29 行）
+  - `resolveDshHome()`（DSH 主目录查找，~17 行）
+  - `pathExists()` / `profileRoot()`（profile 路径工具，~15 行）
+  - `isUsableAggregate()`（v0.3.8.1 治本 — 已不必要，framework 兜底）
+  - `identity()` / `projectOf()` / `byJsonIdByProject`（跨项目撞车工程 — SessionId 全局唯一后多余）
+- **新增官方 API 接入**：
+  - `ctx.sessionQuery.listSessions()` — 列出所有 session header（含 `createdAt` / `cwd` / `parentSession` / `delegationDepth` / `origin`，由 framework 的 JSONL 持久化层提供）。
+  - `ctx.sessionQuery.readSession(id)` — 读完整事件流（zstd 解压 + replay validation 全部由 framework 的 `PersistenceCoordinator` 完成，plugin 不再处理坏文件）。
+  - `ctx.sessionQuery.traceSession(id)` — 走 `parentSession` 链查 root（替代 `rollupByMainSession` 内的手写父链遍历；orphan subagent / cycle detect 由 framework 处理）。
+- **缓存语义升级**：
+  - cache key 从 `<projectDir>/<sessionDir>`（v0.3.8 fileId）升到 `SessionId`（DSH 生成，全局唯一 UUID，跨项目也唯一）。
+  - 失效字段从 `(size, mtimeMs)` 升到 `(header.createdAt)`（session 创建后 `createdAt` 不变，append events 不影响）。
+  - `CACHE_VERSION` 6 → 7（让旧 v6 cache 一次性作废重算）。
+  - 删 `isUsableAggregate()` 治本逻辑（v0.3.8.1 治的"partial agg 防御"已被 framework 的 replay validation 兜底）。
+- **`rollupByMainSession` 升级为 async**：内部走 `ctx.sessionQuery.traceSession(id)`（async 契约），替代 `byJsonIdByProject` 手写工程。counts speak in main sessions only 的业务语义保留不变。
+- **payload 字段微调**：移除 `home` 字段（plugin 不再自己解析 DSH 主目录，路径由 framework 管理）。
+- **未变**：`aggregateSession()` 纯函数、`rootsDaysAll()` / `granularitySeries()` / `modelTable()` / `topSessions()` / `toolTable()` / `daySeries()` 全部保持原 export 签名。
+- **未变**：客户端 bundle（v0.3.9 = 69290 字节不变）；`?force=1` 强制重算语义保留（v0.3.8.2 inflight 协议不动）。
+
+#### 测试重构
+
+v0.3.x 的 `tests/test-v038-fixes.mjs` / `tests/test-v0381-inflight.mjs` / `tests/audit-repro.mjs` 全部依赖文件系统扫描 mock（构造 tmp `sessions/` 目录 + `DSH_HOME` env + plugin 自己枚举文件）。v0.4.0 后 plugin 不再读文件系统——这些 fixture 测试失去前提。
+
+- 删 `tests/test-v038-fixes.mjs`（bug C/D/E/F 端到端测试不再适用；bug A/B 已被 `test-add-usage-harden.mjs` / `test-byDayAll.mjs` 全面覆盖）。
+- 删 `tests/test-v0381-inflight.mjs`（force / inflight 协议改走 mock sessionQuery 重写）。
+- 删 `tests/audit-repro.mjs`（临时审计脚本，"audit 完成后删除"）。
+- 新增 `tests/test-v040-official.mjs`（21 项）：mock `ctx.sessionQuery` 验证 v0.4.0 核心路径——happy path（subagent rollup 到 main）、cache 命中 / 失效（`createdAt` 改变触发重 build）、force 语义（cache 命中条件下仍重 build）、inflight 协议保留（force in prewarm 不被吞，chain 上 ≥ 2 次 saveCache）、error 隔离（单个 session 报错不影响其他）。
+
+### 用户可感行为变化
+
+| 场景 | v0.3.9 | v0.4.0 |
+| --- | --- | --- |
+| 第一次启动（prewarm + 后续请求） | 374 sessions / 45s | 同等规模；首次略快（framework 的 PersistenceCoordinator 有 preparation LRU cache） |
+| 子代理 token 归属 | 手写 `byJsonIdByProject` 防撞车（v0.3.8.1 治本） | `ctx.sessionQuery.traceSession()` 官方实现 |
+| 跨项目同名 session 撞车 | fileId prefix 防御（v0.3.8 工程） | SessionId 全局唯一，不再需要 prefix |
+| 「强制重算」按钮 | 走 `?force=1` + inflight 协议保留 | 同等（v0.3.8.2 修复不被退化） |
+| 缓存失效字段 | `(size, mtimeMs)` | `(header.createdAt)` |
+| 宿主依赖 | plugin 自己读 `~/.dsh/sessions/*/session.jsonl.zstd` | 走 `ctx.sessionQuery`（zstd / replay / 跨项目隔离由 framework 兜底） |
+| 客户端 UI | 不变 |  |
+
+### 兼容性
+
+- **最低 DSH 版本**：DSH 0.1.2-rc.1+（需要 `ctx.sessionQuery` 服务）。DSH 0.1.1 及更早版本下 plugin 启动时会因 `inject: ['sessionQuery']` 解析失败而被 cordis 拒载（明确的错误信号，不会静默降级）。
+- **web profile 必须挂载**：`@deepseek-ai/dsh-session-query-sqlite`（DSH 0.1.2-rc.1 默认 web profile 已挂载，无需手动配置）。
+- **客户端完全兼容**：v0.4.0 客户端 bundle 与 v0.3.9 字节级一致（69290 字节），用户无需清缓存。
+- **客户端 → 旧 host 兼容**：v0.3.9 客户端在 v0.4.0 host 下仍正常工作（payload schema 仅删除 `home` 字段，客户端从未读取该字段）。
+- **旧 host → 新客户端**：v0.4.0 客户端在 v0.3.9 host 下应仍工作（v0.3.9 host 输出包含 `byDayAll` 字段，客户端走 `d.byDayAll || d.byDay` fallback 路径）。
+- **缓存作废**：`CACHE_VERSION` 6 → 7，旧 v6 cache（fileId 形式 key）一次性作废重算，升级后第一次请求会全量重 build（与首次安装等价；374 sessions ≈ 45s）。
+- **bundle 字节**：客户端不变（69290 字节）；host 半段 `lib/index.js` 估从 47571 字节 → 38000 字节（-20%）。
+
+### 验证
+
+- `tests/test-v040-official.mjs`（新增 21 项）：happy path / cache 命中 / 失效 / force 语义 / inflight 协议保留 / error 隔离 / Beijing 锚点回归 / byDayAll 升序不零填充——全过。
+- `tests/test-add-usage-harden.mjs`（42 项）、`tests/test-byDayAll.mjs`（26 项）、`tests/test-all-range.mjs`（16 项）、`tests/smoke.mjs`（smoke）——全部保留并全过。
+- **总计 105 项测试 + 1 smoke 全过**。
+
 ## [0.3.9] - 2026-09-05
 
 ### 变更
