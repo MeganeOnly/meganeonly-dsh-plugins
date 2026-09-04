@@ -4,6 +4,31 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.6] - 2026-09-05
+
+### 修复
+
+审计 `lib/index.js` host 半段发现的 4 个 bug，全部在 host 端：
+
+- **缓存从未被读回（性能 bug）**：`apply()` 里 `let cache = { sessions: {} }` 之后再也没有调用 `loadCache(cachePath)`，导致每次 DSH 进程重启都会全量重解码所有 session 日志（缓存文件虽然写出去但永远读不回来）。修复：`apply` 启动时新增 `cacheReady = loadCache(cachePath).then(c => cache = c)`，并让 `summary()` 在 `cacheReady` 解决之后再 `buildSummary`，避免第一次请求在空 cache 上假命中。
+- **跨项目 session 缓存键冲突（数据正确性 bug）**：`collectSessionFiles` 用 `sessionDir.name`（仅 `session-XXX`）作 `file.id`，导致两个项目各自一个同名 session 目录时 `cache.sessions[file.id]` 互相覆盖，size/mtimeMs 假匹配还会跳过真实解码。修复：`file.id` 改为 `<projectDir>/<sessionDir>`，bump `CACHE_VERSION` 4 → 5 强制一次缓存作废重算（避免老 v4 缓存的孤儿键污染新键空间）。同步在 buildSummary 的 cache 命中判定处加 `cached.agg && typeof cached.agg === 'object'` 防御，挡住升级后第一次加载老缓存时的半写入文件。
+- **`tool/call` 缺 `callId` 时污染 `pendingCalls` / `callNames`**：原代码无脑 `callNames.set(event.data.callId, name)` + `pendingCalls.set(event.data.callId, time)`，把键设为 `undefined`，导致任何 `tool/result` 的 `source.callId === undefined` 都会"匹配"到第一个未配对的 tool/call，把别人的耗时算到错误工具的 `ms` 上。修复：缺 `callId` 时仍把 calls 计入 top tools（保证工具次数准确），但不写入 `pendingCalls` / `callNames`，彻底切断误配对路径。
+- **`assistant/message` 缺 `event.time` 污染 1970-01-01 桶**：原代码 `beijingDayKey(event.time ?? 0)` 把无 time 的事件落到 `1970-01-01`，几个孤立事件就能让"今天用了 0 token"的图表出现"1970-01-01 用了 N token"的幽灵柱（按日 / 按小时 / 按分钟三粒度全中）。修复：`usage != null && typeof event.time === 'number'` 守卫，把所有 `addUsage` 调用移到守卫内，缺 time 的事件既不进 `models` 也不进任何时间粒度桶；`llmMs` 计算仍允许 `?? 0` 兜底（不会变负）。
+
+### 兼容性
+
+- 客户端无变更（host 半段修复不影响 client bundle 的形状；本版本仍走 `lib/build-client.cjs` 重新生成 `lib/client.js`，bundle 字节数不变）
+- `CACHE_VERSION` 4 → 5：升级后第一次请求会全量重解码（一次性的 cost，与首次安装等价）；后续恢复增量
+- 老的 v4 缓存文件不会被自动删除，下次 save 时原地覆盖
+
+### 验证
+
+- `tests/audit-repro.mjs`：14 项 audit 复现测试全过（覆盖 4 个 bug 的修复点 + cache load 端到端：cross-project 串扰、第二次 reused ≥ 2、删除后 liveIds 修剪）
+- `tests/smoke.mjs`：client bundle 渲染路径 PASS（`renderCount = 4`）
+- `node --check lib/index.js` / `node --check lib/client.js`：均通过
+
+---
+
 ## [0.3.4] - 2026-09-03
 
 ### 修复

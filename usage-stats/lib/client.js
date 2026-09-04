@@ -56,6 +56,17 @@
  *       DayChart 接受 granularity 参数自适应柱宽（minute 极窄 + overflow-x
  *       auto 滚动）+ X 轴标签按粒度格式（MM-DD / MM-DD HH / MM-DD HH:mm / 周一日期）。
  *       CACHE_VERSION v2 → v4 跳号（中间 v3 不暴露避免用户白经历一次缓存作废重算）。
+ *
+ * v0.3.6 host 半段 bugfix 审计（lib/index.js）：
+ *   (a) 缓存从未被读回 → apply 启动时新增 cacheReady = loadCache(cachePath)
+ *       门控所有 summary；DSH 重启后第二次起的请求不再全量重解码。
+ *   (b) 跨项目 session 缓存键冲突 → file.id 从 sessionDir.name 升级为
+ *       `<projectDir>/<sessionDir>`，CACHE_VERSION 4 → 5 强制一次重算。
+ *   (c) tool/call 缺 callId 时不写 pendingCalls/callNames（仍计入 calls），
+ *       避免 undefined 键与 tool/result 误配对污染 toolMs。
+ *   (d) assistant/message 缺 event.time 时不进任何时间粒度桶，避免污染
+ *       1970-01-01 的按日 / 按小时 / 按分钟三组数据。
+ *   客户端无变更，但 bundle 仍走 build-client.cjs 重新生成以保持字节同步。
  */window.__ModuleLoader__.load({
   id: "dsh-usage-stats",
   factory: (require) => {

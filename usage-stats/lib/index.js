@@ -23,7 +23,11 @@ export const inject = ['webServer']
 
 const API_SUMMARY = '/api/usage-stats/summary'
 const CACHE_FILENAME = '.usage-stats-cache.json'
-const CACHE_VERSION = 4 // v3：跳过不暴露；v4 实际包含 (a) 子代理归并 (parentSession/delegationDepth) + hours/minutes 桶 + (b) 跨聚合聚合层重写 (root main session rollup + granularitySeries)。v0.2.x → v0.3.0 一次 bump；中间版本不暴露避免用户白经历一次缓存作废重算
+// v3：跳过不暴露；v4：子代理归并 + hours/minutes 桶 + root main session rollup + granularitySeries。
+// v5：缓存键从 `sessionDir.name` 升级为 `<projectDir>/<sessionDir>`，修复跨项目 session id
+//     冲突（同一台机器多个项目各自有一个 `session-XXX` 目录时会互相覆盖 cached.agg）。
+//     bump version 强制一次缓存作废重算，避免老 v4 缓存里的孤儿键污染新键空间。
+const CACHE_VERSION = 5
 const ZSTD_MAGIC = 0xfd2fb528
 const BEIJING_OFFSET_MS = 8 * 3600 * 1000 // 统计按北京时间分日（UTC+8 无夏令时）
 const DAY_WINDOW = 30 // 按日趋势返回最近 30 天（含零填充）
@@ -200,22 +204,26 @@ export function aggregateSession(events) {
         break
       case 'assistant/message': {
         const usage = event.data?.usage
-        if (usage != null) {
+        // 必须同时有 usage 与 number time 才能归属到任何桶：
+        //  - 缺 time 时 `beijingDayKey(event.time ?? 0)` 会落到 `1970-01-01`
+        //    污染按日 / 按小时 / 按分钟三个粒度的真实数据（历史上累积几个无
+        //    time 的事件就能把"今天用了 0 token"显示成"1970-01-01 用了 N token"）。
+        // 修复方式：缺 time 的事件直接不写入任何桶，但 llmMs 计算仍允许
+        // （用 `?? 0` 不会让 llmMs 变成负数）。
+        if (usage != null && typeof event.time === 'number') {
           addUsage(bucketOf(models, currentModel), usage)
-          const day = beijingDayKey(event.time ?? 0)
+          const day = beijingDayKey(event.time)
           addUsage(bucketOf(days, day), usage)
           addUsage(bucketOf(modelDays, `${currentModel}|${day}`), usage)
           // v0.3.0 多粒度趋势：同时写入小时 / 分钟桶（北京时间对齐）
-          if (event.time != null) {
-            const dt = new Date(event.time + BEIJING_OFFSET_MS)
-            const pad = function (n) { return String(n).padStart(2, "0") }
-            const hourKey = day + "T" + pad(dt.getUTCHours())
-            const minuteKey = hourKey + ":" + pad(dt.getUTCMinutes())
-            addUsage(bucketOf(hours, hourKey), usage)
-            addUsage(bucketOf(modelHours, currentModel + "|" + hourKey), usage)
-            addUsage(bucketOf(minutes, minuteKey), usage)
-            addUsage(bucketOf(modelMinutes, currentModel + "|" + minuteKey), usage)
-          }
+          const dt = new Date(event.time + BEIJING_OFFSET_MS)
+          const pad = function (n) { return String(n).padStart(2, "0") }
+          const hourKey = day + "T" + pad(dt.getUTCHours())
+          const minuteKey = hourKey + ":" + pad(dt.getUTCMinutes())
+          addUsage(bucketOf(hours, hourKey), usage)
+          addUsage(bucketOf(modelHours, currentModel + "|" + hourKey), usage)
+          addUsage(bucketOf(minutes, minuteKey), usage)
+          addUsage(bucketOf(modelMinutes, currentModel + "|" + minuteKey), usage)
         }
         if (openStep != null && openStep.turn === event.data?.turn && openStep.step === event.data?.step) {
           llmMs += Math.max(0, (event.time ?? 0) - openStep.time)
@@ -226,8 +234,15 @@ export function aggregateSession(events) {
       case 'tool/call': {
         const name = typeof event.data?.name === 'string' ? event.data.name : 'unknown'
         toolBucketOf(tools, name).calls += 1
-        callNames.set(event.data.callId, name)
-        if (event.time != null) pendingCalls.set(event.data.callId, event.time)
+        const callId = event.data?.callId
+        // 缺 callId 时仍计入工具调用次数（保证 top tools 准确），但不写
+        // pendingCalls/callNames——否则 undefined 键会让后续任何
+        // `tool/result` 都错误地"匹配"到第一个 undefined callId 上，
+        // 把别人的耗时算到错误工具的 ms 上。
+        if (callId != null) {
+          callNames.set(callId, name)
+          if (event.time != null) pendingCalls.set(callId, event.time)
+        }
         break
       }
       case 'tool/result': {
@@ -337,7 +352,12 @@ async function resolveDshHome(ctx) {
   return null
 }
 
-/** 枚举 sessions 根下全部会话日志文件 → [{ id, path, isZstd }]。 */
+/** 枚举 sessions 根下全部会话日志文件 → [{ id, path, isZstd }]。
+ *  `id` 形如 `<projectDir>/<sessionDir>`：必须包含 projectDir 前缀以避免跨项目
+ *  session 目录名撞车（同一台机器多个项目分别可能有 `session-XXX`，单用
+ *  sessionDir.name 会让 cache.sessions[file.id] 互相覆盖，导致另一个项目的
+ *  cached.agg 被错误命中，size/mtimeMs 假匹配时还会跳过重新解码）。
+ */
 async function collectSessionFiles(sessionsRoot) {
   const files = []
   let projectDirs = []
@@ -359,7 +379,7 @@ async function collectSessionFiles(sessionsRoot) {
       for (const [filename, isZstd] of [['session.jsonl.zstd', true], ['session.jsonl', false]]) {
         const path = join(sessionsRoot, projectDir.name, sessionDir.name, filename)
         if (await pathExists(path)) {
-          files.push({ id: sessionDir.name, path, isZstd })
+          files.push({ id: projectDir.name + '/' + sessionDir.name, path, isZstd })
           break
         }
       }
@@ -709,6 +729,17 @@ export function apply(ctx) {
   let chain = Promise.resolve() // 串行化缓存写
   let homeDir = null
 
+  // 启动时加载磁盘上的增量缓存。修复 v0.3.5 前的 bug：
+  // `cache` 初始化为空对象后再没被 loadCache() 调用，导致每次 DSH 重启都会
+  // 全量重解码所有 session 日志，缓存文件虽然写出去但永远读不回来。
+  // `cacheReady` 门控所有 summary：第一次 HTTP 请求会等缓存加载完
+  //（典型 < 100ms），避免并发请求与启动期 cache 写入的竞态（如果直接 await
+  // cacheReady 再 buildSummary，第一次请求的 size/mtimeMs 假命中会在空 cache
+  // 上发生）。
+  const cacheReady = loadCache(cachePath)
+    .then((c) => { cache = c })
+    .catch(() => {})
+
   async function buildSummary(force) {
     const startedAt = Date.now()
     if (homeDir === null) homeDir = await resolveDshHome(ctx)
@@ -727,7 +758,12 @@ export function apply(ctx) {
       try {
         const info = await stat(file.path)
         const cached = cache.sessions[file.id]
-        if (!force && cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
+        // 防御：cached.agg 必须存在且是对象，否则视为 miss 重新解码。
+        // 旧版本（v0.3.5 前）缓存几乎不会被读回，所以这条本来不触发；
+        // 修了 cache load bug 之后，磁盘上的 v4 老缓存（不同 key 格式 +
+        // 可能的半写入文件）才会被首次加载，必须把异常条目挡在入口。
+        if (!force && cached && cached.agg && typeof cached.agg === 'object'
+            && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
           aggs.push(cached.agg)
           reused += 1
           continue
@@ -803,7 +839,8 @@ export function apply(ctx) {
 
   function summary(force) {
     if (inflight !== null) return inflight
-    inflight = buildSummary(force)
+    inflight = cacheReady
+      .then(() => buildSummary(force))
       .catch((error) => ({ ok: false, error: String(error && error.message ? error.message : error) }))
       .finally(() => {
         inflight = null
