@@ -11,7 +11,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：在设置页汇总展示跨
 - **贡献热力图**（v0.2.2 新增）：GitHub 风格 53 周 × 7 日方格日历，5 级颜色按 token 量分级，可选模型筛选，悬停查看当日明细。
 - **精确数据源**：token 数取自会话日志中助手消息的 `usage` 字段，为模型侧返回的精确值而非估算。
 - **显示设置**：页面右上角「显示」按钮可独立隐藏/展示 7 个数据块（元信息、指标卡、柱状图、热力图、按模型表、会话 Top、工具 Top），支持「全选 / 全不选」快捷按钮，偏好持久化到 `localStorage`。
-- **增量缓存**：按 `(size, mtimeMs)` 记录每个会话文件的解析结果并以原子写方式落盘，未变更的文件不重复解析；全量首次解析约数秒，之后开销接近于零。宿主半段启动时预热一次。
+- **增量缓存**：按 `(SessionId, header.createdAt)` 记录每个会话的聚合结果并以原子写方式落盘到 web profile 目录下的 `.usage-stats-cache.json`；未变更的会话直接复用上次结果；全量首次解析约数秒，之后开销接近于零。宿主半段启动时预热一次。
 
 ## 安装
 
@@ -34,7 +34,7 @@ DeepSeek Harness (DSH) web profile 的常驻插件：在设置页汇总展示跨
 ```json
 {
   "dependencies": {
-    "dsh-usage-stats": "^0.3.0"
+    "dsh-usage-stats": "^0.4.0"
   }
 }
 ```
@@ -61,9 +61,10 @@ pnpm install --no-frozen-lockfile
 
 ## 运行与生效
 
-- 宿主半段解析 `~/.dsh/sessions` 下的会话日志（zstd 压缩、多帧拼接的 `session.jsonl.zstd`）并注册 `/api/usage-stats/summary` 聚合路由，**修改后需重启 DSH** 才会生效。解压使用 Node 内置模块，无额外运行时依赖。
+- 宿主半段通过 `ctx.sessionQuery`（DSH 0.1.2-rc.1+ 官方服务，由 web profile 加载的 `dsh-session-query-sqlite` 提供）枚举与读取会话日志；zstd 解压 / replay validation / 跨项目 SessionRecord 隔离全部由框架负责。plugin 只在事件流上做业务聚合（aggregateSession 纯函数）。注册 `/api/usage-stats/summary` 聚合路由，**修改后需重启 DSH** 才会生效。
 - 浏览器半段渲染设置页的"使用统计"页面，**刷新页面**即可加载最新版本。
 - 解析缓存保存在 web profile 目录下的 `.usage-stats-cache.json`；删除该文件会触发下一次全量重新解析。
+- 「强制重算」按钮（页面顶部）走 `?force=1` query 参数，忽略增量缓存并重 build。
 
 临时停用可在 profile 的 `cordis.patch.yml` 中追加：
 

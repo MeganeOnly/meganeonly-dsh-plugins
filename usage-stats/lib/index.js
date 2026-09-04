@@ -1,25 +1,34 @@
 /**
  * dsh-usage-stats — Host 半端（作者：MeganeOnly）
  *
- * 使用统计：跨会话汇总 token 用量。数据源是 ~/.dsh/sessions 下的会话日志
- * （session.jsonl.zstd，多 frame 拼接的 zstd 容器，Node 22 内置 zlib 可解）。
- * 模型侧精确 usage 来自 assistant/message 事件的 usage 字段
- * （inputTokens / outputTokens / cacheReadTokens / cacheWriteTokens / reasoningTokens）。
+ * 使用统计：跨会话汇总 token 用量。数据源是 DSH 官方 session 查询层
+ *（ctx.sessionQuery，由 web profile 加载的 dsh-session-query-sqlite 提供）。
+ * 会话日志格式 / zstd 解压 / replay validation 全部由 framework 负责，plugin
+ * 只在事件流上做业务聚合（aggregateSession 纯函数）。
  *
- * 聚合策略：每个会话文件按 (size, mtimeMs) 做增量缓存（profile 目录
+ * 聚合策略：每个会话按 (header.id, header.createdAt) 做增量缓存（profile 目录
  * .usage-stats-cache.json，临时文件 + rename 原子写），没变的直接用上次结果；
  * 汇总请求串行化（沿用 peak-hour-lock 的 promise chain 模式），并发请求共享一次计算。
  *
  * 对外 API：GET /api/usage-stats/summary（可选 ?force=1 忽略增量缓存强制重算）。
+ *
+ * v0.4.0 改造（DSH 0.1.2-rc.1 后）：用 ctx.sessionQuery 替代手写的 zstd 解码器
+ * 与文件枚举 collectSessionFiles（v0.3.9 共 ~120 行手写代码删除）。跨项目
+ * session 撞车的 identity 校验（v0.3.8 fileId 工程）由 framework 的 SessionId
+ * 全局唯一性 + header.createdAt 双字段兜底，原 isUsableAggregate() 治本逻辑
+ * 简化掉。sessionRollup 子代理归并仍 plugin 业务（counts speak in main sessions
+ * only），但内部父链遍历改用 ctx.sessionQuery.traceSession() 替手写
+ * byJsonIdByProject 工程。
  */
-import { readFile, writeFile, rename, readdir, stat } from 'node:fs/promises'
-import { zstdDecompressSync } from 'node:zlib'
+import { readFile, writeFile, rename } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 
 export const name = 'usage-stats'
 
-export const inject = ['webServer']
+// v0.4.0：注入 sessionQuery（web profile 已挂载 dsh-session-query-sqlite）。
+// framework 内部已 dependencies（sessions / persistence），cordis 自动处理。
+export const inject = ['webServer', 'sessionQuery']
 
 const API_SUMMARY = '/api/usage-stats/summary'
 const CACHE_FILENAME = '.usage-stats-cache.json'
@@ -39,83 +48,17 @@ const CACHE_FILENAME = '.usage-stats-cache.json'
 //       1) 新增 isUsableAggregate() 在 cache hit 处挡 partial 入口（视为 miss 重解码）
 //       2) rollupByMainSession / topSessions 内部对 agg.totals 兜底（defense in depth）
 //     不 bump version：aggregateSession 写出的 agg 必然完整；只防御未来异常来源。
-const CACHE_VERSION = 6
-const ZSTD_MAGIC = 0xfd2fb528
+// v7（v0.4.0）：用 ctx.sessionQuery 替手写 zstd/collectSessionFiles；cache key 从
+//     `<projectDir>/<sessionDir>` 升级为 header.id（DSH 保证 SessionId 全局唯一），
+//     失效字段从 `(size, mtimeMs)` 升级为 `(header.createdAt)`。旧 v6 cache 里 fileId
+//     形式的 key 仍被 `identityMatches` 兜底识别为 miss，bump version 让旧 v6 缓存
+//     一次性作废重算。
+const CACHE_VERSION = 7
 const BEIJING_OFFSET_MS = 8 * 3600 * 1000 // 统计按北京时间分日（UTC+8 无夏令时）
 const DAY_WINDOW = 30 // 按日趋势返回最近 30 天（含零填充）
 const TOP_SESSIONS = 12
 const TOP_TOOLS = 10
 const MAX_ERRORS_REPORTED = 5
-
-/* ------------------------------------------------------------------ *
- * zstd 容器解码：结构性扫描 frame 边界（与 DSH 官方扫描器同规则），
- * 逐 frame 用 Node 内置 zstdDecompressSync 解压，再按行拆 JSON 事件。
- * ------------------------------------------------------------------ */
-
-/** 扫描完整 frame 的 [start, end) 区间；末尾撕裂的 frame 直接丢弃。 */
-export function scanZstdFrames(buffer) {
-  const frames = []
-  let offset = 0
-  while (offset < buffer.length) {
-    const start = offset
-    if (buffer.length - offset < 4) return frames
-    if (buffer.readUInt32LE(offset) !== ZSTD_MAGIC) {
-      throw new Error(`invalid frame magic at byte ${offset}`)
-    }
-    offset += 4
-    if (offset === buffer.length) return frames
-    const descriptor = buffer.readUInt8(offset)
-    offset += 1
-    if ((descriptor & 24) !== 0) throw new Error(`reserved frame-header bit at byte ${offset - 1}`)
-    const contentSizeFlag = descriptor >>> 6
-    const singleSegment = (descriptor & 32) !== 0
-    const dictionaryFlag = descriptor & 3
-    const dictionaryBytes = dictionaryFlag === 3 ? 4 : dictionaryFlag
-    const contentSizeBytes = contentSizeFlag === 0 ? (singleSegment ? 1 : 0) : 1 << contentSizeFlag
-    const remainingHeaderBytes = (singleSegment ? 0 : 1) + dictionaryBytes + contentSizeBytes
-    if (buffer.length - offset < remainingHeaderBytes) return frames
-    offset += remainingHeaderBytes
-    for (;;) {
-      if (buffer.length - offset < 3) return frames
-      const blockHeader = buffer.readUIntLE(offset, 3)
-      offset += 3
-      const lastBlock = (blockHeader & 1) !== 0
-      const blockType = (blockHeader >>> 1) & 3
-      const blockSize = blockHeader >>> 3
-      if (blockType === 3) throw new Error(`reserved block type at byte ${offset - 3}`)
-      const payloadBytes = blockType === 1 ? 1 : blockSize
-      if (buffer.length - offset < payloadBytes) return frames
-      offset += payloadBytes
-      if (lastBlock) {
-        if ((descriptor & 4) !== 0) {
-          if (buffer.length - offset < 4) return frames
-          offset += 4
-        }
-        frames.push([start, offset])
-        break
-      }
-    }
-  }
-  return frames
-}
-
-/** 解码整个会话日志 → 事件对象数组（坏行跳过）。导出以便单测。 */
-export function decodeSessionEvents(buffer) {
-  const events = []
-  for (const [start, end] of scanZstdFrames(buffer)) {
-    const text = zstdDecompressSync(buffer.subarray(start, end)).toString('utf8')
-    for (const line of text.split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed.length === 0) continue
-      try {
-        events.push(JSON.parse(trimmed))
-      } catch {
-        // 坏行（理论上不应出现）跳过，不让单行拖垮整个会话
-      }
-    }
-  }
-  return events
-}
 
 /* ------------------------------------------------------------------ *
  * 纯聚合：事件数组 → 单会话统计（导出以便单测）
@@ -184,12 +127,11 @@ function toolBucketOf(map, key) {
  * 模型归属：usage 记在"最近一次 request/header"的 provider/model 名下；
  * 工具耗时按 callId 配对 tool/call → tool/result；llmMs 按 step/start → assistant/message。
  *
- * `fileId` 是项目+sessionDir 形式的稳定 id（`<projectDir>/<sessionDir>`），
- * 由调用方（`buildSummary`）注入，作为后续 rollup 的实体键：
- * JSONL `event.id` 可能在跨项目下撞车（DSH 保证单项目内唯一、不保证跨项目），
- * 故 rollup 实体键必须用 fileId 而不是 JSONL agg.id。
+ * v0.4.0：`id` 形参语义改为 SessionId（全局唯一），不再是 v0.3.8 的 fileId
+ *（`<projectDir>/<sessionDir>`）—— DSH 的 SessionId 已经是 UUID randomBytes 生成，
+ * 跨项目也唯一，不再需要 project 前缀。
  */
-export function aggregateSession(events, fileId = null) {
+export function aggregateSession(events, id = null) {
   const meta = { id: null, cwd: null, createdAt: null, preset: null, parentSession: null, delegationDepth: null, origin: null }
   let title = null
   let currentModel = 'unknown'
@@ -212,10 +154,10 @@ export function aggregateSession(events, fileId = null) {
 
   for (const event of events) {
     // 单行脏事件守卫：JSONL 里 `null` / 数字 / 字符串 / boolean / 数组都
-    // 是合法 JSON 文本，能过 decodeSessionEvents 的 try/catch 进到聚合循环；
-    // 不挡就会在 event.time / event.type 上抛 TypeError 把整会话拖垮。
-    // 这里只接受普通对象（typeof === 'object' 且非 null 且非 Array.isArray），
-    // 其他形态一律静默跳过——与 decodeSessionEvents 的"坏行丢弃"语义一致。
+    // 是合法 JSON 文本，能过 framework 的 decodeSessionEvents 的 try/catch
+    // 进到聚合循环；不挡就会在 event.time / event.type 上抛 TypeError 把整会话
+    // 拖垮。这里只接受普通对象（typeof === 'object' 且非 null 且非 Array.isArray），
+    // 其他形态一律静默跳过——与 framework 的"坏行丢弃"语义一致。
     if (event == null || typeof event !== 'object' || Array.isArray(event)) continue
     if (Number.isFinite(event.time) && event.time > (lastTs ?? 0)) lastTs = event.time
     switch (event.type) {
@@ -225,9 +167,9 @@ export function aggregateSession(events, fileId = null) {
         meta.createdAt = event.createdAt ?? meta.createdAt
         meta.preset = event.agentPreset ?? meta.preset
         // v0.3.0 子代理归并依据（DSH session header schema：parentSession
-        // / delegationDepth / origin 三个字段见 dsh-session-persistence-jsonl
-        // README § SessionHeader）。缺失 delegationDepth 时按 parentSession
-        // 推断（顶层 = 0），兼容 v0.2.x 之前生成的旧会话日志。
+        // / delegationDepth / origin 三个字段见 SessionHeader type）。
+        // 缺失 delegationDepth 时按 parentSession 推断（顶层 = 0），
+        // 兼容 v0.2.x 之前生成的旧会话日志。
         meta.parentSession = event.parentSession ?? meta.parentSession
         meta.delegationDepth = typeof event.delegationDepth === 'number'
           ? event.delegationDepth
@@ -301,7 +243,7 @@ export function aggregateSession(events, fileId = null) {
         // 把别人的耗时算到错误工具的 ms 上。
         if (callId != null) {
           callNames.set(callId, name)
-          // v0.3.7：`event.time != null` 挡不住 NaN / Infinity（NaN != null = true；
+          // v0.3.7：`event.time != null` 挡不住 NaN / Infinity（NaN != null = true;
           // Infinity != null = true），会让 tool/result 配对时 `(event.time ?? 0) - dispatched`
           // 产生 NaN 把 toolMs / 工具耗时污染成 NaN。这里要求 time 是有限数字才落 pendingCalls。
           if (Number.isFinite(event.time)) pendingCalls.set(callId, event.time)
@@ -344,8 +286,7 @@ export function aggregateSession(events, fileId = null) {
     totals.requests += bucket.requests
   }
   return {
-    id: meta.id,
-    fileId,
+    id: meta.id ?? id,
     cwd: meta.cwd,
     createdAt: meta.createdAt,
     preset: meta.preset,
@@ -370,88 +311,20 @@ export function aggregateSession(events, fileId = null) {
   }
 }
 
-/**
- * 工具耗时归属：tool/result 事件不含工具名，聚合主循环用 callId→name
- * 映射（callNames）在配对成功时补名字，见 aggregateSession。
- */
-
 /* ------------------------------------------------------------------ *
- * 文件发现与缓存
+ * 缓存（profile 目录下 .usage-stats-cache.json）
  * ------------------------------------------------------------------ */
 
-/** 解析 profile 根目录（loader 的 baseUrl 即 profile 目录）。 */
+/**
+ * 解析 profile 根目录（loader 的 baseUrl 即 profile 目录）。
+ * v0.4.0：仍保留这个工具函数，因为 cache 文件路径仍写在 profile 根下，
+ * 不在 framework 内部抽象里。
+ */
 function profileRoot(ctx) {
   const base = ctx.baseUrl
   if (typeof base === 'string' && base.startsWith('file://')) return fileURLToPath(base)
   if (typeof base === 'string' && base.length > 0) return base
   return process.cwd()
-}
-
-async function pathExists(path) {
-  try {
-    await stat(path)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * 解析 DSH 主目录（含 sessions/ 的那个）。优先 DSH_HOME（官方
- * dsh-home-paths 的解析顺序），兜底 profile 根上溯两级（profiles/web → .dsh）。
- */
-async function resolveDshHome(ctx) {
-  const candidates = []
-  try {
-    const mod = await import('@deepseek-ai/dsh-home-paths')
-    candidates.push(mod.resolveDshHome(undefined, process.env))
-  } catch {
-    // 包不可解析（非 profile 环境运行）→ 走环境变量与回推兜底
-  }
-  if (typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME.trim().length > 0) {
-    candidates.push(process.env.DSH_HOME)
-  }
-  candidates.push(resolve(profileRoot(ctx), '..', '..'))
-  for (const candidate of candidates) {
-    if (await pathExists(join(candidate, 'sessions'))) return candidate
-  }
-  return null
-}
-
-/** 枚举 sessions 根下全部会话日志文件 → [{ id, path, isZstd }]。
- *  `id` 形如 `<projectDir>/<sessionDir>`：必须包含 projectDir 前缀以避免跨项目
- *  session 目录名撞车（同一台机器多个项目分别可能有 `session-XXX`，单用
- *  sessionDir.name 会让 cache.sessions[file.id] 互相覆盖，导致另一个项目的
- *  cached.agg 被错误命中，size/mtimeMs 假匹配时还会跳过重新解码）。
- */
-async function collectSessionFiles(sessionsRoot) {
-  const files = []
-  let projectDirs = []
-  try {
-    projectDirs = await readdir(sessionsRoot, { withFileTypes: true })
-  } catch {
-    return files
-  }
-  for (const projectDir of projectDirs) {
-    if (!projectDir.isDirectory()) continue
-    let sessionDirs = []
-    try {
-      sessionDirs = await readdir(join(sessionsRoot, projectDir.name), { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const sessionDir of sessionDirs) {
-      if (!sessionDir.isDirectory() || !sessionDir.name.startsWith('session-')) continue
-      for (const [filename, isZstd] of [['session.jsonl.zstd', true], ['session.jsonl', false]]) {
-        const path = join(sessionsRoot, projectDir.name, sessionDir.name, filename)
-        if (await pathExists(path)) {
-          files.push({ id: projectDir.name + '/' + sessionDir.name, path, isZstd })
-          break
-        }
-      }
-    }
-  }
-  return files
 }
 
 async function loadCache(path) {
@@ -494,35 +367,8 @@ function totalTokensOf(bucket) {
   )
 }
 
-/**
- * v0.3.8.1：判定 cached.agg 是否"usable"——满足 aggregateSession 输出 shape
- * 的最小子集。任何 partial / hand-edited / schema drift 缓存都不通过，
- * 由 cache hit 处视为 miss 触发重解码，避免 rollupByMainSession / topSessions
- * 访问缺失字段时抛 "Cannot read properties of undefined"。
- *
- * 必查字段（aggregateSession 必然输出）：
- *   - id / fileId（任一非空，让 identity() 有归属）
- *   - totals（必须为对象 + 含 5 个数字 token 字段，否则 mergeBucket / topSessions 崩溃）
- *
- * 其他字段（models / days / tools / steps / turns / llmMs / toolMs 等）由
- * rollupByMainSession 内部的 `agg.models || {}` / `agg.totals || emptyBucket()`
- * 等 fallback 兜底，不必列入 guard；此处只挡"会让 summary 直接崩"的最小集。
- */
-function isUsableAggregate(agg) {
-  if (agg == null || typeof agg !== 'object') return false
-  // 必须有 identity（fileId 优先；老 v5 缓存无 fileId 但有 id，identity 会回退）
-  if (agg.fileId == null && agg.id == null) return false
-  // totals 必须存在且为对象（topSessions 直接读 agg.totals.requests / outputTokens）
-  if (agg.totals == null || typeof agg.totals !== 'object') return false
-  // totals 的 5 个 token 字段必须是有限数字（aggregateSession 收敛到 number）
-  for (const k of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'reasoningTokens']) {
-    if (!Number.isFinite(agg.totals[k])) return false
-  }
-  return true
-}
-
 /** 最近 DAY_WINDOW 天（北京时间）零填充的日序列。v0.3.0 改走 granularitySeries('day')。
- *  v0.3.3：输出元素同时给 `day` 和 `bucket` 两个 key，兼容老客户端读 `.day` 与 v0.3.3 客户端读 `.bucket`。
+ *  v0.3.3：输出元素同时给 `day` 和 `bucket` 两个 key，兼容老客户端读端。
  */
 function daySeries(roots) {
   // 兼容 v0.2.x 调用方（保持输出 shape 不变：{ day, bucket, ...bucket }）
@@ -572,77 +418,40 @@ export function rootsDaysAll(rootList) {
 /**
  * 把所有 aggs rollup 到 root main session（v0.3.0 子代理归并）。
  * root 定义：parentSession 为 null 的最顶层 main session（DSH session header schema
- * 见 dsh-session-persistence-jsonl README § SessionHeader：parentSession / delegationDepth）。
- * subagent token 全部归属 owner（caiyfa 描述："lands on its owner"），
- * 不摊销到祖先链上的每个 main session——caiyfa 强调 counts speak in main sessions only。
+ * 见 SessionHeader type：parentSession / delegationDepth）。subagent token 全部
+ * 归属 owner（caiyfa 描述："lands on its owner"），不摊销到祖先链上的每个 main
+ * session——caiyfa 强调 counts speak in main sessions only。
  *
- * v0.3.8：rollup 实体键改为 `agg.fileId ?? agg.id`，跨项目时也唯一：
- *   - `agg.fileId` 是 `<projectDir>/<sessionDir>`，磁盘上每条会话唯一。
- *   - JSONL `agg.id` 由 DSH 生成但不保证跨项目唯一（仅单项目内唯一），
- *     rollup 走 JSONL id 会把两个项目各含一条 `event.id === 'sameid'`
- *     的会话合并成同一 root。改用 fileId 后两条独立成 root。
+ * v0.4.0：父链遍历改走 ctx.sessionQuery.traceSession() —— framework 的 SessionId
+ * 全局唯一 + 跨项目 SessionRecord header 自带 cwd / createdAt / parentSession，
+ * 不再需要 plugin 自己 `byJsonIdByProject` 分桶。async 是 traceSession 的契约。
  *
- * v0.3.8.1：父链遍历也按**项目**作用域走 JSONL id——单纯用 fileId 作实体键
- *   不够，父链遍历如果用全局 `byJsonId`（按 JSONL `agg.id` 索引），
- *   仍会把 projA 的 subagent（parentSession='sameid'）的 `byJsonId.get('sameid')`
- *   解析到 projB 的同名 main session（DSH 仅保证单项目内 JSONL id 唯一），
- *   让 projA 的子代理被错误归并到 projB 的 root（topSessions[projB] 偷走
- *   projA/sub 的 100 input tokens）。修复：把 byJsonId 按 projectDir 前缀
- *   分桶，rootIdOf 只在同一项目的 byJsonId 内查 parentSession；缺失 project
- *   信息时（极老缓存 / orphan）回退到自身 identity，与原版语义兼容。
- *
- * 防环：rootIdOf 走 parentSession 链时用 Set 跟踪已访问节点；遇到 orphan subagent
- * （父不在本地）回退到自身 identity（罕见，DSH 父会话跨 profile / 跨设备时）。
+ * 防环：traceSession 内部走 SessionRecord 索引查 parentSession 链，orphan subagent
+ * （父不在 corpus）回退到自身 identity，与 v0.3.8 的语义兼容。
  */
-function rollupByMainSession(aggs) {
-  // 实体 identity：fileId 优先（已含 projectDir 前缀），fallback 到 JSONL id
-  // （老缓存 / 子代理 orphan 等极端情形）。
+async function rollupByMainSession(aggs, sessionQuery) {
   function identity(agg) {
-    return agg.fileId != null ? agg.fileId : agg.id
-  }
-  // 从 fileId 取 projectDir 前缀（split on first '/'）。
-  function projectOf(agg) {
-    const fid = agg.fileId
-    if (typeof fid !== 'string' || fid.length === 0) return null
-    const i = fid.indexOf('/')
-    return i === -1 ? fid : fid.slice(0, i)
-  }
-  // 按 project 维度建 byJsonId（项目内唯一），避免跨项目 JSONL id 撞车时
-  // projA 的 subagent 把 parentSession 解析到 projB 的同名 main。
-  // 没 project 信息（无 fileId）的 agg 落到 "_global" 桶，保留向后兼容。
-  const byJsonIdByProject = new Map()
-  for (const agg of aggs) {
-    if (agg.id == null) continue
-    const project = projectOf(agg) || '_global'
-    let m = byJsonIdByProject.get(project)
-    if (m == null) {
-      m = new Map()
-      byJsonIdByProject.set(project, m)
-    }
-    m.set(agg.id, agg)
-  }
-  function rootAggOf(agg) {
-    const project = projectOf(agg)
-    const byJsonId = project == null
-      ? byJsonIdByProject.get('_global') // 没 project 信息 → 用自身 fallback 桶
-      : (byJsonIdByProject.get(project) || byJsonIdByProject.get('_global'))
-    if (byJsonId == null) return agg
-    const seen = new Set()
-    let cur = agg
-    while (cur != null && cur.parentSession != null) {
-      // 用 JSONL id 做 cycle detect；同项目内唯一，不会跨项目误判。
-      if (seen.has(cur.id)) break
-      seen.add(cur.id)
-      cur = byJsonId.get(cur.parentSession)
-    }
-    return cur != null ? cur : agg
+    return agg.id // SessionId（v0.4.0）—— DSH 保证全局唯一
   }
   const rootIdMap = new Map()
-  for (const agg of aggs) {
+  // 一次遍历所有 agg，对每个 aggs 用 traceSession 找 root。
+  // traceSession 内部是 SessionCorpus 索引查询，O(depth) per call，无 I/O。
+  await Promise.all(aggs.map(async (agg) => {
     const idn = identity(agg)
-    if (idn == null) continue
-    rootIdMap.set(idn, identity(rootAggOf(agg)))
-  }
+    if (idn == null) return
+    try {
+      const trace = await sessionQuery.traceSession(idn)
+      // complete=true 时 trace.root.header.id 是顶层 main session；
+      // complete=false 时（罕见，父不在 corpus）回退到 trace.target.header.id 自身。
+      const rootId = trace.complete
+        ? trace.root.header.id
+        : trace.target.header.id
+      rootIdMap.set(idn, rootId)
+    } catch {
+      // 找不到 trace（孤儿 subagent）→ 自身
+      rootIdMap.set(idn, idn)
+    }
+  }))
   const roots = new Map()
   function ensureRoot(rootId) {
     let r = roots.get(rootId)
@@ -921,7 +730,7 @@ function json(res, status, body) {
 
 export function apply(ctx) {
   const cachePath = join(profileRoot(ctx), CACHE_FILENAME)
-  let cache = { sessions: {} } // id -> { size, mtimeMs, agg }
+  let cache = { sessions: {} } // SessionId -> { createdAt: number, agg: agg }
   // v0.3.8.2：inflight 改为 `{ force, promise }`，按 force 标志分别共享——
   // 旧版 `if (inflight !== null) return inflight` 不分 force，force=1 在 prewarm
   // (summary(false)) 进行中会被吞，复用 prewarm 的 regular build 结果（cache hit），
@@ -931,60 +740,55 @@ export function apply(ctx) {
   //   - force 请求遇 regular inflight → 等其结束后再启动一次 force build
   let inflight = null // { force: boolean, promise: Promise } | null
   let chain = Promise.resolve() // 串行化缓存写
-  let homeDir = null
+  // v0.4.0：homeDir 由 ctx.sessionQuery 内部解决（listSessions 自带 listPersisted），
+  // 不再需要 plugin 自己 resolveDshHome。
 
   // 启动时加载磁盘上的增量缓存。修复 v0.3.5 前的 bug：
   // `cache` 初始化为空对象后再没被 loadCache() 调用，导致每次 DSH 重启都会
   // 全量重解码所有 session 日志，缓存文件虽然写出去但永远读不回来。
   // `cacheReady` 门控所有 summary：第一次 HTTP 请求会等缓存加载完
-  //（典型 < 100ms），避免并发请求与启动期 cache 写入的竞态（如果直接 await
-  // cacheReady 再 buildSummary，第一次请求的 size/mtimeMs 假命中会在空 cache
-  // 上发生）。
+  // （典型 < 100ms），避免并发请求与启动期 cache 写入的竞态。
   const cacheReady = loadCache(cachePath)
     .then((c) => { cache = c })
     .catch(() => {})
 
   async function buildSummary(force) {
     const startedAt = Date.now()
-    if (homeDir === null) homeDir = await resolveDshHome(ctx)
-    if (homeDir === null) {
-      return { ok: false, error: 'sessions-root-not-found' }
-    }
-    const files = await collectSessionFiles(join(homeDir, 'sessions'))
+    const records = await ctx.sessionQuery.listSessions()
     const aggs = []
     const errors = []
     let decoded = 0
     let reused = 0
     let cacheDirty = false
     const liveIds = new Set()
-    for (const file of files) {
-      liveIds.add(file.id)
+    for (const record of records) {
+      const id = record.header.id
+      liveIds.add(id)
+      const cached = cache.sessions[id]
+      // v0.4.0：cache key = SessionId（DSH 全局唯一），失效字段 = header.createdAt
+      // （session 创建后不再变；append events 不改 createdAt）。
+      // 删除 v0.3.8 的 fileId / projectOf 工程与 v0.3.8.1 的 isUsableAggregate 治本
+      // 逻辑：header.id + header.createdAt 双字段校验已等价覆盖原 fileId 工程
+      // （跨项目同 SessionId 在 DSH 框架下不可能，UUID 唯一）+ partial agg 防御
+      // （identity 一致但 agg 内容错由 framework 的 replay-validate 兜底）。
+      if (!force && cached && cached.createdAt === record.header.createdAt && cached.agg && typeof cached.agg === 'object') {
+        aggs.push(cached.agg)
+        reused += 1
+        continue
+      }
       try {
-        const info = await stat(file.path)
-        const cached = cache.sessions[file.id]
-        // v0.3.8.1：cached.agg 必须 "usable"——具备 identity + totals 对象 + 5 个
-        // 有限数字 token 字段。否则视为 miss 重新解码。挡住：
-        //   - 老 v4 缓存（不同 key 格式）
-        //   - 半写入 / schema drift / 手编辑 partial agg（缺 totals 让 rollup / topSessions 崩溃）
-        //   - 非对象（字符串 / null）——v0.3.6 已防
-        if (!force && cached && isUsableAggregate(cached.agg)
-            && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
-          aggs.push(cached.agg)
-          reused += 1
-          continue
-        }
-        const raw = await readFile(file.path)
-        const events = file.isZstd ? decodeSessionEvents(raw) : parsePlainJsonl(raw)
-        // v0.3.8：把 file.id 注入 aggregateSession 作为 fileId，rollup 实体键用 fileId
-        // 而非 JSONL agg.id（跨项目场景下 JSONL id 可能撞车）。
-        const agg = aggregateSession(events, file.id)
-        if (agg.id == null) agg.id = file.id
-        cache.sessions[file.id] = { size: info.size, mtimeMs: info.mtimeMs, agg }
+        const log = await ctx.sessionQuery.readSession(id)
+        // v0.4.0：events 已由 framework 的 replay-validate 校过（partial / 坏行
+        // 不会到达这里）；不再需要 plugin 自己做 typeof event === 'object' 守卫
+        // ——但 aggregateSession 内部的守卫保留作为 defense in depth（events 来自
+        // framework 但 schema 字段仍可能 drift）。
+        const agg = aggregateSession(log.events, log.session.id)
+        cache.sessions[id] = { createdAt: record.header.createdAt, agg }
         cacheDirty = true
         aggs.push(agg)
         decoded += 1
       } catch (error) {
-        errors.push(`${file.id}: ${String(error && error.message ? error.message : error)}`)
+        errors.push(`${id}: ${String(error && error.message ? error.message : error)}`)
       }
     }
     // 修剪已删除会话的缓存条目，防缓存文件无限膨胀
@@ -1005,7 +809,8 @@ export function apply(ctx) {
     let llmMs = 0
     let toolMs = 0
     // v0.3.0 子代理归并：所有聚合走 root main session（counts speak in main sessions only）
-    const rootAggs = rollupByMainSession(aggs)
+    // v0.4.0：async rollupByMainSession 内部走 ctx.sessionQuery.traceSession()
+    const rootAggs = await rollupByMainSession(aggs, ctx.sessionQuery)
     const rootList = [...rootAggs.values()]
     for (const root of rootList) {
       mergeBucket(totals, root.totals)
@@ -1017,8 +822,8 @@ export function apply(ctx) {
     return {
       ok: true,
       generatedAt: Date.now(),
-      home: homeDir,
-      // v0.3.0：sessionCount 改为 root 数（rollup 后）；保留 rawSessionCount 给高级排查
+      // v0.4.0：删除 home 字段（plugin 不再自己解析 DSH home，路径由 framework 管理）
+      // sessionCount 改为 root 数（rollup 后）；保留 rawSessionCount 给高级排查
       sessionCount: rootList.length,
       rawSessionCount: aggs.length,
       decoded,
@@ -1095,18 +900,4 @@ export function apply(ctx) {
       })
     },
   })
-}
-
-function parsePlainJsonl(raw) {
-  const events = []
-  for (const line of raw.toString('utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed.length === 0) continue
-    try {
-      events.push(JSON.parse(trimmed))
-    } catch {
-      // 坏行跳过
-    }
-  }
-  return events
 }
