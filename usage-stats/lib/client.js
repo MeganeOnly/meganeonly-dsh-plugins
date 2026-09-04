@@ -84,6 +84,22 @@
  *   + tool/result.elapsed + assistant/message llmMs 增量 + lastTs 跟踪。
  *   客户端无变更（纯 host 端聚合硬化），bundle 仍走 build-client.cjs 重新生成
  *   以保持 banner 注释字节同步。
+ *
+ * v0.3.9 历史全量日序列 + 「全部」图表 / 热力图跨 30 天边界（host + client）：
+ *   host 端在 summary payload 新增 `byDayAll` 字段——把所有 root.days 合并、
+ *   按 yyyy-mm-dd 升序、**不零填充**输出；shape 与 daySeries 一致（`{ day, bucket, ... }`）。
+ *   现版 byDay 是近 30 天零填充，超过 30 天的历史完全丢失，且活动稀疏时会出现
+ *   一长串"今天用了 0 token"的视觉断点。byDayAll 解决这两个问题。
+ *   客户端：
+ *     (a) 「全部」图表改用 byDayAll，限最近 53 周（371 天）避免无限长 series
+ *         把图压成色带（与热力图 53 周上限对齐）。
+ *     (b) 热力图优先用 byDayAll；老 host（v0.3.8.x 及更早，无 byDayAll）回退 byDay
+ *         ——完全向后兼容，无字段就退化到旧的"近 30 天"视图。
+ *     (c) byTrend / RANGES 不动（h7 / m1 / week 等窗口仍走 byTrend）。
+ *   行为：用户上次活动是 60 天前时，进「全部」图表能看到 60 天前那根柱、
+ *   热力图能看到 8 周前那一格；之前这两个组件都因超过 30 天零填充而空白。
+ *   `CACHE_VERSION` 不变（6 → 6）；aggregateSession 输出的 `agg.days` 始终完整，
+ *   byDayAll 派生不需要重解码已有缓存——用户首次请求自然走 re-derive 路径。
  */window.__ModuleLoader__.load({
   id: "dsh-usage-stats",
   factory: (require) => {
@@ -1000,15 +1016,31 @@
       var safeByModel = d.byModel || [];
       var safeTopSessions = d.topSessions || [];
       var safeTools = d.tools || [];
+      // v0.3.9：'all' tab 的图表改用 byDayAll（host 历史全量日序列），
+      // 不再用 byTrend.day（最近 30 天零填充）。byDayAll 是 root.days 合并升序
+      // 不零填充，老 host（v0.3.8.x 及更早）无 byDayAll 时 fallback 到 byTrend.day
+      // 保留旧行为（最近 30 天）。
+      // 53 周裁剪：超过 53 周（371 天）时只取最近 53 周，避免无限长 day 系列
+      // 把图压成色带（GitHub 贡献日历就是 53 周上限）。
+      var HEATMAP_WEEKS = 53;
+      var HEATMAP_DAYS = HEATMAP_WEEKS * 7; // 371
+      var allSource;
+      if (d.byDayAll && d.byDayAll.length > 0) {
+        allSource = d.byDayAll.length > HEATMAP_DAYS ? d.byDayAll.slice(-HEATMAP_DAYS) : d.byDayAll;
+      } else {
+        allSource = safeByTrend.day || [];
+      }
       var r = rangeSpec(range);
       var seriesSource = safeByTrend[r.granularity] || [];
       // v0.3.9 'all' tab：window=null 时 rangeTotals 走 safeTotals（全程指标），
-      // 但图表仍展示最近 30 天切片，避免无限长 day 系列把图压成色带。
+      // 图表改走 byDayAll（最近 53 周，避免无限长 day 系列把图压成色带）。
+      // 老 host（无 byDayAll 时）退回 byTrend.day 末尾 30 天切片，保留 v0.3.5 的
+      // 视觉"最近 30 天"语义。
       var winSeries;
       if (r.window != null) {
         winSeries = seriesSource.slice(-r.window);
       } else if (r.key === "all") {
-        winSeries = seriesSource.slice(-30);
+        winSeries = allSource;
       } else {
         winSeries = seriesSource;
       }
@@ -1182,6 +1214,10 @@
               )
             )
           : null;
+        // v0.3.9：热力图优先消费 byDayAll（历史全量）；老 host（v0.3.8.x
+        // 之前无 byDayAll）回落 byDay（即 byTrend.day，近 30 天零填充），
+        // 仍能正常显示——只是超过 30 天的历史跨度会丢失。
+        var heatmapSource = d.byDayAll && d.byDayAll.length > 0 ? d.byDayAll : (d.byDay || []);
         sectionNodes.push({
           key: "heatmap",
           node: React.createElement(
@@ -1194,7 +1230,7 @@
               React.createElement("span", { style: s.sectionHint }, "· 过去 53 周 · 5 级颜色对应 token 量（基于窗口 max 归一）")
             ),
             heatmapModelBar,
-            HeatmapCalendar(d.byDay || [], heatmapModel, d.byModel || [])
+            HeatmapCalendar(heatmapSource, heatmapModel, d.byModel || [])
           )
         });
       }

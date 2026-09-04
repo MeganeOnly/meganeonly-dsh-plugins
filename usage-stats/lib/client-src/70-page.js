@@ -112,15 +112,31 @@
       var safeByModel = d.byModel || [];
       var safeTopSessions = d.topSessions || [];
       var safeTools = d.tools || [];
+      // v0.3.9：'all' tab 的图表改用 byDayAll（host 历史全量日序列），
+      // 不再用 byTrend.day（最近 30 天零填充）。byDayAll 是 root.days 合并升序
+      // 不零填充，老 host（v0.3.8.x 及更早）无 byDayAll 时 fallback 到 byTrend.day
+      // 保留旧行为（最近 30 天）。
+      // 53 周裁剪：超过 53 周（371 天）时只取最近 53 周，避免无限长 day 系列
+      // 把图压成色带（GitHub 贡献日历就是 53 周上限）。
+      var HEATMAP_WEEKS = 53;
+      var HEATMAP_DAYS = HEATMAP_WEEKS * 7; // 371
+      var allSource;
+      if (d.byDayAll && d.byDayAll.length > 0) {
+        allSource = d.byDayAll.length > HEATMAP_DAYS ? d.byDayAll.slice(-HEATMAP_DAYS) : d.byDayAll;
+      } else {
+        allSource = safeByTrend.day || [];
+      }
       var r = rangeSpec(range);
       var seriesSource = safeByTrend[r.granularity] || [];
       // v0.3.9 'all' tab：window=null 时 rangeTotals 走 safeTotals（全程指标），
-      // 但图表仍展示最近 30 天切片，避免无限长 day 系列把图压成色带。
+      // 图表改走 byDayAll（最近 53 周，避免无限长 day 系列把图压成色带）。
+      // 老 host（无 byDayAll 时）退回 byTrend.day 末尾 30 天切片，保留 v0.3.5 的
+      // 视觉"最近 30 天"语义。
       var winSeries;
       if (r.window != null) {
         winSeries = seriesSource.slice(-r.window);
       } else if (r.key === "all") {
-        winSeries = seriesSource.slice(-30);
+        winSeries = allSource;
       } else {
         winSeries = seriesSource;
       }
@@ -294,6 +310,10 @@
               )
             )
           : null;
+        // v0.3.9：热力图优先消费 byDayAll（历史全量）；老 host（v0.3.8.x
+        // 之前无 byDayAll）回落 byDay（即 byTrend.day，近 30 天零填充），
+        // 仍能正常显示——只是超过 30 天的历史跨度会丢失。
+        var heatmapSource = d.byDayAll && d.byDayAll.length > 0 ? d.byDayAll : (d.byDay || []);
         sectionNodes.push({
           key: "heatmap",
           node: React.createElement(
@@ -306,7 +326,7 @@
               React.createElement("span", { style: s.sectionHint }, "· 过去 53 周 · 5 级颜色对应 token 量（基于窗口 max 归一）")
             ),
             heatmapModelBar,
-            HeatmapCalendar(d.byDay || [], heatmapModel, d.byModel || [])
+            HeatmapCalendar(heatmapSource, heatmapModel, d.byModel || [])
           )
         });
       }

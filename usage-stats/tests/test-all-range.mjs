@@ -1,8 +1,10 @@
 // tests/test-all-range.mjs
-// v0.3.9 增量回归：RANGES 'all' tab 语义从"近 30 天切片"切到"全程指标 + 图表仍 30 天"——
+// v0.3.9 增量回归：RANGES 'all' tab 语义从"近 30 天切片（byDay.slice(-30)）"切到
+// "全程指标 + 图表走 byDayAll"——
 //   - 50-config.js: 'all'.label = "全部"，'all'.window = null
 //   - 70-page.js: r.window=null 时 rangeTotals 走 safeTotals（全程）
-//                  但 winSeries 对 'all' key 特殊保留 last-30-day 切片（图表不无限长）
+//   - 70-page.js: 'all' tab 图表改走 byDayAll（最新 53 周 / 371 天），老 host
+//                无 byDayAll 时回退 safeByTrend.day（旧 byDay）。
 //
 // 用法：node tests/test-all-range.mjs
 // 期望：所有断言 PASS；任一 FAIL 立即 process.exit(1)。
@@ -71,11 +73,26 @@ function assert(label, cond, detail) {
 {
   const src = readFileSync(path.join(ROOT, 'lib/client-src/70-page.js'), 'utf8')
 
-  // 'all' tab 在 r.window=null 时仍要 slice(-30)（图表不无限长）
+  // 'all' tab 图表改走 byDayAll（v0.3.9 取代 v0.3.5 的 slice(-30)）。
+  // 检查 byDayAll 优先级：if (d.byDayAll && d.byDayAll.length > 0)
   assert(
-    "70-page.js: 'all' tab winSeries 走 slice(-30)（图表仍最近 30 天）",
-    /r\.key\s*===\s*"all"[\s\S]{0,200}slice\(-30\)/.test(src),
-    '70-page.js all-tab chart 30-day 切片未找到'
+    "70-page.js: 'all' tab winSeries 优先消费 d.byDayAll（v0.3.9）",
+    /d\.byDayAll[\s\S]{0,80}length\s*>\s*0/.test(src),
+    '70-page.js byDayAll 优先级守卫未找到'
+  )
+
+  // byDayAll 长度超过 53 周（371 天）应做裁剪——避免无限长 series 把图压成色带
+  assert(
+    "70-page.js: byDayAll 超过 53 周（371 天）时做裁剪",
+    /HEATMAP_DAYS[\s\S]{0,40}\.slice\(/.test(src) || /slice\(-HEATMAP_DAYS\)/.test(src) || /371/.test(src),
+    '70-page.js byDayAll 53 周裁剪未找到'
+  )
+
+  // 老 host（无 byDayAll）回退到 safeByTrend.day（旧的"近 30 天"零填充）
+  assert(
+    "70-page.js: 老 host 无 byDayAll 时回退 safeByTrend.day",
+    /safeByTrend\.day/.test(src),
+    '70-page.js byDayAll 缺失回退未匹配'
   )
 
   // rangeTotals 仍按 r.window 选：null 时走 safeTotals
@@ -89,7 +106,7 @@ function assert(label, cond, detail) {
 /* ------------------------------------------------------------------ *
  * 3. 行为验证：加载 bundle，模拟 React state，调 UsageStatsPage
  *    验证 'all' tab：
- *      - 图表 N=30（即便 byDay 有 60 天）
+ *      - 当 byDayAll 有 60 天时，图表 N=60（v0.3.9 取代 v0.3.5 的 slice(-30)）
  *      - '模型请求' 卡片值 === fakeTotals.requests（=60，全程指标）
  * ------------------------------------------------------------------ */
 
@@ -100,7 +117,7 @@ function createElement(type, props, ...children) {
   return { __react: true, type, props: props || {}, children }
 }
 
-// 构造 60 天 day series（确保 byDay 长度 > 30，让 30 天切片可见）
+// 构造 60 天 day series（v0.3.9 byDayAll 体现「全量日序列」——与 byDay 同长度）
 const fakeByDay = []
 for (let i = 0; i < 60; i++) {
   const ms = Date.UTC(2026, 7, 18 + i) // 2026-08-18 起 60 天
@@ -138,6 +155,9 @@ const fakePayload = {
   steps: 0,
   llmMs: 0,
   byDay: fakeByDay,
+  // v0.3.9：byDayAll 是 root.days 合并升序不零填充的全量序列。这里 fakeByDay
+  // 自身已是「全量」（60 个独立日期），给 byDayAll 也赋同样的 60 个即可。
+  byDayAll: fakeByDay,
   byTrend: { day: fakeByDay, hour: [], minute: [], week: [] },
   byModel: [],
   topSessions: [],
@@ -301,8 +321,8 @@ if (loadedModules.length === 1) {
   const tabs = pageTree ? findTabButtons(pageTree) : []
 
   assert(
-    "UsageStatsPage 'all' tab: 图表 N=30（即便 byDay 有 60 天）",
-    chartN === 30,
+    "UsageStatsPage 'all' tab: 图表 N=60（v0.3.9 走 byDayAll，不限 30 天）",
+    chartN === 60,
     chartN === null ? '未找到 chartLegendHint "· N 桶"' : `N=${chartN}`
   )
 

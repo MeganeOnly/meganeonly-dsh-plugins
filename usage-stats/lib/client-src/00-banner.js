@@ -84,4 +84,20 @@
  *   + tool/result.elapsed + assistant/message llmMs 增量 + lastTs 跟踪。
  *   客户端无变更（纯 host 端聚合硬化），bundle 仍走 build-client.cjs 重新生成
  *   以保持 banner 注释字节同步。
+ *
+ * v0.3.9 历史全量日序列 + 「全部」图表 / 热力图跨 30 天边界（host + client）：
+ *   host 端在 summary payload 新增 `byDayAll` 字段——把所有 root.days 合并、
+ *   按 yyyy-mm-dd 升序、**不零填充**输出；shape 与 daySeries 一致（`{ day, bucket, ... }`）。
+ *   现版 byDay 是近 30 天零填充，超过 30 天的历史完全丢失，且活动稀疏时会出现
+ *   一长串"今天用了 0 token"的视觉断点。byDayAll 解决这两个问题。
+ *   客户端：
+ *     (a) 「全部」图表改用 byDayAll，限最近 53 周（371 天）避免无限长 series
+ *         把图压成色带（与热力图 53 周上限对齐）。
+ *     (b) 热力图优先用 byDayAll；老 host（v0.3.8.x 及更早，无 byDayAll）回退 byDay
+ *         ——完全向后兼容，无字段就退化到旧的"近 30 天"视图。
+ *     (c) byTrend / RANGES 不动（h7 / m1 / week 等窗口仍走 byTrend）。
+ *   行为：用户上次活动是 60 天前时，进「全部」图表能看到 60 天前那根柱、
+ *   热力图能看到 8 周前那一格；之前这两个组件都因超过 30 天零填充而空白。
+ *   `CACHE_VERSION` 不变（6 → 6）；aggregateSession 输出的 `agg.days` 始终完整，
+ *   byDayAll 派生不需要重解码已有缓存——用户首次请求自然走 re-derive 路径。
  */

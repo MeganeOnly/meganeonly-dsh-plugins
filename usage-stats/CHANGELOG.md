@@ -4,6 +4,64 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.9] - 2026-09-05
+
+### 变更
+
+#### host 半段：新增 `byDayAll` —— 历史全量日序列
+
+把 `/api/usage-stats/summary` 的 `byDay`（近 30 天零填充）和 `byTrend.day`（同样是近 30 天零填充）补齐为一个**不裁剪、不零填充**的历史全量序列：
+
+- 新导出函数 `rootsDaysAll(rootList)`（`lib/index.js`）：合并所有 root 的 `days`，按 `yyyy-mm-dd` 升序排序，输出 `[{ day, bucket, inputTokens, ... }]`——shape 与 daySeries 一致，`day` / `bucket` 双字段兼容 v0.3.3。
+- 新增 payload 字段 `byDayAll = rootsDaysAll(rootList)`：覆盖 root 数 0 / 1 / N 全场景。
+- 与 `byDay`（`daySeries`）的关系：`byDay` 仍是「近 30 天零填充」，客户端 `7` / `1` / 窗口类 RANGE 仍用之；`byDayAll` 给客户端 `全部` tab 图表与热力图使用。
+- 不 bump `CACHE_VERSION`：`aggregateSession` 输出的 `agg.days` 始终完整；`byDayAll` 是派生字段，存量的 v6 缓存仍可派生（用户首次请求时由 `rootList` 重新 merge — 无需重解码）。
+
+#### client 半段：「全部」tab 与热力图跨 30 天边界
+
+彻底解决「上次活动距今超过 30 天时图表与热力图都空白」的用户痛点。
+
+- `70-page.js` 'all' tab：图表改走 `d.byDayAll`（最近 53 周 / 371 天为上限，避免图被无限压扁），不再走 `byDay.slice(-30)`。
+- `70-page.js` 热力图：优先 `d.byDayAll`，老 host（v0.3.8.x 及更早，无 `byDayAll` 字段）回退 `d.byDay`——完全向后兼容。
+- `rangeTotals` 不变（仍按 `r.window` 决定走 `safeTotals` 全程还是 `sumBuckets(winSeries)` 切片）。
+- `byTrend` 不变：h7 / m1 / w12 / h1 等窗口类 RANGE 仍走 `byTrend[r.granularity]`，颗粒度切换不受影响。
+
+### 用户可感行为变化
+
+| 场景 | v0.3.5 / v0.3.8.x | v0.3.9 |
+| --- | --- | --- |
+| 上次活动 100 天前 | 全部 tab 图表空白（30 天切了 100 天前的全部数据）；热力图同样空白 | 全部 tab 显示 100 天前那根柱（最近 53 周内就显示，超 53 周左截）；热力图同样渲染 100 天前那格 |
+| 2 个月没用，零星 1 次 | 「全部」图表显示「近 30 天」一堆 0 柱，中间夹 1 根非零柱 | 「全部」图表显示从上次活动到现在的真实数据，中间无填充 |
+| 长期用户（3 年用量） | 图表受限于 30 天 | 图表显示最近 371 天（53 周），更宽就溢出滚动 |
+
+### 兼容性
+
+- 向后兼容老 client / 老 host：
+  - 老 client（v0.3.8.x 及更早，看不到新字段）：不变，仍按 `byTrend.day` 渲染 30 天
+  - 老 host（无 `byDayAll`）：新 client（v0.3.9）走 fallback 路径渲染 `byTrend.day`，行为与 v0.3.8 等价
+- `CACHE_VERSION` 不变（仍 v6）
+- 不 bump version 必要性：老 v6 缓存重派生 `byDayAll` 不需要重解码（`aggregateSession` 仍输出完整 `days`）
+- bundle 大小变化：v0.3.8.2 = 66603 字节 → v0.3.9 = 69290 字节（净增 +2687 字节：banner v0.3.9 段 + 70-page.js byDayAll 优先级逻辑 + heatmapSource 派生）
+
+### 验证
+
+- `tests/test-byDayAll.mjs`（新增）：26 项全过
+  - **A 静态**（4 项）：host 端 `rootsDaysAll` 已 export；buildSummary 输出 `byDayAll`；升序 sort；不零填充（无 `windowMs` / `stepMs`）
+  - **B 静态**（4 项）：client 端 `'all' tab` 优先 `d.byDayAll`；heatmap 优先 `d.byDayAll` + 回退 `d.byDay`；`HEATMAP_WEEKS=53` / `HEATMAP_DAYS=HEATMAP_WEEKS*7` 常量；`'all' tab` 独立分支（不污染其它 tab）
+  - **C 行为**（4 项）：`rootsDaysAll` 多个 root 合并 + 升序 + 同 key 累加 + day/bucket 双字段
+  - **D 行为**（3 项）：**核心用户痛点**——所有会话事件都早于 30 天前时，`byDayAll` 仍保留 100 天前的数据（v0.3.5 之前会被 30 天窗口 cut 全空）
+  - **E 行为**（5 项）：真实 bundle 加载 + React 渲染路径——
+    - E.1：**100 天前的数据在 `all` 图表里有 1 根柱**（v0.3.9 之前会因 30 天窗全空）
+    - E.3：**热力图渲染包含 100 天前日期的格子**（v0.3.5 / v0.3.8 之前不会显示）
+    - E.5 / E.6：老 host（无 `byDayAll`）fallback 到 `safeByTrend.day`，仍正常渲染（向后兼容）
+    - E.7：老 host `byDayAll` 缺失时 render errors 为空（不抛错）
+  - **F 行为**（3 项）：`byDayAll > 371` 元素时被裁剪到 371（53 周上限），`rootsDaysAll` 不裁剪（裁是 client 责任）
+  - node --check `lib/client.js` 语法检查
+- `tests/test-all-range.mjs`：16 项全过（已更新：'all' tab 静态与行为断言改走 byDayAll，老的 `slice(-30)` 检查被替换为 `d.byDayAll 优先级` + `HEATMAP_DAYS 裁剪`；N=60 chart 桶数反映 byDayAll 路径）
+- `tests/smoke.mjs`：client bundle 渲染路径 PASS（`renderCount = 4`）
+- `node --check lib/index.js` / `node --check lib/client.js`：均通过
+- `node lib/build-client.cjs`：rebuild 成功（10 sources → 69290 bytes）
+
 ## [0.3.8.2] - 2026-09-05
 
 ### 修复

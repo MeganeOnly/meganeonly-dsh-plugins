@@ -17,7 +17,7 @@ dsh-usage-stats 的 `lib/client-src/` 现行结构（v0.3.0 拆解）：
 | `40-components.js`  | 复用子组件：`Card` / `DayChart`（v0.3.0 接受 granularity 自适应柱宽 + 横向滚动）/ `Table` / `HeatmapCalendar` |
 | `50-config.js`      | 常量与持久化：`RANGES`（v0.3.0 扩 granularity + window）+ `rangeSpec(range)` helper + 显示设置 7 键配置 + `defaultVisible` / `loadVisible` / `saveVisible` / `setAllVisible` / `toggleOne` + `loadHeatmapModel` / `saveHeatmapModel` |
 | `60-panel.js`       | `VisibilityPanel` 组件（复选框面板）                         |
-| `70-page.js`        | 页面主函数：`UsageStatsPage`（顶层，含 visibility / panelOpen / heatmapModel state + 三个 useEffect 持久化 + click-outside 监听）+ `UsageStatsPageBody`（v0.3.0 重构 `winDays` → `winSeries` 基于 `rangeSpec(range)` + `byTrend[r.granularity]`，按 visibility 过滤渲染 7 个数据块，`DayChart(winSeries, granularity)`） |
+| `70-page.js`        | 页面主函数：`UsageStatsPage`（顶层，含 visibility / panelOpen / heatmapModel state + 三个 useEffect 持久化 + click-outside 监听）+ `UsageStatsPageBody`（v0.3.0 重构 `winDays` → `winSeries` 基于 `rangeSpec(range)` + `byTrend[r.granularity]`；**v0.3.9** 'all' tab 改走 `d.byDayAll` 最近 53 周，老 host 无 `byDayAll` 时回退 `byTrend.day`；热力图优先 `byDayAll`，老 host 回退 `d.byDay`）  |
 | `Z0-apply.js`       | `apply(ctx)` 函数 + `exports.inject` / `exports.apply`       |
 | `Z9-loader-close.js`| `return module.exports;\n  },\n});`（bundle 末尾闭合，无换行） |
 

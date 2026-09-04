@@ -31,6 +31,9 @@ const CACHE_FILENAME = '.usage-stats-cache.json'
 //     v5 缓存里的 agg 没有 fileId 字段，强行读取会用 `agg.id` 作 identity，跨项目时仍会撞车。
 //     bump version 到 6 让旧 v5 缓存一次性作废重算。
 // v6.1（未 bump version）：固化 cached.agg "usable" 契约——之前只防 typeof === 'object'，
+// v6.2（未 bump version，v0.3.9）：新增 byDayAll（root.days 合并、升序、不零填充）
+//     字段。不 bump version：aggregateSession 输出的 agg.days 必然完整；byDayAll 是
+//     客户端可选用字段，老 client 走 byDay 不受影响。
 //     partial agg（如手编辑 / schema drift / 半写入）会让 rollupByMainSession / topSessions
 //     访问 agg.totals.* 抛 "Cannot read properties of undefined"。修复两条：
 //       1) 新增 isUsableAggregate() 在 cache hit 处挡 partial 入口（视为 miss 重解码）
@@ -530,6 +533,43 @@ function daySeries(roots) {
 }
 
 /**
+ * v0.3.9：把所有 root.days 合并到一份按日期升序、**不零填充**的日序列。
+ * 给客户端「全部」图表与热力图使用：现版 byDay 是近 30 天零填充（受 DAY_WINDOW
+ * 限制），几天没活动就会出现一长串 "今天用了 0 token" 的视觉断点；超过 30 天的
+ * 历史更是完全丢失。byDayAll 把所有 root.days merge 后按 yyyy-mm-dd 升序输出，
+ * 仅含历史上**真有用量**的天——客户端做 53 周裁剪后无论是「两年都没用了」还是
+ * 「近 30 天没活动」都能正确显示。
+ *
+ * 不零填充是因为：图表与热力图已经在自身组件内做「空天 = 灰格」的处理；
+ * 服务器端零填充会让 payload 多出 N 个空 bucket，浪费带宽且丧失"历史跨度"信号。
+ *
+ * 输出 shape 与 daySeries 一致：{ day, bucket, inputTokens, ... }，
+ * bucket/day 双 field（对齐 v0.3.3 兼容性）。
+ */
+export function rootsDaysAll(rootList) {
+  const merged = new Map()
+  for (const root of rootList) {
+    for (const [k, b] of Object.entries(root.days || {})) {
+      mergeBucket(bucketOf(merged, k), b)
+    }
+  }
+  const keys = [...merged.keys()].sort()
+  return keys.map(function (k) {
+    const b = merged.get(k)
+    return {
+      day: k,
+      bucket: k,
+      inputTokens: b.inputTokens,
+      outputTokens: b.outputTokens,
+      cacheReadTokens: b.cacheReadTokens,
+      cacheWriteTokens: b.cacheWriteTokens,
+      reasoningTokens: b.reasoningTokens,
+      requests: b.requests,
+    }
+  })
+}
+
+/**
  * 把所有 aggs rollup 到 root main session（v0.3.0 子代理归并）。
  * root 定义：parentSession 为 null 的最顶层 main session（DSH session header schema
  * 见 dsh-session-persistence-jsonl README § SessionHeader：parentSession / delegationDepth）。
@@ -991,6 +1031,10 @@ export function apply(ctx) {
       llmMs,
       toolMs,
       byDay: daySeries(rootList),
+      // v0.3.9：历史全量日序列（root.days 合并、升序、不零填充），给
+      // 「全部」图表与热力图使用——现版 byDay 是近 30 天零填充，超过 30 天的
+      // 历史完全丢失。老 client（v0.3.8.x 之前）只看 byDay 不会受影响。
+      byDayAll: rootsDaysAll(rootList),
       // v0.3.0 多粒度趋势：四种粒度全部输出（客户端按用户选择显示一种）
       byTrend: {
         minute: granularitySeries(rootList, 'minute'),
