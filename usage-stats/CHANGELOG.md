@@ -122,7 +122,7 @@
 
 - **用量图调色板升级**（仅美术，不影响数据 / 行为）：原"灰柱 + 饱和绿"二元对比替换为**蓝-橙主对**（`inputBar: #3b82f6` / `outputBar: #f59e0b`），峰值色由暖陶土 `#b06a3a` 替换为更醒目的 rose `#e11d48`（同时新增 `peakText`/`peakSoft`/`peakBorder` 的 rose 版本）。设计原则与来源参考写在 `lib/client-src/30-styles.js` 顶部注释（data-viz-color / data-viz-techniques 的现代色板与色盲安全 blue/orange 主对）。**通用 accent（绿 `#16a34a`）保留**给图表外元素（btnPrimary / panel 复选框 / 输出总计 / 模型比值列）——图表不再吃绿色，避免"什么都是绿色"的扁平感。灰色 hierarchy 仅用于 hairline / text / 网格 / today 竖线，参考线不应抢数据色。
 
-## [Unreleased]
+## [0.3.5] - 2026-09-04
 
 ### 新增
 
@@ -140,6 +140,10 @@
 
 - **section marker 对齐通用规范 § 三半**：7 个 section 文件首行 marker 补 4 空格缩进（`    // ===== X =====`），与其余已拆插件一致；bundle 净增 28 字节。
 - **补 `prepare` 脚本**：`npm install` / 发布时自动执行 `node lib/build-client.cjs`，保证 `lib/client.js` 与 `lib/client-src/` 始终同步（对齐其余已拆插件）。
+
+### 兼容性
+
+- DSH 0.1.2-rc.1 实测：`SessionSeq` 与 `SessionLogOffset` 强类型区分保持向前兼容（DSH 0.1.2 release notes 已声明）；本插件直接读磁盘 zstd 日志，不依赖 `Session.events` 运行时 API（DSH 0.1.2 已替换为 `seq`/`eventAt()`/`snapshotEvents()`）。会话日志中 `assistant/message.usage` 字段（inputTokens / outputTokens / cacheRead / cacheWrite / reasoningTokens）与 `request/header.data.header.config` (provider / model) 等 schema 字段未变，前向解析稳定。DSH 0.1.2 新增"回答末尾 token 显示"是 UI 层（不在 `conversation.composer.dock` slot），不影响本插件 `data-fetching`。
 
 ## [0.1.1] - 2026-08-19
 
