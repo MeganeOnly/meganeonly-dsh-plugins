@@ -113,6 +113,17 @@ function bucketOf(map, key) {
   return bucket
 }
 
+/**
+ * v0.4.0.1：兼容 root bucket 字段的两种表示——
+ *   - rollupByMainSession 输出的 root：Map（来自 ensureRoot 的 new Map()）
+ *   - 旧测试 fixture / v0.3.x 风格的 rootList：Object（{ key: bucket }）
+ * 用 for-of 迭代时直接 `[k, b]` 即可，O(1) 跳过类型判断。
+ */
+function entriesOf(m) {
+  if (m instanceof Map) return m
+  return Object.entries(m || {})
+}
+
 function toolBucketOf(map, key) {
   let bucket = map.get(key)
   if (bucket === undefined) {
@@ -395,7 +406,9 @@ function daySeries(roots) {
 export function rootsDaysAll(rootList) {
   const merged = new Map()
   for (const root of rootList) {
-    for (const [k, b] of Object.entries(root.days || {})) {
+    // v0.4.0.1：root.days 可能是 Map（rollup 输出）或 Object（fixture），
+    // entriesOf() 兼容两者。修 v0.3.0 起的 `Object.entries(Map) = []` bug。
+    for (const [k, b] of entriesOf(root.days)) {
       mergeBucket(bucketOf(merged, k), b)
     }
   }
@@ -583,26 +596,28 @@ export function granularitySeries(roots, granularity, now = Date.now()) {
   const merged = new Map()
   if (granularity === 'minute') {
     for (const root of list) {
-      for (const [k, b] of Object.entries(root.minutes || {})) {
+      // v0.4.0.1：root.* 字段是 Map（rollup 输出）或 Object（fixture）；
+      // entriesOf() 兼容两者。修 v0.3.0 起的 `Object.entries(Map) = []` bug。
+      for (const [k, b] of entriesOf(root.minutes)) {
         mergeBucket(bucketOf(merged, k), b)
       }
     }
   } else if (granularity === 'hour') {
     for (const root of list) {
-      for (const [k, b] of Object.entries(root.hours || {})) {
+      for (const [k, b] of entriesOf(root.hours)) {
         mergeBucket(bucketOf(merged, k), b)
       }
     }
   } else if (granularity === 'day') {
     for (const root of list) {
-      for (const [k, b] of Object.entries(root.days || {})) {
+      for (const [k, b] of entriesOf(root.days)) {
         mergeBucket(bucketOf(merged, k), b)
       }
     }
   } else if (granularity === 'week') {
     // 周：把 days 折叠到 ISO 周一对应的日期 key
     for (const root of list) {
-      for (const [k, b] of Object.entries(root.days || {})) {
+      for (const [k, b] of entriesOf(root.days)) {
         const parts = k.split('-')
         const dt = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]))
         const dow = (dt.getUTCDay() + 6) % 7 // 周一=0, 周日=6
@@ -658,11 +673,13 @@ function modelTable(aggs) {
   const sessionCounts = new Map()
   const perModelDays = new Map() // model -> Map(day -> bucket)
   for (const agg of aggs) {
-    for (const [model, bucket] of Object.entries(agg.models || {})) {
+    // v0.4.0.1：aggs 是 rootList（rollup 输出，Map），或旧 fixture（Object），
+    // entriesOf() 兼容两者。修 v0.3.0 起的 `Object.entries(Map) = []` bug。
+    for (const [model, bucket] of entriesOf(agg.models)) {
       mergeBucket(bucketOf(merged, model), bucket)
       sessionCounts.set(model, (sessionCounts.get(model) || 0) + 1)
     }
-    for (const [key, bucket] of Object.entries(agg.modelDays || {})) {
+    for (const [key, bucket] of entriesOf(agg.modelDays)) {
       const sep = key.indexOf('|')
       const model = key.slice(0, sep)
       const day = key.slice(sep + 1)
@@ -711,7 +728,8 @@ function topSessions(aggs) {
 function toolTable(aggs) {
   const merged = new Map()
   for (const agg of aggs) {
-    for (const [name, bucket] of Object.entries(agg.tools || {})) {
+    // v0.4.0.1：aggs 是 rootList（Map）或旧 fixture（Object），entriesOf() 兼容
+    for (const [name, bucket] of entriesOf(agg.tools)) {
       const entry = toolBucketOf(merged, name)
       entry.calls += bucket.calls || 0
       entry.ms += bucket.ms || 0
