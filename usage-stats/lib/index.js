@@ -27,7 +27,16 @@ const CACHE_FILENAME = '.usage-stats-cache.json'
 // v5：缓存键从 `sessionDir.name` 升级为 `<projectDir>/<sessionDir>`，修复跨项目 session id
 //     冲突（同一台机器多个项目各自有一个 `session-XXX` 目录时会互相覆盖 cached.agg）。
 //     bump version 强制一次缓存作废重算，避免老 v4 缓存里的孤儿键污染新键空间。
-const CACHE_VERSION = 5
+// v6：rollupByMainSession 的实体键从 JSONL `agg.id` 升级为 `agg.fileId`（项目+sessionDir）。
+//     v5 缓存里的 agg 没有 fileId 字段，强行读取会用 `agg.id` 作 identity，跨项目时仍会撞车。
+//     bump version 到 6 让旧 v5 缓存一次性作废重算。
+// v6.1（未 bump version）：固化 cached.agg "usable" 契约——之前只防 typeof === 'object'，
+//     partial agg（如手编辑 / schema drift / 半写入）会让 rollupByMainSession / topSessions
+//     访问 agg.totals.* 抛 "Cannot read properties of undefined"。修复两条：
+//       1) 新增 isUsableAggregate() 在 cache hit 处挡 partial 入口（视为 miss 重解码）
+//       2) rollupByMainSession / topSessions 内部对 agg.totals 兜底（defense in depth）
+//     不 bump version：aggregateSession 写出的 agg 必然完整；只防御未来异常来源。
+const CACHE_VERSION = 6
 const ZSTD_MAGIC = 0xfd2fb528
 const BEIJING_OFFSET_MS = 8 * 3600 * 1000 // 统计按北京时间分日（UTC+8 无夏令时）
 const DAY_WINDOW = 30 // 按日趋势返回最近 30 天（含零填充）
@@ -171,8 +180,13 @@ function toolBucketOf(map, key) {
  * 折叠一个会话的全部事件。
  * 模型归属：usage 记在"最近一次 request/header"的 provider/model 名下；
  * 工具耗时按 callId 配对 tool/call → tool/result；llmMs 按 step/start → assistant/message。
+ *
+ * `fileId` 是项目+sessionDir 形式的稳定 id（`<projectDir>/<sessionDir>`），
+ * 由调用方（`buildSummary`）注入，作为后续 rollup 的实体键：
+ * JSONL `event.id` 可能在跨项目下撞车（DSH 保证单项目内唯一、不保证跨项目），
+ * 故 rollup 实体键必须用 fileId 而不是 JSONL agg.id。
  */
-export function aggregateSession(events) {
+export function aggregateSession(events, fileId = null) {
   const meta = { id: null, cwd: null, createdAt: null, preset: null, parentSession: null, delegationDepth: null, origin: null }
   let title = null
   let currentModel = 'unknown'
@@ -194,6 +208,12 @@ export function aggregateSession(events) {
   let lastTs = null
 
   for (const event of events) {
+    // 单行脏事件守卫：JSONL 里 `null` / 数字 / 字符串 / boolean / 数组都
+    // 是合法 JSON 文本，能过 decodeSessionEvents 的 try/catch 进到聚合循环；
+    // 不挡就会在 event.time / event.type 上抛 TypeError 把整会话拖垮。
+    // 这里只接受普通对象（typeof === 'object' 且非 null 且非 Array.isArray），
+    // 其他形态一律静默跳过——与 decodeSessionEvents 的"坏行丢弃"语义一致。
+    if (event == null || typeof event !== 'object' || Array.isArray(event)) continue
     if (Number.isFinite(event.time) && event.time > (lastTs ?? 0)) lastTs = event.time
     switch (event.type) {
       case 'session':
@@ -222,11 +242,16 @@ export function aggregateSession(events) {
         break
       }
       case 'step/start':
-        // v0.3.7：openStep.time 收敛为有限数字。原始 event.time 是 NaN 时，
-        // 后续 `(event.time ?? 0) - openStep.time` 仍可能产生 NaN（取决于
-        // assistant/message 的 event.time），所以这一步只防御 step/start 自身，
-        // llmMs 计算再走 toFiniteNumber(event.time) 二次防御。
-        openStep = { turn: event.data?.turn, step: event.data?.step, time: toFiniteNumber(event.time) }
+        // v0.3.8：无 baseline 的 step/start 直接丢弃，不写 openStep——
+        // 否则 openStep.time 收敛为 0，下一步真实 assistant/message 的
+        // (event.time - 0) 就是 epoch ms，单事件就能把 llmMs 推到 1.7e12。
+        // 守卫收紧到 Number.isFinite：undefined / null / NaN / Infinity
+        // / 字符串 / 对象 一律视为无 baseline。
+        if (Number.isFinite(event.time)) {
+          openStep = { turn: event.data?.turn, step: event.data?.step, time: event.time }
+        } else {
+          openStep = null
+        }
         break
       case 'assistant/message': {
         const usage = event.data?.usage
@@ -255,8 +280,9 @@ export function aggregateSession(events) {
           addUsage(bucketOf(modelMinutes, currentModel + "|" + minuteKey), usage)
         }
         if (openStep != null && openStep.turn === event.data?.turn && openStep.step === event.data?.step) {
-          // v0.3.7：openStep.time 已是有限数字；event.time 仍可能 NaN → 用
-          // toFiniteNumber 二次防御，确保 llmMs 不会因 NaN 污染。
+          // v0.3.8：openStep 只在 step/start 持有限 baseline 时落地；
+          // 这里的 toFiniteNumber(event.time) 仅挡 NaN/Infinity 等仍能让
+          // 减法返回 NaN 的 event.time 形态（理论上 v0.3.7 后已极少见）。
           llmMs += Math.max(0, toFiniteNumber(event.time) - openStep.time)
           openStep = null
         }
@@ -316,6 +342,7 @@ export function aggregateSession(events) {
   }
   return {
     id: meta.id,
+    fileId,
     cwd: meta.cwd,
     createdAt: meta.createdAt,
     preset: meta.preset,
@@ -464,6 +491,33 @@ function totalTokensOf(bucket) {
   )
 }
 
+/**
+ * v0.3.8.1：判定 cached.agg 是否"usable"——满足 aggregateSession 输出 shape
+ * 的最小子集。任何 partial / hand-edited / schema drift 缓存都不通过，
+ * 由 cache hit 处视为 miss 触发重解码，避免 rollupByMainSession / topSessions
+ * 访问缺失字段时抛 "Cannot read properties of undefined"。
+ *
+ * 必查字段（aggregateSession 必然输出）：
+ *   - id / fileId（任一非空，让 identity() 有归属）
+ *   - totals（必须为对象 + 含 5 个数字 token 字段，否则 mergeBucket / topSessions 崩溃）
+ *
+ * 其他字段（models / days / tools / steps / turns / llmMs / toolMs 等）由
+ * rollupByMainSession 内部的 `agg.models || {}` / `agg.totals || emptyBucket()`
+ * 等 fallback 兜底，不必列入 guard；此处只挡"会让 summary 直接崩"的最小集。
+ */
+function isUsableAggregate(agg) {
+  if (agg == null || typeof agg !== 'object') return false
+  // 必须有 identity（fileId 优先；老 v5 缓存无 fileId 但有 id，identity 会回退）
+  if (agg.fileId == null && agg.id == null) return false
+  // totals 必须存在且为对象（topSessions 直接读 agg.totals.requests / outputTokens）
+  if (agg.totals == null || typeof agg.totals !== 'object') return false
+  // totals 的 5 个 token 字段必须是有限数字（aggregateSession 收敛到 number）
+  for (const k of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'reasoningTokens']) {
+    if (!Number.isFinite(agg.totals[k])) return false
+  }
+  return true
+}
+
 /** 最近 DAY_WINDOW 天（北京时间）零填充的日序列。v0.3.0 改走 granularitySeries('day')。
  *  v0.3.3：输出元素同时给 `day` 和 `bucket` 两个 key，兼容老客户端读 `.day` 与 v0.3.3 客户端读 `.bucket`。
  */
@@ -482,27 +536,72 @@ function daySeries(roots) {
  * subagent token 全部归属 owner（caiyfa 描述："lands on its owner"），
  * 不摊销到祖先链上的每个 main session——caiyfa 强调 counts speak in main sessions only。
  *
+ * v0.3.8：rollup 实体键改为 `agg.fileId ?? agg.id`，跨项目时也唯一：
+ *   - `agg.fileId` 是 `<projectDir>/<sessionDir>`，磁盘上每条会话唯一。
+ *   - JSONL `agg.id` 由 DSH 生成但不保证跨项目唯一（仅单项目内唯一），
+ *     rollup 走 JSONL id 会把两个项目各含一条 `event.id === 'sameid'`
+ *     的会话合并成同一 root。改用 fileId 后两条独立成 root。
+ *
+ * v0.3.8.1：父链遍历也按**项目**作用域走 JSONL id——单纯用 fileId 作实体键
+ *   不够，父链遍历如果用全局 `byJsonId`（按 JSONL `agg.id` 索引），
+ *   仍会把 projA 的 subagent（parentSession='sameid'）的 `byJsonId.get('sameid')`
+ *   解析到 projB 的同名 main session（DSH 仅保证单项目内 JSONL id 唯一），
+ *   让 projA 的子代理被错误归并到 projB 的 root（topSessions[projB] 偷走
+ *   projA/sub 的 100 input tokens）。修复：把 byJsonId 按 projectDir 前缀
+ *   分桶，rootIdOf 只在同一项目的 byJsonId 内查 parentSession；缺失 project
+ *   信息时（极老缓存 / orphan）回退到自身 identity，与原版语义兼容。
+ *
  * 防环：rootIdOf 走 parentSession 链时用 Set 跟踪已访问节点；遇到 orphan subagent
- * （父不在本地）回退到自身 id（罕见，DSH 父会话跨 profile / 跨设备时）。
+ * （父不在本地）回退到自身 identity（罕见，DSH 父会话跨 profile / 跨设备时）。
  */
 function rollupByMainSession(aggs) {
-  const byId = new Map()
-  for (const agg of aggs) {
-    if (agg.id != null) byId.set(agg.id, agg)
+  // 实体 identity：fileId 优先（已含 projectDir 前缀），fallback 到 JSONL id
+  // （老缓存 / 子代理 orphan 等极端情形）。
+  function identity(agg) {
+    return agg.fileId != null ? agg.fileId : agg.id
   }
-  function rootIdOf(agg) {
+  // 从 fileId 取 projectDir 前缀（split on first '/'）。
+  function projectOf(agg) {
+    const fid = agg.fileId
+    if (typeof fid !== 'string' || fid.length === 0) return null
+    const i = fid.indexOf('/')
+    return i === -1 ? fid : fid.slice(0, i)
+  }
+  // 按 project 维度建 byJsonId（项目内唯一），避免跨项目 JSONL id 撞车时
+  // projA 的 subagent 把 parentSession 解析到 projB 的同名 main。
+  // 没 project 信息（无 fileId）的 agg 落到 "_global" 桶，保留向后兼容。
+  const byJsonIdByProject = new Map()
+  for (const agg of aggs) {
+    if (agg.id == null) continue
+    const project = projectOf(agg) || '_global'
+    let m = byJsonIdByProject.get(project)
+    if (m == null) {
+      m = new Map()
+      byJsonIdByProject.set(project, m)
+    }
+    m.set(agg.id, agg)
+  }
+  function rootAggOf(agg) {
+    const project = projectOf(agg)
+    const byJsonId = project == null
+      ? byJsonIdByProject.get('_global') // 没 project 信息 → 用自身 fallback 桶
+      : (byJsonIdByProject.get(project) || byJsonIdByProject.get('_global'))
+    if (byJsonId == null) return agg
     const seen = new Set()
     let cur = agg
     while (cur != null && cur.parentSession != null) {
+      // 用 JSONL id 做 cycle detect；同项目内唯一，不会跨项目误判。
       if (seen.has(cur.id)) break
       seen.add(cur.id)
-      cur = byId.get(cur.parentSession)
+      cur = byJsonId.get(cur.parentSession)
     }
-    return cur != null ? cur.id : (agg.id != null ? agg.id : null)
+    return cur != null ? cur : agg
   }
   const rootIdMap = new Map()
   for (const agg of aggs) {
-    if (agg.id != null) rootIdMap.set(agg.id, rootIdOf(agg))
+    const idn = identity(agg)
+    if (idn == null) continue
+    rootIdMap.set(idn, identity(rootAggOf(agg)))
   }
   const roots = new Map()
   function ensureRoot(rootId) {
@@ -539,8 +638,10 @@ function rollupByMainSession(aggs) {
   }
   // 先把 root 主会话本身的元数据拷过来（main session 是 parentSession === null 的）
   for (const agg of aggs) {
-    if (agg.parentSession == null && agg.id != null) {
-      const root = ensureRoot(agg.id)
+    if (agg.parentSession == null) {
+      const idn = identity(agg)
+      if (idn == null) continue
+      const root = ensureRoot(idn)
       root.title = agg.title || root.title
       root.cwd = agg.cwd || root.cwd
       root.createdAt = agg.createdAt || root.createdAt
@@ -554,7 +655,9 @@ function rollupByMainSession(aggs) {
   }
   // rollup 所有 bucket 到 root（含 main session 自身，counts speak in main sessions only）
   for (const agg of aggs) {
-    const rootId = rootIdMap.get(agg.id)
+    const idn = identity(agg)
+    if (idn == null) continue
+    const rootId = rootIdMap.get(idn)
     if (rootId == null) continue
     const root = ensureRoot(rootId)
     for (const [k, b] of Object.entries(agg.models || {})) {
@@ -592,13 +695,15 @@ function rollupByMainSession(aggs) {
       tb.calls += b.calls || 0
       tb.ms += b.ms || 0
     }
-    mergeBucket(root.totals, agg.totals)
+    // v0.3.8.1 防御性兜底：agg.totals 缺失（如手编辑 / 半写入 / schema drift
+    // 老缓存）用 emptyBucket() 顶替，避免 mergeBucket 访问 undefined.* 崩溃。
+    mergeBucket(root.totals, agg.totals || emptyBucket())
     root.steps += agg.steps || 0
     root.turns += agg.turns || 0
     root.llmMs += agg.llmMs || 0
     root.toolMs += agg.toolMs || 0
-    if (agg.id !== rootId && agg.id != null) {
-      root.childIds.push(agg.id)
+    if (idn !== rootId) {
+      root.childIds.push(idn)
     }
     if (typeof agg.lastTs === 'number' && (root.lastTs == null || agg.lastTs > root.lastTs)) {
       root.lastTs = agg.lastTs
@@ -615,8 +720,16 @@ function rollupByMainSession(aggs) {
  *   'week'   — 全部数据按周折叠（ISO week，周一为周开始对齐北京时间约定）
  *
  * 输出 bucket shape：{ bucket: 'YYYY-MM-DD' | 'YYYY-MM-DDTHH' | 'YYYY-MM-DDTHH:mm' | 'YYYY-MM-DD' (周), ...bucket }
+ *
+ * v0.3.8：`now` 形参导出给单测用（默认 `Date.now()`）。day 锚点对齐到
+ * **Beijing 日界**——之前用 `now - (now % 86400000)` 对齐 UTC 午夜，
+ * 在 Beijing 16:00–24:00 UTC 时（= 当日 Beijing 00:00–08:00），
+ * anchor 对应的 Beijing day 还是"昨天"，今天的 bucket 永远不出现。
+ * 统一公式 `anchorMs = now - ((now + BEIJING_OFFSET_MS) % stepMs)` 对
+ * minute/hour 等价于原版（BEIJING_OFFSET_MS 是 60_000 / 3_600_000 的整数倍），
+ * 仅修正 day 锚点。
  */
-function granularitySeries(roots, granularity) {
+export function granularitySeries(roots, granularity, now = Date.now()) {
   const list = [...roots.values()]
   const merged = new Map()
   if (granularity === 'minute') {
@@ -661,11 +774,13 @@ function granularitySeries(roots, granularity) {
     return out
   }
   // 分钟 / 小时 / 日：零填充对齐到当前 bucket 末
-  const now = Date.now()
   const stepMs = granularity === 'minute' ? 60 * 1000 : (granularity === 'hour' ? 3600 * 1000 : 24 * 3600 * 1000)
   const windowMs = granularity === 'minute' ? 24 * 3600 * 1000 : (granularity === 'hour' ? 7 * 24 * 3600 * 1000 : DAY_WINDOW * 24 * 3600 * 1000)
   const steps = Math.floor(windowMs / stepMs)
-  const anchorMs = now - (now % stepMs)
+  // v0.3.8：Beijing 日界对齐。BEIJING_OFFSET_MS 是 8h，对 minute(60s) / hour(3600s)
+  // 都是整数倍 → `((now + BEIJING_OFFSET_MS) % stepMs)` 与 `(now % stepMs)`
+  // 相等；只对 day 真正改变 anchor。详见文档注释。
+  const anchorMs = now - ((now + BEIJING_OFFSET_MS) % stepMs)
   function keyFn(ms) {
     if (granularity === 'minute') {
       const dt = new Date(ms + BEIJING_OFFSET_MS)
@@ -722,18 +837,24 @@ function modelTable(aggs) {
 
 function topSessions(aggs) {
   return aggs
-    .filter((agg) => totalTokensOf(agg.totals) > 0)
-    .map((agg) => ({
-      id: agg.id,
-      title: agg.title || '(无标题)',
-      cwd: agg.cwd,
-      createdAt: agg.createdAt,
-      lastTs: agg.lastTs,
-      steps: agg.steps,
-      requests: agg.totals.requests,
-      outputTokens: agg.totals.outputTokens,
-      tokens: totalTokensOf(agg.totals),
-    }))
+    // v0.3.8.1：agg.totals 缺失时（schema drift / 半写入 / 手编辑缓存），
+    // filter 用 (agg.totals || emptyBucket()) 兜底，避免 totalTokensOf 抛
+    // "Cannot read properties of undefined"。
+    .filter((agg) => totalTokensOf(agg.totals || emptyBucket()) > 0)
+    .map((agg) => {
+      const totals = agg.totals || emptyBucket()
+      return {
+        id: agg.id,
+        title: agg.title || '(无标题)',
+        cwd: agg.cwd,
+        createdAt: agg.createdAt,
+        lastTs: agg.lastTs,
+        steps: agg.steps,
+        requests: totals.requests,
+        outputTokens: totals.outputTokens,
+        tokens: totalTokensOf(totals),
+      }
+    })
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, TOP_SESSIONS)
 }
@@ -761,7 +882,14 @@ function json(res, status, body) {
 export function apply(ctx) {
   const cachePath = join(profileRoot(ctx), CACHE_FILENAME)
   let cache = { sessions: {} } // id -> { size, mtimeMs, agg }
-  let inflight = null // 并发请求共享同一次计算
+  // v0.3.8.2：inflight 改为 `{ force, promise }`，按 force 标志分别共享——
+  // 旧版 `if (inflight !== null) return inflight` 不分 force，force=1 在 prewarm
+  // (summary(false)) 进行中会被吞，复用 prewarm 的 regular build 结果（cache hit），
+  // 而不是用户显式要求的强制重算。规则：
+  //   - 普通请求（!force）可复用任意 inflight（含 force）
+  //   - force 请求遇 force inflight → 共享
+  //   - force 请求遇 regular inflight → 等其结束后再启动一次 force build
+  let inflight = null // { force: boolean, promise: Promise } | null
   let chain = Promise.resolve() // 串行化缓存写
   let homeDir = null
 
@@ -794,11 +922,12 @@ export function apply(ctx) {
       try {
         const info = await stat(file.path)
         const cached = cache.sessions[file.id]
-        // 防御：cached.agg 必须存在且是对象，否则视为 miss 重新解码。
-        // 旧版本（v0.3.5 前）缓存几乎不会被读回，所以这条本来不触发；
-        // 修了 cache load bug 之后，磁盘上的 v4 老缓存（不同 key 格式 +
-        // 可能的半写入文件）才会被首次加载，必须把异常条目挡在入口。
-        if (!force && cached && cached.agg && typeof cached.agg === 'object'
+        // v0.3.8.1：cached.agg 必须 "usable"——具备 identity + totals 对象 + 5 个
+        // 有限数字 token 字段。否则视为 miss 重新解码。挡住：
+        //   - 老 v4 缓存（不同 key 格式）
+        //   - 半写入 / schema drift / 手编辑 partial agg（缺 totals 让 rollup / topSessions 崩溃）
+        //   - 非对象（字符串 / null）——v0.3.6 已防
+        if (!force && cached && isUsableAggregate(cached.agg)
             && cached.size === info.size && cached.mtimeMs === info.mtimeMs) {
           aggs.push(cached.agg)
           reused += 1
@@ -806,7 +935,9 @@ export function apply(ctx) {
         }
         const raw = await readFile(file.path)
         const events = file.isZstd ? decodeSessionEvents(raw) : parsePlainJsonl(raw)
-        const agg = aggregateSession(events)
+        // v0.3.8：把 file.id 注入 aggregateSession 作为 fileId，rollup 实体键用 fileId
+        // 而非 JSONL agg.id（跨项目场景下 JSONL id 可能撞车）。
+        const agg = aggregateSession(events, file.id)
         if (agg.id == null) agg.id = file.id
         cache.sessions[file.id] = { size: info.size, mtimeMs: info.mtimeMs, agg }
         cacheDirty = true
@@ -874,14 +1005,33 @@ export function apply(ctx) {
   }
 
   function summary(force) {
-    if (inflight !== null) return inflight
-    inflight = cacheReady
+    // 普通请求（!force）：复用任意 inflight（spec 要求"普通请求可复用 force inflight"）
+    if (!force && inflight !== null) return inflight.promise
+    // force 请求遇 force inflight：共享
+    if (force && inflight !== null && inflight.force) return inflight.promise
+    // force 请求遇 regular inflight：等其结束后再启动一次 force build
+    if (force && inflight !== null && !inflight.force) {
+      const prev = inflight.promise
+      // 无论 prev 成功 / 失败都启动 force（用户显式要求，不应被 prewarm 失败吞掉）
+      const chained = prev.then(() => buildSummary(true), () => buildSummary(true))
+      const wrapped = chained.catch((error) => ({ ok: false, error: String(error && error.message ? error.message : error) }))
+      const entry = { force: true, promise: wrapped }
+      inflight = entry
+      wrapped.finally(() => {
+        if (inflight === entry) inflight = null
+      })
+      return wrapped
+    }
+    // 无 inflight：开新 build
+    const promise = cacheReady
       .then(() => buildSummary(force))
       .catch((error) => ({ ok: false, error: String(error && error.message ? error.message : error) }))
-      .finally(() => {
-        inflight = null
-      })
-    return inflight
+    const entry = { force, promise }
+    inflight = entry
+    promise.finally(() => {
+      if (inflight === entry) inflight = null
+    })
+    return promise
   }
 
   // 启动即预热一次（装好缓存，首次打开设置页就快）

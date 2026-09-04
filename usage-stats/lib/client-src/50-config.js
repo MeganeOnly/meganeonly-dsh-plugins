@@ -2,8 +2,10 @@
     // v0.3.0 RANGES 扩 granularity + window 字段。每个 range 决定页面上图与按模型表按哪个粒度切片。
     //   granularity ∈ 'day' | 'hour' | 'minute' | 'week'
     //   window 是在该粒度下取末尾多少桶；null = 该粒度默认（day=30, hour=168=7d, minute=1440=24h, week=全部）
+    // v0.3.9 'all' tab 语义改为"全程指标（safeTotals），图表仍展示最近 30 天"：window 置 null 让
+    //   rangeTotals 走 safeTotals（与旧的"30 天切片"区分开），但 70-page.js 仍对 'all' 特殊保留 30 天图表。
     var RANGES = [
-      { key: "all", label: "全部·日", granularity: "day", window: 30 },
+      { key: "all", label: "全部", granularity: "day", window: null },
       { key: "7", label: "近 7 日", granularity: "day", window: 7 },
       { key: "1", label: "今日", granularity: "day", window: 1 },
       { key: "h7", label: "近 7 日·小时", granularity: "hour", window: 168 },

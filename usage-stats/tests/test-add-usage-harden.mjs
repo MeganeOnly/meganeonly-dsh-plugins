@@ -308,6 +308,8 @@ function mkHeader() {
 }
 
 // --- bug J: step/start event.time = NaN 不污染 llmMs ---
+// v0.3.8 强化：无 baseline 的 step/start 写 openStep=null，下一步 valid epoch
+// assistant time 不再进 llmMs（避免 llmMs 被推到 1.7e12）。
 {
   const events = [
     { type: 'step/start', data: { turn: 1, step: 1 }, time: NaN },
@@ -315,10 +317,107 @@ function mkHeader() {
   ]
   const agg = aggregateSession(events)
   assert(
-    'step/start time=NaN：openStep.time 收敛为 0，llmMs = event.time - 0 = finite',
-    !Number.isNaN(agg.llmMs) && agg.llmMs >= 0,
+    'step/start time=NaN：openStep=null → valid epoch 不入 llmMs（不开 0 减基线漏洞）',
+    agg.llmMs === 0,
     `llmMs = ${agg.llmMs}`
   )
+  assert(
+    'step/start time=NaN：llmMs 不被推到 1.7e12（valid epoch - 0 的旧漏洞）',
+    !Number.isNaN(agg.llmMs) && agg.llmMs < 1e12,
+    `llmMs = ${agg.llmMs}`
+  )
+}
+
+// --- bug J.1: step/start 缺失 → valid epoch assistant time 不当 duration ---
+{
+  const events = [
+    { type: 'request/header', data: { header: { config: { provider: 'p', model: 'm' } } }, time: 100 },
+    // 无 step/start
+    mkMessage(1700000006500, { inputTokens: 1, outputTokens: 1 }, 1, 1),
+  ]
+  const agg = aggregateSession(events)
+  assert(
+    'step/start 缺失：valid epoch assistant time 不当 duration（openStep=null 短路）',
+    agg.llmMs === 0,
+    `llmMs = ${agg.llmMs}`
+  )
+}
+
+// --- bug J.2: step/start.time=undefined → 同上 ---
+{
+  const events = [
+    { type: 'step/start', data: { turn: 1, step: 1 } }, // 缺 time
+    mkMessage(1700000006600, { inputTokens: 1, outputTokens: 1 }, 1, 1),
+  ]
+  const agg = aggregateSession(events)
+  assert(
+    'step/start.time 缺：valid epoch 不入 llmMs',
+    agg.llmMs === 0,
+    `llmMs = ${agg.llmMs}`
+  )
+}
+
+// --- bug J.3: step/start.time=Infinity → 同上 ---
+{
+  const events = [
+    { type: 'step/start', data: { turn: 1, step: 1 }, time: Infinity },
+    mkMessage(1700000006700, { inputTokens: 1, outputTokens: 1 }, 1, 1),
+  ]
+  const agg = aggregateSession(events)
+  assert(
+    'step/start.time=Infinity：valid epoch 不入 llmMs',
+    agg.llmMs === 0,
+    `llmMs = ${agg.llmMs}`
+  )
+}
+
+// --- bug J.4: valid baseline + valid assistant time 仍正确累加 ---
+{
+  const events = [
+    { type: 'step/start', data: { turn: 1, step: 1 }, time: 1700000006800 },
+    mkMessage(1700000009800, { inputTokens: 1, outputTokens: 1 }, 1, 1), // +3000ms
+  ]
+  const agg = aggregateSession(events)
+  assert(
+    'valid baseline + valid assistant time：llmMs 仍按真实差值累加（3000ms）',
+    agg.llmMs === 3000,
+    `llmMs = ${agg.llmMs}`
+  )
+}
+
+// --- bug J.5: openStep 有效 + assistant/message 非有限 time → llmMs === 0（v0.3.8.1 锁定）
+// 当前实现 `llmMs += Math.max(0, toFiniteNumber(event.time) - openStep.time)`：
+//   - 非有限 event.time → toFiniteNumber 返回 0
+//   - 0 - openStep.time（有限正数）= 负数
+//   - Math.max(0, 负数) = 0
+//   - llmMs += 0（不贡献）
+// 测试矩阵覆盖 NaN / Infinity / -Infinity / 字符串数字 / 缺失 time / null，
+// 每步后接一个 valid 步骤作锚点确认累计仍正确。
+{
+  const cases = [
+    ['NaN', NaN],
+    ['Infinity', Infinity],
+    ['-Infinity', -Infinity],
+    ['字符串数字"1700000000000"', '1700000000000'],
+    ['缺失 time（undefined）', undefined],
+    ['null', null],
+  ]
+  for (const [label, badTime] of cases) {
+    const events = [
+      { type: 'step/start', data: { turn: 1, step: 1 }, time: 1700000010000 },
+      // 第一步：openStep 有效，event.time 非有限 → llmMs 应 +0
+      mkMessage(badTime, { inputTokens: 1, outputTokens: 1 }, 1, 1),
+      // 第二步：valid baseline + valid time → 应累加 500ms
+      { type: 'step/start', data: { turn: 2, step: 1 }, time: 1700000020000 },
+      mkMessage(1700000020500, { inputTokens: 1, outputTokens: 1 }, 2, 1),
+    ]
+    const agg = aggregateSession(events)
+    assert(
+      `openStep 有效 + event.time=${label}：llmMs 只累加第二步（500ms）`,
+      agg.llmMs === 500,
+      `llmMs = ${agg.llmMs}`
+    )
+  }
 }
 
 // --- bug K: lastTs 不被 NaN / Infinity 拉高 ---
@@ -339,6 +438,44 @@ function mkHeader() {
     'lastTs：取最大有限时间戳',
     agg.lastTs === 1700000007000,
     `lastTs = ${agg.lastTs}`
+  )
+}
+
+// --- bug L: 非对象事件（null / 数字 / 字符串 / boolean / 数组）不拖垮会话 ---
+// 触发场景：JSONL 里 `null` / `42` / `"foo"` / `true` / `[1,2,3]` 都是合法
+// JSON 文本，能过 decodeSessionEvents 的 try/catch 进到聚合循环；不挡就会在
+// event.time / event.type 上抛 TypeError 把整会话拖垮。守卫在 aggregateSession
+// 循环最开头，跳过非普通对象事件。
+{
+  const events = [
+    null,
+    42,
+    'hello',
+    true,
+    [1, 2, 3],
+    // 锚点：valid 事件必须仍正确聚合（不退化）
+    mkHeader(),
+    mkMessage(1700000010000, { inputTokens: 11, outputTokens: 13 }),
+  ]
+  let threw = null
+  let agg = null
+  try {
+    agg = aggregateSession(events)
+  } catch (e) {
+    threw = e
+  }
+  assert(
+    'aggregateSession: 非对象事件不抛 TypeError（不拖垮整会话）',
+    threw === null,
+    threw ? `threw = ${threw.message}` : 'no throw'
+  )
+  assert(
+    'aggregateSession: 非对象事件被静默跳过、valid 事件仍正确聚合',
+    agg !== null &&
+      agg.totals.inputTokens === 11 &&
+      agg.totals.outputTokens === 13 &&
+      agg.totals.requests === 1,
+    agg === null ? 'agg is null' : `totals = ${JSON.stringify(agg.totals)}`
   )
 }
 

@@ -114,7 +114,16 @@
       var safeTools = d.tools || [];
       var r = rangeSpec(range);
       var seriesSource = safeByTrend[r.granularity] || [];
-      var winSeries = r.window != null ? seriesSource.slice(-r.window) : seriesSource;
+      // v0.3.9 'all' tab：window=null 时 rangeTotals 走 safeTotals（全程指标），
+      // 但图表仍展示最近 30 天切片，避免无限长 day 系列把图压成色带。
+      var winSeries;
+      if (r.window != null) {
+        winSeries = seriesSource.slice(-r.window);
+      } else if (r.key === "all") {
+        winSeries = seriesSource.slice(-30);
+      } else {
+        winSeries = seriesSource;
+      }
       var winSet = null;
       if (r.window != null) {
         winSet = {};

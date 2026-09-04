@@ -4,6 +4,127 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.8.2] - 2026-09-05
+
+### 修复
+
+v0.3.8.1 复核后发现的 1 个 host 端并发 inflight bug（仅 `lib/index.js`）：
+
+- **`summary(force)` 单 inflight slot 吞掉 force=1 请求**：
+  原版 `function summary(force) { if (inflight !== null) return inflight; ... }` 用单一 Promise 槽存储 inflight，不分 force 标志。启动预热 `chain = chain.then(() => summary(false))` 进行中（inflight = prewarm 的 regular buildSummary(false)），HTTP handler 收到 `?force=1` 时直接 `return inflight`——把 prewarm 的 `summary(false)` 结果当作用户的"强制重算"返回。prewarm 走 `cache.sessions[id].size/mtimeMs` 命中 → `reused=1`、`decoded=0`，用户拿到的不是新数据。客户端通过 `?force=1` 显式发起的"忽略缓存"语义被静默丢掉。
+
+  修复：inflight 改为 `{ force: boolean, promise: Promise } | null`，按 force 标志分别共享。规则：
+
+  - 普通请求（`!force`）可复用任意 inflight（含 force）—— 单 inflight 已存在就 return，避免重复 build
+  - force 请求遇 force inflight → 共享（多 force 共享同一次 force build）
+  - force 请求遇 regular inflight → 等其结束后再启动一次 force build（`prev.then(() => buildSummary(true), () => buildSummary(true))` 两条路径都触发，避免 prewarm 抛错时也吞掉 force）
+
+  finally 清理用 `if (inflight === entry) inflight = null` 守卫，避免 force 链覆盖 regular 链后 regular 的 finally 把 force inflight 误清掉。
+
+### 缓存语义
+
+- **不 bump `CACHE_VERSION`**：本次修复只改 inflight 共享策略，不动 cache 内容 schema；prewarm 与 force 都写同一份 cache（force 绕过 size/mtimeMs 但仍更新 `cache.sessions[id] = { size, mtimeMs, agg }`），第二次普通请求仍能命中 force 留下的最新缓存。
+
+### 兼容性
+
+- 客户端无变更（仅 host 端 `summary(force)` inflight 共享逻辑）
+- 行为变化：force=1 不再被 prewarm / 之前的普通 inflight 吞掉；prewarm 进行中的 force=1 会等到 prewarm 结束再启动一次新 build（开销 ≈ 1 次额外 buildSummary，但避免静默吞掉显式 force 请求）
+- `CACHE_VERSION` 不变（仍 v6）
+
+### 验证
+
+- `tests/test-v0381-inflight.mjs`：**12 项全过**
+  - G.1（3 项）force 在 prewarm 进行中不被吞（cache `.tmp` 文件至少被观察到 2 次出现 / ok=true / decoded=30，**主断言靠 `.usage-stats-cache.json.tmp` 文件 1ms 轮询的出现次数做客观信号**——`saveCache` 内部 `writeFile(.tmp)` → `rename`，force 修复后 chain 上 prewarm + force 各一次 saveCache，`.tmp` 至少被观察到 2 次出现；不修复时只有 prewarm 的 saveCache，`.tmp` 严格只出现 1 次。30 个 session 文件的延迟 fixture 让两个 saveCache 之间留出 ms 级别窗口）
+  - G.2（2 项）两个并发 force=1 共享同一 force build（generatedAt 相同 / decoded=1）
+  - G.3（2 项）force inflight 进行中的普通请求复用 force 结果（generatedAt 相同 / decoded=1 而不是 reused=1）
+  - G.4（3 项）D.4 行为回归（首次 decoded=1 / 第二次 reused=1 / force=1 decoded=1）
+  - G.5（2 项）串行 force 每次都新建 build（inflight 正确清理 / generatedAt 严格递增）
+- `tests/test-v038-fixes.mjs`：37 项全过（确认未退化）
+- `tests/test-add-usage-harden.mjs`：40 项全过（确认未退化）
+- `tests/audit-repro.mjs`：14 项全过（确认未退化）
+- `tests/smoke.mjs`：client bundle 渲染路径 PASS（`renderCount = 4`）
+- `node --check lib/index.js` / `node --check lib/client.js`：均通过
+- `node lib/verify-client.cjs`：BYTE-IDENTICAL ✓（client bundle 未改）
+
+## [0.3.8.1] - 2026-09-05
+
+### 修复
+
+v0.3.8 后的**复核审计**发现 2 个聚合层残留 bug + 1 个已自然处理的行为需要锁定（全部 host 端 `lib/index.js`）：
+
+- **`rollupByMainSession` 父链遍历仍按 JSONL `agg.id` 全局覆盖，跨项目子代理会被错误归并**：
+  v0.3.8 只把 rollup **实体键**（root / identity）升级到 `agg.fileId`，但父链遍历（`rootAggOf` 内的 `byJsonId.get(parentSession)`）仍用一份全局 `Map<jsonlId, agg>`。DSH 保证 JSONL `agg.id` 单项目内唯一、不保证跨项目唯一——所以跨项目场景下：
+    - projA/main（id='sameid'） + projA/sub（id='sub-a', parentSession='sameid'）
+    - projB/main（id='sameid'，与 projA/main 同 JSONL id）
+
+  按 readdir 顺序，`byJsonId['sameid']` 被 projB/main 覆盖。`rootAggOf(projA/sub)` 走到 `byJsonId.get('sameid')` 时拿到的是 **projB 的 main**，让 projA 的子代理被错误归并到 projB 的 root（`topSessions[projB]` 偷走 projA/sub 的 token）。
+
+  修复：把 `byJsonId` 按 `projectDir` 前缀（`fileId` 第一个 `/` 之前）分桶，`rootAggOf` 只在同一项目的 byJsonId 内查 parentSession。缺失 project 信息的 agg 落到 `_global` 桶，保留向后兼容；orphan subagent 仍走"回退到自身 identity"语义不变。
+
+- **`cached.agg` 是 partial 对象（缺 `totals` / `id` / `fileId` / token 字段非有限）时让 summary 崩溃**：
+  旧 cache hit 守卫只查 `cached.agg && typeof cached.agg === 'object'`，放过手编辑 / 半写入 / schema drift 缓存——`rollupByMainSession` 在 `mergeBucket(root.totals, agg.totals)` 访问 `undefined.inputTokens` 抛 `Cannot read properties of undefined (reading 'inputTokens')`，整个 `/api/usage-stats/summary` 返回 `{ ok: false, error }`。修复两层：
+  1. **入口挡**：新增 `isUsableAggregate(agg)` 在 cache hit 处挡 partial / 非有限字段（identity + totals 对象 + 5 个 token 字段都是 `Number.isFinite`），视为 miss 触发重解码
+  2. **内部防御**：`rollupByMainSession` / `topSessions` 对 `agg.totals` 用 `|| emptyBucket()` 兜底（defense in depth，避免未来其他入口绕过 cache guard 喂入 partial 时再次崩溃）
+
+- **`assistant/message` 非有限 time + openStep 有效 → llmMs 是否会贡献？** 已自然安全，但加测试锁定：
+  现有代码 `llmMs += Math.max(0, toFiniteNumber(event.time) - openStep.time)`：非有限 event.time → `toFiniteNumber = 0`，`0 - openStep.time`（有限正数）= 负数，`Math.max(0, 负数) = 0`，`llmMs += 0` 不贡献——但现有断言只检查 `=== 500`（实际等于证明第一步没贡献）。新增 bug J.5 矩阵 6 个 case 显式锁住：NaN / Infinity / -Infinity / 字符串数字 / undefined / null 与 valid 步骤混合的累加正确性。
+
+### 缓存语义
+
+- **不 bump `CACHE_VERSION`**：v0.3.6+ `aggregateSession` 产出的所有 `agg` 必然完整（`totals` 由 `emptyBucket()` 初始化并加和保证）。本次修复只挡"异常来源"（手编辑 / schema drift），不需要让所有用户重解码自己的合法 v6 缓存。
+
+### 兼容性
+
+- 客户端无变更（仅 host 端聚合硬化）
+- 行为变化：
+  - 跨项目同名 JSONL id 的子代理终于归属到本项目 root（之前会错误归并到另一项目）
+  - 任何 partial / 手编辑 / schema-drifted 缓存自动触发重解码，不再让 summary 崩溃
+- `CACHE_VERSION` 不变（仍 v6）
+
+### 验证
+
+- `tests/test-v038-fixes.mjs`：**37 项全过**（29 项 v0.3.8 + 8 项 v0.3.8.1 新增：bug E 跨项目父链作用域 3 项 / bug F usable aggregate guard 5 项含 F.1 partial totals / F.2 token 字段非有限 / F.3 无 identity / F.4 端到端重解码）
+- `tests/test-add-usage-harden.mjs`：**40 项全过**（34 项 v0.3.7+v0.3.8 硬化 + 6 项 v0.3.8.1 新增 bug J.5 矩阵：openStep 有效 + 非有限 time 6 种形态都不贡献）
+- `tests/audit-repro.mjs`：14 项 v0.3.6 audit 复现全过（确认未退化）
+- `tests/smoke.mjs`：client bundle 渲染路径 PASS（`renderCount = 4`）
+- `node --check lib/index.js` / `node --check lib/client.js`：均通过
+
+## [0.3.8] - 2026-09-05
+
+### 修复
+
+v0.3.7 数字硬化后又发现 3 个**聚合层**高置信 bug，全部在 host 端 `lib/index.js`：
+
+- **`step/start` 无有效 baseline 时把 valid epoch assistant time 当 duration**：
+  v0.3.7 用 `openStep.time = toFiniteNumber(event.time)` 兜底——`toFiniteNumber(NaN) = 0`，结果下一步真实 `assistant/message` 的 `(1.7e12 - 0)` 就把 `llmMs` 单事件推到 ~1.7e12。修复：无 baseline（缺 `event.time` 或 `event.time` 非有限数字：`undefined` / `null` / `NaN` / `Infinity` / `-Infinity` / 字符串 / 对象）的 `step/start` 直接 `openStep = null`，`openStep != null` 短路让 valid epoch assistant time 完全不入 `llmMs`。覆盖矩阵：缺 `step/start` / `time=NaN` / `time=undefined` / `time=null` / `time=Infinity` / `time='1700000000000'` 字符串。
+
+- **`granularitySeries` 日序列锚到 UTC 午夜而非 Beijing 日界**：
+  旧 `anchorMs = now - (now % stepMs)` 对齐 UTC 午夜。在 Beijing 16:00–24:00 UTC（= 当日 Beijing 00:00–08:00）窗口内，anchor 对应的 Beijing day 还是"昨天"——今天的 bucket 永远不出现在日序列里（day 粒度"今天"的视觉断点）。修复：`anchorMs = now - ((now + BEIJING_OFFSET_MS) % stepMs)`。对 minute(60s) / hour(3600s) 与旧版等价（`BEIJING_OFFSET_MS` 是它们 stepMs 的整数倍）；只修正 day 锚点。导出 `now` 形参供单测注入。
+
+- **`rollupByMainSession` 用 JSONL `agg.id` 作跨项目根 id**：
+  `agg.id` 由 DSH 生成但**只保证单项目内唯一**，跨项目时撞车：两个项目各含一条 `event.id === 'sameid'` 的会话会被合并成同一 root（`sessionCount` 失真）。修复：实体键改为 `agg.fileId ?? agg.id`——`agg.fileId` 是 `<projectDir>/<sessionDir>`，磁盘上每条会话唯一。`aggregateSession(events, fileId)` 接受外部注入，`buildSummary` 把 `file.id` 注入；父链遍历仍走 JSONL id（DSH 保证单项目内 parent 引用一致）。
+
+### 缓存语义
+
+- `CACHE_VERSION` 5 → 6：v5 缓存里的 `agg` 没有 `fileId` 字段，强行读取时 `identity()` fallback 到 `agg.id` 跨项目仍撞车，bump version 强制一次缓存作废重算。
+- 现有 `loadCache` / `saveCache` / `cached.agg` 类型守卫 / `force=1` 路径全部经过新测试覆盖（29 项 v0.3.8 测试 + 14 项 audit-repro）——行为不变（按需保留），无需改代码。
+
+### 兼容性
+
+- 客户端无变更（仅 host 端聚合硬化 + 锚点修正 + rollup 键升级）
+- 行为变化：今天（Beijing）的桶终于出现在 day 序列末位；跨项目同名 session 终于各自成 root
+- `CACHE_VERSION` 5 → 6：升级后第一次请求会全量重解码（一次性的 cost）；后续恢复增量
+
+### 验证
+
+- `tests/test-v038-fixes.mjs`：29 项 v0.3.8 新增全过（bug A 8 项 / bug B 6 项 / bug C 5 项 / 缓存 D 4 大类 9 项）
+- `tests/test-add-usage-harden.mjs`：34 项 v0.3.7 + v0.3.8 硬化全过（含 bug J 重写：`step/start.time=NaN` → `openStep=null` → `valid epoch 不入 llmMs`，断言收紧到 `=== 0` 而不是仅 `>= 0` / finite；新增 bug J.1–J.4 覆盖缺事件 / undefined / Infinity / 字符串 / 多步骤混合 / 正常累加不被误杀）
+- `tests/audit-repro.mjs`：14 项 v0.3.6 audit 复现全过（确认未退化）
+- `tests/smoke.mjs`：client bundle 渲染路径 PASS（`renderCount = 4`）
+- `node --check lib/index.js` / `node --check lib/client.js`：均通过
+
+---
+
 ## [0.3.7] - 2026-09-05
 
 ### 修复
