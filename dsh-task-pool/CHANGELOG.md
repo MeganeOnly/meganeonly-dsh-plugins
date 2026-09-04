@@ -4,11 +4,15 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.6.1] - 2026-09-04
 
 ### 重构
 
 - **client bundle 拆分**（按 `docs/maintainability.md` 通用规范）：原 970 行 / 46.1 KB 单文件 `lib/client.js` 超过触发阈值（≥ 700 行 / 30 KB），拆为 12 个 source section（`lib/client-src/00-banner.js` 到 `Z9-loader-close.js`）。新增 `lib/build-client.cjs`（拼回 client.js）与 `lib/verify-client.cjs`（与 HEAD 字节级校验）脚本；`package.json` 加 `build:client` / `verify:client` / `prepare` 脚本。段首 marker 改为英文 short-name（与文件名 `name` 部分一致），原中文 marker 注释保留作为内部说明。
+
+### 兼容性
+
+- client bundle 字节级与 v0.6.0 相同（verify:client BYTE-IDENTICAL）；host 半端零改动；DSH 0.1.2-rc.1 下宿主零副作用占位 `apply()` 仍正常工作，浏览器 FAB / 抽屉 / slot `conversation.input.dock` 注册照旧。
 
 ## [0.6.0] - 2026-08-19
 
