@@ -4,26 +4,29 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.10.2] - 2026-09-04
 
-### 修复（v0.10.2）
+### 修复
 
 - **`conversation-shift` 半屏浏览器看起来奇怪 + 新建会话界面不生效**（v0.10.2）：用户反馈两个症状——「对话区右缩，全屏时效果很好，但半屏看起来很奇怪」+「对话区右缩，在『新建会话』界面不生效，我希望它生效」。两个症状是同一个 bug 的两面。
   - **根因（一个 bug 引发两个症状）**：v0.5.3 的 `findChatflowTargets()` 同时给 chatflow 容器和 input 容器打 `data-dsh-ui-tweaks-shift-target` 标记，CSS 对两个元素都加 `padding-right:380px !important` → 实际叠加成 **双 padding 760px**。DSH 当前的 DOM 结构是 `ConversationRoot > scrollBody [data-conversation-scroll] > { session, composerSeat }`——composer 是 scrollBody 的子元素而非兄弟，所以**单 padding 在 scrollBody 上就能同步影响消息内容 + 输入框**，无需再额外标 input。v0.5.3 同时标 chatflow + input 是「DSH 早期结构里 composer 在 scrollBody 外的兜底」残留。
     - **症状一（半屏）**：全屏视口 1920px / conv 列 ≈ 1640px → 1640 - 760 = 880px 内容区 → 聊天气泡（DSH `--dsh-chat-content-width:748px`）仍能放下 → 用户感「效果很好」；半屏视口 960px / conv 列 ≈ 680px → 680 - 760 = -80px（负值溢出）→ 用户感「看起来很奇怪」
     - **症状二（新建会话）**：空会话（hero composer + 无消息）里 `[data-chat-flow-kind]` 不存在 → v0.5.3 策略 1（overflow + chat-flow-kind 探测）漏判 → 落到 input 探测 → 单 padding 加在 ConversationRoot 上 → 但 hero composer 在 scrollBody 里 `align-self:center` 居中，scrollBody 也在 ConversationRoot 里居中 → 整列右移 380px 在居中布局里视觉上「不明显」，用户感「不生效」
   - **修法两条**：
-    1. **`findChatflowTargets()` 探测策略首选 DSH 稳定锚点 `[data-conversation-scroll]`**——DSH `ConversationRoot.scrollBody` 上 DSH 源码（`dsh-client-ui-conversation/lib/client.js:7277`）显式 `setAttribute("data-conversation-scroll", "")` 的属性，**不含构建 hash**，跨 DSH 版本不变。命中即返回，**不再额外标 input**——单 padding 同步影响消息 + 输入框。该策略与 v0.7.3 HoverCard `[class*="_hoverContent"]` / v0.10.0 stats-line-position `data-slot=...` 同源的 hash-independence 策略；DSH 升级换 hash 不影响命中。v0.5.3 的 overflow + chat-flow-kind 探测保留作**兜底策略 2**（DSH 极端改名 `data-conversation-scroll` 时仍能工作），input 探测保留作**兜底策略 3**（DSH 未来把 composer 拆出 scrollBody 时的最后防线）。
+    1. **`findChatflowTargets()` 探测策略首选 DSH 稳定锚点 `[data-conversation-scroll]`**——DSH `ConversationRoot.scrollBody` 上 DSH 源码（`dsh-client-ui-conversation/lib/client.js:14487` in 0.1.2-rc.1）显式 `setAttribute("data-conversation-scroll", "")` 的属性，**不含构建 hash**，跨 DSH 版本不变。命中即返回，**不再额外标 input**——单 padding 同步影响消息 + 输入框。该策略与 v0.7.3 HoverCard `[class*="_hoverContent"]` / v0.10.0 stats-line-position `data-slot=...` 同源的 hash-independence 策略；DSH 升级换 hash 不影响命中。v0.5.3 的 overflow + chat-flow-kind 探测保留作**兜底策略 2**（DSH 极端改名 `data-conversation-scroll` 时仍能工作），input 探测保留作**兜底策略 3**（DSH 未来把 composer 拆出 scrollBody 时的最后防线）。
     2. **`buildCSS` 输出改成 `padding-right: min(Npx, 40%) !important`**——保留用户在全屏的偏好像素，半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例。聊天气泡（748px max）始终可读。CSS `min()` 是逐元素计算的，`40%` 是父元素（命中元素本身的直接父 = ConversationRoot / scrollBody 包裹层）宽度的 40%。需要更激进收紧可改设置页 `conversationShiftPx`；需要更宽保留（如窄屏下也想保 380）改本 CSS 的 40% 为更大值。
   - **兼容性**：tweak id `conversation-shift` / localStorage key `conversationShift` + `conversationShiftPx` / 数字输入框（0–800）/ 设置页 UI / 调试 API / 调试高亮（`conversation-shift-debug` 黄色 outline + 浮动标签）全部不动；只改 chatflow 探测顺序（v0.5.3 策略保留作兜底）+ CSS 输出值的 `min()` 包裹 + tweak description 加一句窄屏自适应说明。
-  - **诊断**：
-    - `window.__dshUiTweaks.debug()` 在 conversation-shift 开启时，`getMatchedElements()` 的 `shift targets` 项应只命中 **1 个** `[data-dsh-ui-tweaks-shift-target]` 元素（scrollBody），不再是 2 个；该元素的 `shiftType` 字段是 `"chatflow"`，`padR` 字段是 `min(380px, 40%)` 解析后的 px 值
-    - `window.__dshUiTweaks.getInjectedCSS()` 在 tweak 开启时返回的 CSS 段应包含 `padding-right:min(380px,40%)` 而不再是 `padding-right:380px`
-    - DevTools inspect `[data-conversation-scroll]` 元素：开启 tweak 时其 `padding-right` 计算值应是 `min(380px, 40%父)`；缩窄窗口到半屏视口（≈ 960px），值应自动减小到 ≈ `272px`（40% × 680px），聊天气泡仍居中可见
-    - 「新建会话」界面（hero phase）开启 tweak 时，`[data-conversation-scroll]` 应被打上标记（v0.5.3 在该界面打不到任何元素），hero composer 整体右移 380px（在全屏视口下保留 380，min 不生效；半屏视口下收紧到 40%）
   - **改动文件**：`45-chatflow-marks.js` 的 `findChatflowTargets()` 策略重排（[data-conversation-scroll] 首选 + 命中即返回 + 不再额外探测 input）+ 头部 v0.10.2 banner 注释；`25-tweaks.js` conversation-shift `buildCSS` 改 `min(Npx, 40%)` + description 同步；`20-constants.js` VERSION 0.10.1 → 0.10.2 + 头部 v0.10.2 注释 + 新增 `SHIFT_SCROLL_SEL` 常量；`00-banner.js` 加 v0.10.2 banner 段；`package.json` version 0.10.1 → 0.10.2 + description 同步；`README.md` / `docs/maintainability.md` 同步；走 `npm run build:client` + `node --check lib/client.js` 语法校验。
 
-### 修复（v0.10.1）
+### 兼容性（DSH 0.1.2-rc.1）
+
+- DOM 锚点全部保留：`[data-conversation-scroll]`（DSH 0.1.2-rc.1 `dsh-client-ui-conversation/lib/client.js:14487`）、`[data-slot="conversation.composer.dock"]`（line 15716）、`[data-slot="conversation.session.header.actions"]`（line 14593）、`[data-chat-flow-kind]`（覆盖 `user` / `tool-call` / `context` / `compaction` / `manual-compaction` / `model-retry` / `turn-error` / `turn-max-tokens`）全部存在。
+- `conversation.composer.dock` slot 在 DSH 0.1.2-rc.1 仍只有 1 个 occupant（StatsLine）——grep 验证 slot catalog 第 16188 行未新增 token 用量 occupant；DSH 0.1.2 新增"回答末尾 token 显示"是 UI 层（独立位置），不影响本插件 stats-line-position 隐藏行为。
+- v0.10.0 / v0.10.1 / v0.10.2 三个修复在 DSH 0.1.2-rc.1 浏览器实测下未观察到回归；v0.10.2 CHANGELOG 中 line 12 引用"dsh-client-ui-conversation/lib/client.js:7277"系旧版行号，新版（0.1.2-rc.1）实际是 line 14487——文件行号变了但 `data-conversation-scroll` 属性名不变。
+
+## [0.10.1] - 2026-08-30
+
+### 修复
 
 - **`stats-line-position` 非「底部」时输入框下移 24px**（v0.10.1）：用户反馈 v0.10.0「这样就导致了发消息的框往下走了一点点，我希望它还是处于原来的位置」。
   - **根因**：统计行是 composer 卡片的 **footer**（`conversation.composer.dock` 作为输入条的 `footer` prop 渲染），高 24px（DSH `.FJxK0a_root` 的 `line-height:20px` + `padding:4px calc(...) 0px`）；而 composer seat 是**贴着滚动容器底部**的——DSH `.wSkVaW_composerSeat{position:sticky;bottom:0}`。`display:none` 把统计行从布局里彻底移除 → 卡片整体变矮 24px → 底边被钉住，顶边（也就是输入行）只能往下挪 24px。
@@ -41,10 +44,11 @@
   - **冲突核对**：DSH `dsh-client-ui-conversation` 的 ConversationRoot CSS 里只有一条 visibility 规则——`.wSkVaW_root[data-phase=settling] .wSkVaW_composerSeat{visibility:hidden}`（settling 阶段整个 seat 都隐藏），**没有**任何 `visibility:visible` 的后代重置会与本规则打架。
   - **有意的代价**：非「底部」位置时输入框下方保留一条 24px 空白——这正是把输入框钉在原位所必须的空间，已在 tweak description 与 README 注明。
   - **兼容性**：tweak id / `choices` / localStorage key `statsLinePosition` / 镜像逻辑 / controller / 诊断 API / 设置页 UI 全部不动，只改 `buildCSS` 输出的隐藏属性。
-  - **诊断**：`window.__dshUiTweaks.getInjectedCSS()` 在非 `bottom` 时应含 `visibility:hidden !important` 而不再有 `display:none`；DevTools 量输入框顶边 y 坐标，切换「底部 ↔ 顶部标题右侧 ↔ 不显示」三态应完全不变。
   - **改动文件**：`lib/client-src/25-tweaks.js`（stats-line-position `buildCSS` 的隐藏规则 + v0.10.1 注释段）；`lib/client-src/20-constants.js`（VERSION 0.10.0 → 0.10.1 + 头部 v0.10.1 段）；`lib/client-src/69-stats-line-position.js`（头部注释同步）；`lib/client-src/00-banner.js`；`package.json`；`README.md`；`docs/maintainability.md`
 
-### 新增（v0.10.0）
+## [0.10.0] - 2026-08-29
+
+### 新增
 
 - **`stats-line-position`：对话底部运行统计行的位置可三选一**（v0.10.0）：用户反馈对话底部那行统计（`3 轮 · 45 步 | LLM 12m13s · 工具调用 1m21s | 首 token 平均 2.9s · 71 tok/s | 缓存命中 96% | 输入 3.6M tok · 输出 42.7K tok`）希望能选位置。新增 tweak 提供三个选项：
   | 选项 | 行为 |
@@ -62,11 +66,9 @@
   - **轮询而非 MutationObserver**：统计行内容按「步」更新（不是按 token 流），400ms 足够跟手；而它的文本变化是 `characterData` mutation，要用 observer 就得在 document 上开 `characterData + subtree`，对话流式输出时每个 token 都触发，开销远大于一次 `textContent` 比较。文本没变则整段跳过，不做无谓 DOM 重建（`title` 属性兼作「上次内容」缓存与悬停 tooltip）。轮询同时兼任**自愈**：DSH 换会话重建 header 后下一 tick 自动在新标题簇补上镜像，并清掉别处残留的孤儿镜像，保证全页面只有一个。
   - **框架能力：TweakRow 支持 `choices`**。这是本插件第一条**非布尔** tweak——`configKeys.enabled` 存的是 `"bottom"` / `"top"` / `"hidden"` 字符串（与其它「仅开关型」tweak 一样 enabled 与 value 复用同一 key，localStorage 只多一个字段）。`TweakRow` 见到 tweak 上的 `choices`（`[{value,label}]`）就渲染 `<select class="DTPD_select">` 而不是开关；数字输入行的判定不变（仍看 `k2 !== k1`），开关型 tweak 完全走原路径、行为零变化。受控 `<select>` 的 value 在 state 是脏值时退回第一个选项，避免 React 落到空白项。
   - **兼容性**：老用户升级后该 localStorage key 不存在 → `defaultState()` 补 `"bottom"` → 视觉零变化，无需迁移。脏值 / 老布尔值由 `statsNormalizePosition()` 统一退回 `"bottom"`（已测 `undefined` / `true` / 任意字符串）。其它九条 tweak 的 id / localStorage key / CSS / 类名 / attribute / 调试 API 全不动。
-  - **诊断**：`window.__dshUiTweaks.statsLinePosition()` 返回 `{ position, running, sourceFound, titleClusterFound, mirrorMounted }`——DSH 升级后若 slot key 改名，`sourceFound` / `titleClusterFound` 会直接显示 `false`，一眼定位。`window.__dshUiTweaks.getInjectedCSS()` 在非 `bottom` 时应含 `stats-line-position` 段。
-  - **验证**：`node lib/build-client.cjs` + `node --check lib/client.js`；另在最小 stub 环境里跑了两组临时验证——① `defaultState` / `statsNormalizePosition` / `buildCSS` 三态输出（bottom 无 CSS、hidden 只隐藏、top 隐藏 + 镜像样式）；② 手搓 fake DOM 跑 controller 生命周期 17 项断言（最内层 stats root 定位、镜像挂在标题簇末尾、保留 `_sep` 类名、文本未变不重建、原生行消失时清空、header 重建后自愈为单一镜像、stop 后清理干净）全部通过。
   - **改动文件**：新增 `lib/client-src/69-stats-line-position.js`（controller + 镜像逻辑 + 两个锚点定位）；`lib/client-src/20-constants.js`（加 `STATS_DOCK_SEL` / `STATS_HEADER_ACTIONS_SEL` / `STATS_TITLE_CLUSTER_HINT_SEL` / `STATS_ROOT_HINT_SEL` / `STATS_MIRROR_ATTR` / `STATS_POS_*` / `STATS_POLL_MS`，VERSION 0.9.15 → 0.10.0）；`lib/client-src/25-tweaks.js`（加 `stats-line-position` 条目含 `choices` 与 `buildCSS`）；`lib/client-src/75-react-tweak-row.js`（`choices` → `<select>`）；`lib/client-src/35-styles.js`（`.DTPD_select`）；`lib/client-src/85-apply.js`（controller 接线 + 状态事件跟随 + 诊断 API）；`lib/client-src/00-banner.js`；`package.json`；`README.md`；`docs/maintainability.md`
 
-### 维护（v0.10.0）
+### 维护
 
 - **补齐三个 source 文件缺失的行尾换行**（v0.10.0）：`lib/client-src/68-first-message-jump.js`、`68a-first-message-jump-utils.js`、`75-react-tweak-row.js` 末尾都缺一个 `\n`，违反仓库 `docs/maintainability.md` § 五 边界规则「每个 source 文件末尾必须有 `\n`（除 `Z9-loader-close.js`）」。后果是拼接时**下一个文件的 `    // ===== marker =====` 首行被接到上一个文件的 `}` 后面**（bundle 里出现 `}    // ===== stats-line-position =====` 这样的行）——语法合法但破坏「bundle 里每个 section marker 独立成行」的可读性约定，且新增 section 时必然踩到。各补 1 字节（共 +3 字节），现在 bundle 里所有 section marker 都独立成行。行为零变化。
 
