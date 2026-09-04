@@ -4,6 +4,51 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.7] - 2026-09-05
+
+### 修复
+
+v0.3.6 host 半段审计的 4 bug 修复完成后，进一步发现并修复 v0.3.6 残留的 2 个**数字入口硬化漏洞**——仅涉及 `lib/index.js` host 端聚合层：
+
+- **`addUsage` 仍接受 `Infinity` / 字符串 / NaN 路径**：`usage.X || 0` 只挡 undefined / null / 0 / `""`（这 4 种 falsy）。漏洞矩阵：
+  - `Infinity || 0` = `Infinity`（truthy → `bucket += Infinity` → bucket 变 Infinity）
+  - `"5" || 0` = `"5"`（truthy → `bucket += "5"` → bucket 误接受脏数据变 5）
+  - `"abc" || 0` = `"abc"`（truthy → `bucket += "abc"` → bucket 变 NaN）
+  - `NaN || 0` = `0`（NaN 视为 falsy，恰好兜住——但语义脆弱）
+  - `{}` / `[]` / `true` 同样 truthy 直传 → 桶污染成 NaN / 数值串接
+
+  修复：新增 `toFiniteNumber(value) = typeof value === 'number' && Number.isFinite(value) ? value : 0`，对所有 token 字段（inputTokens / outputTokens / cacheReadTokens / cacheWriteTokens / reasoningTokens）统一收敛。
+
+- **`typeof event.time === 'number'` 守卫对 NaN / Infinity 失效**：v0.3.6 在 `assistant/message` / `lastTs` 用了 `typeof event.time === 'number'`，但 NaN / Infinity 的 typeof 都是 `'number'`（历史 JS 设计）。后果：
+  - NaN 事件穿透守卫 → `beijingDayKey(NaN)` → `new Date(NaN).toISOString().slice(0,10)` = `"Invalid Da"`，污染按日 / 按小时 / 按分钟三粒度
+  - Infinity 事件穿透守卫 → `new Date(Infinity).toISOString()` = `"Invalid Date"`
+  - tool/call `event.time != null` 对 NaN / Infinity 都判 true → pendingCalls 落 NaN → `(NaN - dispatched) = NaN` → `Math.max(0, NaN) = NaN` → toolMs / 工具耗时被污染
+  - step/start 的 `openStep.time = event.time` 直存 NaN → llmMs 计算产生 NaN 让 UI 显示 "NaN ms"
+
+  修复：所有数字入口收敛到 `Number.isFinite(event.time)` 守卫 + `toFiniteNumber(event.time)` 兜底。覆盖 6 处：
+  - lastTs 跟踪
+  - assistant/message usage 写入（守卫 + day 桶 + 小时桶 + 分钟桶）
+  - step/start.openStep.time
+  - tool/call pendingCalls 落库条件
+  - tool/result.elapsed
+  - assistant/message llmMs 增量
+
+### 兼容性
+
+- 客户端无变更（仅 host 端聚合硬化）
+- 行为变化：之前会被污染成 NaN / Infinity 的脏数据，现在收敛为 0（host 输出 `totals.inputTokens` 等字段对脏事件**不再反映**，这是预期——v0.3.6 的设计原则就是不让脏事件污染真实数据）
+- `CACHE_VERSION` 不变（仍 v5）—— v0.3.6 的老缓存结构未改，无需作废重算
+
+### 验证
+
+- `tests/test-add-usage-harden.mjs`：29 项新增硬化测试全过（覆盖 NaN / Infinity / -Infinity / "abc" / "5" / null / undefined / {} / [] / true 在所有 5 个 token 字段 + 6 处时间入口的污染防御；以及正常数字 / 负数 / 浮点 / 零不被误杀）
+- `tests/audit-repro.mjs`：14 项 v0.3.6 audit 复现全过（确认未退化）
+- `tests/smoke.mjs`：client bundle 渲染路径 PASS
+- `node --check lib/index.js` / `node --check lib/client.js`：均通过
+- `npm run verify:client`：DIFFERS（预期，banner 仅追加 v0.3.7 注释段，bundle 净增 1215 字节纯注释，无功能变更）
+
+---
+
 ## [0.3.6] - 2026-09-05
 
 ### 修复

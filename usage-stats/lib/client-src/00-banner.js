@@ -67,4 +67,21 @@
  *   (d) assistant/message 缺 event.time 时不进任何时间粒度桶，避免污染
  *       1970-01-01 的按日 / 按小时 / 按分钟三组数据。
  *   客户端无变更，但 bundle 仍走 build-client.cjs 重新生成以保持字节同步。
+ *
+ * v0.3.7 host 半段数字硬化（lib/index.js）：
+ *   收敛所有数字入口到 toFiniteNumber(value) — 仅在 value 是有限 number 时
+ *   返回原值；NaN / Infinity / -Infinity / 字符串 / null / undefined / 对象
+ *   / 数组 / boolean 一律返回 0。修复 v0.3.6 残留的两个漏洞：
+ *   (a) `usage.X || 0` 只挡 undefined / null / 0 / ""；对 Infinity / "abc"
+ *       / "5" / NaN(侥幸) 仍有污染路径（Infinity 直传 → bucket 变 Infinity；
+ *       "abc" → NaN；"5" → 误接受脏数据）。
+ *   (b) `typeof event.time === 'number'` 守卫对 NaN / Infinity 都判 true
+ *       （typeof 都返回 'number'），让 beijingDayKey(NaN) → "Invalid Da" 污染
+ *       按日 / 按小时 / 按分钟桶；toolMs / llmMs 计算产生 NaN 让 UI 显示
+ *       "NaN ms"。
+ *   应用范围：addUsage 所有 token 字段 + assistant/message 的 usage 写入守卫
+ *   + step/start.openStep.time + tool/call.pendingCalls 落库条件
+ *   + tool/result.elapsed + assistant/message llmMs 增量 + lastTs 跟踪。
+ *   客户端无变更（纯 host 端聚合硬化），bundle 仍走 build-client.cjs 重新生成
+ *   以保持 banner 注释字节同步。
  */

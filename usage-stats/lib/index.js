@@ -118,12 +118,34 @@ function emptyBucket() {
   return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, requests: 0 }
 }
 
+/**
+ * 把任意输入安全收敛为有限数字：number + Number.isFinite → 原值；
+ * 其他（NaN / Infinity / -Infinity / 字符串 / null / undefined / 对象 / 数组）一律返回 0。
+ *
+ * v0.3.7 新增：v0.3.6 的 `usage.X || 0` 只挡 undefined / null / 0 / ""，
+ * 对 `Infinity` / `NaN` / `"abc"` / `"5"` 等仍会污染 bucket——具体：
+ * - `NaN || 0` = `0`（NaN 视为 falsy，恰好兜住）
+ * - `Infinity || 0` = `Infinity`（truthy，直传 → bucket 变 Infinity）
+ * - `"5" || 0` = `"5"`（truthy → `bucket += "5"` → bucket 变 5，副作用：误接受脏数据）
+ * - `"abc" || 0` = `"abc"`（truthy → bucket 变 NaN）
+ *
+ * 同样地，v0.3.6 的 `typeof event.time === 'number'` 守卫对 `NaN` / `Infinity`
+ * 都判 true（typeof 都返回 'number'），让 NaN 事件穿透守卫去污染按日 / 按小时 /
+ * 按分钟桶（`beijingDayKey(NaN)` → `"Invalid Da"` / `new Date(Infinity).toISOString()` →
+ * `"Invalid Date"`），让 toolMs / llmMs 计算产生 NaN 让 UI 显示成 "NaN ms"。
+ *
+ * 收敛所有数字入口到 toFiniteNumber()，与上游 DSH session schema drift 隔离。
+ */
+function toFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
 function addUsage(bucket, usage) {
-  bucket.inputTokens += usage.inputTokens || 0
-  bucket.outputTokens += usage.outputTokens || 0
-  bucket.cacheReadTokens += usage.cacheReadTokens || 0
-  bucket.cacheWriteTokens += usage.cacheWriteTokens || 0
-  bucket.reasoningTokens += usage.reasoningTokens || 0
+  bucket.inputTokens += toFiniteNumber(usage.inputTokens)
+  bucket.outputTokens += toFiniteNumber(usage.outputTokens)
+  bucket.cacheReadTokens += toFiniteNumber(usage.cacheReadTokens)
+  bucket.cacheWriteTokens += toFiniteNumber(usage.cacheWriteTokens)
+  bucket.reasoningTokens += toFiniteNumber(usage.reasoningTokens)
   bucket.requests += 1
 }
 
@@ -172,7 +194,7 @@ export function aggregateSession(events) {
   let lastTs = null
 
   for (const event of events) {
-    if (typeof event.time === 'number' && event.time > (lastTs ?? 0)) lastTs = event.time
+    if (Number.isFinite(event.time) && event.time > (lastTs ?? 0)) lastTs = event.time
     switch (event.type) {
       case 'session':
         meta.id = event.id ?? meta.id
@@ -200,17 +222,24 @@ export function aggregateSession(events) {
         break
       }
       case 'step/start':
-        openStep = { turn: event.data?.turn, step: event.data?.step, time: event.time }
+        // v0.3.7：openStep.time 收敛为有限数字。原始 event.time 是 NaN 时，
+        // 后续 `(event.time ?? 0) - openStep.time` 仍可能产生 NaN（取决于
+        // assistant/message 的 event.time），所以这一步只防御 step/start 自身，
+        // llmMs 计算再走 toFiniteNumber(event.time) 二次防御。
+        openStep = { turn: event.data?.turn, step: event.data?.step, time: toFiniteNumber(event.time) }
         break
       case 'assistant/message': {
         const usage = event.data?.usage
-        // 必须同时有 usage 与 number time 才能归属到任何桶：
+        // 必须同时有 usage 与有限数字 time 才能归属到任何桶：
         //  - 缺 time 时 `beijingDayKey(event.time ?? 0)` 会落到 `1970-01-01`
         //    污染按日 / 按小时 / 按分钟三个粒度的真实数据（历史上累积几个无
         //    time 的事件就能把"今天用了 0 token"显示成"1970-01-01 用了 N token"）。
-        // 修复方式：缺 time 的事件直接不写入任何桶，但 llmMs 计算仍允许
-        // （用 `?? 0` 不会让 llmMs 变成负数）。
-        if (usage != null && typeof event.time === 'number') {
+        //  - NaN / Infinity 时间（typeof 仍是 number）会让 `beijingDayKey(NaN)` →
+        //    `"Invalid Da"` / `new Date(Infinity).toISOString()` → `"Invalid Date"`
+        //    污染同三个粒度。v0.3.7 守卫用 Number.isFinite。
+        // 修复方式：time 非有限数字的事件不写入任何桶，但 llmMs 计算仍允许
+        // （用 toFiniteNumber 兜底不会让 llmMs 变成 NaN）。
+        if (usage != null && Number.isFinite(event.time)) {
           addUsage(bucketOf(models, currentModel), usage)
           const day = beijingDayKey(event.time)
           addUsage(bucketOf(days, day), usage)
@@ -226,7 +255,9 @@ export function aggregateSession(events) {
           addUsage(bucketOf(modelMinutes, currentModel + "|" + minuteKey), usage)
         }
         if (openStep != null && openStep.turn === event.data?.turn && openStep.step === event.data?.step) {
-          llmMs += Math.max(0, (event.time ?? 0) - openStep.time)
+          // v0.3.7：openStep.time 已是有限数字；event.time 仍可能 NaN → 用
+          // toFiniteNumber 二次防御，确保 llmMs 不会因 NaN 污染。
+          llmMs += Math.max(0, toFiniteNumber(event.time) - openStep.time)
           openStep = null
         }
         break
@@ -241,7 +272,10 @@ export function aggregateSession(events) {
         // 把别人的耗时算到错误工具的 ms 上。
         if (callId != null) {
           callNames.set(callId, name)
-          if (event.time != null) pendingCalls.set(callId, event.time)
+          // v0.3.7：`event.time != null` 挡不住 NaN / Infinity（NaN != null = true；
+          // Infinity != null = true），会让 tool/result 配对时 `(event.time ?? 0) - dispatched`
+          // 产生 NaN 把 toolMs / 工具耗时污染成 NaN。这里要求 time 是有限数字才落 pendingCalls。
+          if (Number.isFinite(event.time)) pendingCalls.set(callId, event.time)
         }
         break
       }
@@ -250,7 +284,9 @@ export function aggregateSession(events) {
         const dispatched = pendingCalls.get(callId)
         if (dispatched !== undefined) {
           pendingCalls.delete(callId)
-          const elapsed = Math.max(0, (event.time ?? 0) - dispatched)
+          // v0.3.7：toFiniteNumber 防御 event.time = NaN 时 elapsed 变 NaN，
+          // 进而 toolMs / 工具耗时被 NaN 污染。
+          const elapsed = Math.max(0, toFiniteNumber(event.time) - dispatched)
           toolMs += elapsed
           toolBucketOf(tools, callNames.get(callId) ?? 'unknown').ms += elapsed
           callNames.delete(callId)
