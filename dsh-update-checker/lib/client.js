@@ -128,6 +128,13 @@ window.__ModuleLoader__.load({
       var confirmUpdate = confirmState[0];
       var setConfirmUpdate = confirmState[1];
 
+      // 用 useLayoutEffect 而非 useEffect：在浏览器绘制前同步执行，确保 HMR
+      // 把 <style> 移除后下一次 render 仍能拿到 CSS，不会出现"只留下字"的裸态。
+      // injectCss 内部已带幂等检查（querySelector 命中即 return），重复调用零成本。
+      React.useLayoutEffect(function () {
+        injectCss();
+      }, []);
+
       function applySnapshot(d) {
         if (!d || !d.ok) {
           setS(function (old) {

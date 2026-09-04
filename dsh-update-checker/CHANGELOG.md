@@ -8,8 +8,12 @@
 
 ### 新增
 
-- **dsh 命令 shim 自动保护**：升级前快照 `dsh.cmd` 路径与内容 sha256；升级后若发现 shim 丢失（Windows 上 npm 全局安装"删旧包 → 解压新包 → 生成新 shim"三步之间的窗口期被打断的典型表现），自动重跑 `npm install -g @deepseek-ai/dsh@latest` 最多 2 次（连同主调用合计 1 + 2 次尝试）。
+- **dsh 命令 shim 自动保护**：升级前快照 `dsh.cmd` 路径与内容 sha256；升级后若发现 shim 丢失（Windows 上 npm 全局安装"删旧包 → 解包新包 → 生成新 shim"三步之间的窗口期被打断的典型表现），自动重跑 `npm install -g @deepseek-ai/dsh@latest` 最多 2 次（连同主调用合计 1 + 2 次尝试）。
 - **分级提示**：升级完成后根据 shim 校验结果显示三类提示——`完整 / 已自动恢复 / 丢失需手动修复`，对应不同的样式（绿 / 黄警告 / 红警告）。
+
+### 修复
+
+- **UI 偶尔"只留下字"的裸态**：DSH 默认启用 client bundle HMR 轮询（500ms stat-poll，`dsh-client-hmr`）；当 `dsh-update-checker` 自身或相邻文件的 mtime 因编辑 / AV 扫描等抖动时，HMR 链路会按 `data-plugin` 属性移除本插件注入的 `<style>`。移除瞬间到下次 React 渲染之间出现一个窗口——表现为更新栏目只剩纯文本、卡片 / 按钮 / 边框全没。修法：把 `injectCss()` 放进 `UpdatePage` 的 `useLayoutEffect`，在浏览器绘制前同步重新注入；`apply()` 中的首调保留作为兜底，双重保证。
 
 ### 变更
 
