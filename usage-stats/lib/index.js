@@ -773,9 +773,29 @@ export function apply(ctx) {
     .then((c) => { cache = c })
     .catch(() => {})
 
+  // v0.4.0.3：plugin 自己 cache framework `listSessions()` 结果。
+  // 原因：framework listSessions 走 dsh-session-persistence-jsonl/lib/index.js:1125
+  // `listArtifacts()`，对每个 session 调 `readFirstZstdLine`（zstd 解压第一个
+  // frame）取 header 第一行——437 sessions × ~70ms / zstd frame = 30+ 秒 / 次。
+  // plugin 每次 summary 都调 listSessions = 用户每次刷新都等 30s。修法：
+  //   - 第一次（force / cache miss / 启动）调一次 listSessions 写入 module cache
+  //   - 之后 summary 复用 module cache records（in-memory，< 1ms）
+  //   - 强制重算（force=true）跳过 cache 重新 list——用户显式触发可接受 30s
+  //   - records 是 SessionRecord 引用（已结构化克隆），不可变，跨调用复用安全
+  let recordsCache = null // SessionRecord[] | null
+  let recordsCacheForce = false // 上次是不是 force 写的（用于 telemetry）
+
+  async function getRecords(force) {
+    if (force || recordsCache === null) {
+      recordsCache = await ctx.sessionQuery.listSessions()
+      recordsCacheForce = force
+    }
+    return recordsCache
+  }
+
   async function buildSummary(force) {
     const startedAt = Date.now()
-    const records = await ctx.sessionQuery.listSessions()
+    const records = await getRecords(force)
     const aggs = []
     const errors = []
     let decoded = 0
