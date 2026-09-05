@@ -27,6 +27,15 @@
       inputBarSoft: "rgba(59,130,246,0.12)",
       outputBar: "#f59e0b",
       outputBarSoft: "rgba(245,158,11,0.12)",
+      // v0.4.1：5 段堆叠柱状图扩展色（每根柱代表 5 类 token 的真实占比，
+      // 比 v0.3.0 的"input+output 双段"信息密度 ×2.5）。
+      //   cacheWriteBar  cacheReadBar  inputBar  outputBar  reasoningBar
+      //   #93c5fd        #60a5fa       #3b82f6   #f59e0b   #fbbf24
+      // 梯度方向：cacheWrite（最便宜）→ reasoning（最贵），bottom→top。
+      // 严控色板：5 个都是 tailwindcss 调色板的相邻色阶，色相不跳。
+      cacheWriteBar: "#93c5fd",
+      cacheReadBar: "#60a5fa",
+      reasoningBar: "#fbbf24",
       // 峰值强调色（rose，独立于蓝/橙，peak day 视觉跳出）
       peakLine: "#e11d48",
       peakText: "#be123c",
@@ -127,11 +136,15 @@
       heatmapMonthRow: { display: "flex", fontSize: "10px", color: C.heatmapLabel, marginBottom: "4px", letterSpacing: "0.02em", height: "12px" },
       heatmapMonthCell: { position: "absolute", fontSize: "10px", color: C.heatmapLabel },
       heatmapBodyRow: { display: "flex" },
-      heatmapDowCol: { display: "flex", flexDirection: "column", gap: "2px", paddingRight: "4px" },
-      heatmapDowLabel: { height: "11px", fontSize: "10px", color: C.heatmapLabel, textAlign: "right", lineHeight: "11px" },
-      heatmapGrid: { display: "flex", gap: "2px" },
-      heatmapWeekCol: { display: "flex", flexDirection: "column", gap: "2px" },
-      heatmapCell: { width: "11px", height: "11px", borderRadius: "2px", background: C.heatmapL0, border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box", cursor: "default" },
+      heatmapDowCol: { display: "flex", flexDirection: "column", gap: "1px", paddingRight: "4px" },
+      // v0.4.1：dow 标签高度从 11→9 同步缩，与 heatmapCell 9px 对齐（不缩会让行错位）
+      heatmapDowLabel: { height: "9px", fontSize: "10px", color: C.heatmapLabel, textAlign: "right", lineHeight: "9px" },
+      heatmapGrid: { display: "flex", gap: "1px" },
+      heatmapWeekCol: { display: "flex", flexDirection: "column", gap: "1px" },
+      // v0.4.1：cell 11×11 + gap 2 缩到 9×9 + gap 1（视觉密度约 +20%）。
+      // 53 周宽度从 689px → 530px，配合右侧栏腾出空间；保留 border-radius 2 让
+      // 单元格仍然像"色块"而不是像素点。
+      heatmapCell: { width: "9px", height: "9px", borderRadius: "2px", background: C.heatmapL0, border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box", cursor: "default" },
       heatmapCellL1: { background: C.heatmapL1 },
       heatmapCellL2: { background: C.heatmapL2 },
       heatmapCellL3: { background: C.heatmapL3 },
@@ -139,7 +152,8 @@
       heatmapCellL5: { background: C.heatmapL5 },
       heatmapCellL6: { background: C.heatmapL6 },
       heatmapCellL7: { background: C.heatmapL7 },
-      heatmapScaleCell: { width: "11px", height: "11px", borderRadius: "2px", border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box" },
+      // v0.4.1：图例单元同步缩到 9×9（与 heatmapCell 一致）
+      heatmapScaleCell: { width: "9px", height: "9px", borderRadius: "2px", border: "1px solid " + C.heatmapCellBorder, boxSizing: "border-box" },
       heatmapModelBar: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", fontSize: "11px", color: C.text2 },
       heatmapModelSelect: { padding: "3px 8px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: "inherit", cursor: "pointer", fontVariantNumeric: "tabular-nums" },
       heatmapEmpty: { fontSize: "11px", color: C.text3, padding: "16px 0" }

@@ -10,12 +10,26 @@
     }
 
     /**
-     * 用量柱状图（v0.3.0 多粒度）：按 granularity（day / hour / minute / week）渲染。
+     * 用量柱状图（v0.3.0 多粒度；v0.4.1 5 段堆叠）。
+     *
      * 输入 buckets 是 byTrend[granularity] 子集（零填充过的窗口序列）。
-     * 每桶一根柱，输出（橙）堆在输入（蓝）之上。minute 模式 N=1440 时容器
-     * 设 overflow-x: auto 让用户横向滚动；其它模式 wrap。
-     * X 轴标签按 granularity 用 fmtBucket 格式化（MM-DD / MM-DD HH / MM-DD HH:mm / 周一日期）。
-     * 峰值 / today 竖线 / 网格 / 4 条参考线 / 摘要脚注 行为同 v0.2.1。
+     *
+     * v0.4.1 改造：每根柱从 v0.3.0 的 2 段堆叠（input 蓝 + output 橙）
+     * 升级为 5 段堆叠，按"色温从冷到暖"自底向上：
+     *   1. cacheWrite  #93c5fd  最便宜
+     *   2. cacheRead   #60a5fa  折扣
+     *   3. inputMiss   #3b82f6  全价输入
+     *   4. output      #f59e0b  输出（不含推理）
+     *   5. reasoning   #fbbf24  推理（output 的子集，黄色封顶）
+     *
+     * 数学约定：reasoning 是 output 的子集，所以 output 段高度 = max(0, output - reasoning)。
+     * 这样 5 段总高 = cacheWrite + cacheRead + inputMiss + (output - reasoning) + reasoning
+     *             = cacheWrite + cacheRead + inputMiss + output
+     *             = totalTokensOf()（不重复算 reasoning）。
+     *
+     * minute 模式 N=1440 时容器设 overflow-x: auto 让用户横向滚动；其它模式 wrap。
+     * 柱宽相对 v0.3.0 收紧：minute 3→2 / hour 8→6 / day|week 22→18。
+     * peak 用 input+output+cacheRead+cacheWrite 全量（不含 reasoning 避免双计）。
      */
     function DayChart(buckets, granularity) {
       var N = buckets.length;
@@ -26,16 +40,26 @@
           "当前范围无用量。"
         );
       }
+      // v0.4.1：peak 用 totalTokensOf 等价口径——cacheWrite + cacheRead + inputMiss + output，
+      // 排除 reasoning（reasoning ⊂ output，避免峰值与 output 段双计）。
       var max = 0;
       var peakIdx = -1;
       var totalInput = 0;
       var totalOutput = 0;
+      var totalCacheRead = 0;
+      var totalCacheWrite = 0;
+      var totalReasoning = 0;
       for (var i = 0; i < N; i++) {
         var di = buckets[i];
-        var tot = di.inputTokens + di.outputTokens;
+        // reasoning 限制在 output 以内（防御性：极少有 provider 报 reasoning > output）
+        var outMinusReason = Math.max(0, (di.outputTokens || 0) - Math.min(di.outputTokens || 0, di.reasoningTokens || 0));
+        var tot = (di.cacheWriteTokens || 0) + (di.cacheReadTokens || 0) + (di.inputTokens || 0) + outMinusReason;
         if (tot > max) { max = tot; peakIdx = i; }
         totalInput += di.inputTokens || 0;
         totalOutput += di.outputTokens || 0;
+        totalCacheRead += di.cacheReadTokens || 0;
+        totalCacheWrite += di.cacheWriteTokens || 0;
+        totalReasoning += di.reasoningTokens || 0;
       }
       if (max === 0) {
         return React.createElement(
@@ -44,8 +68,9 @@
           "当前范围 " + N + " 桶无用量。"
         );
       }
-      // 自适应柱宽（minute 极窄 / hour 中等 / day/week 较宽）+ 总容器宽度由 N 算
-      var pxPerBar = granularity === "minute" ? 3 : (granularity === "hour" ? 8 : 22);
+      // v0.4.1：柱宽收紧（minute 3→2 / hour 8→6 / day|week 22→18）。原宽度下日级 30 桶已
+      // 占满 600+ 像素并触发横向滚动；5 段堆叠后视觉密度更高，柱宽略收反而更易扫读。
+      var pxPerBar = granularity === "minute" ? 2 : (granularity === "hour" ? 6 : 18);
       var totalWidth = N * pxPerBar + (N - 1) * 2;
       var todayIdx = N - 1;
       var todayCenter = ((todayIdx + 0.5) / N) * 100;
@@ -58,14 +83,23 @@
       function showAxis(i) {
         return (i % axisStep === 0) || i === todayIdx;
       }
-      var peakLabel = "峰值 " + fmtTokens(buckets[peakIdx].inputTokens + buckets[peakIdx].outputTokens) +
+      var peakOutMinusReason = Math.max(0, (buckets[peakIdx].outputTokens || 0) - Math.min(buckets[peakIdx].outputTokens || 0, buckets[peakIdx].reasoningTokens || 0));
+      var peakTotal = (buckets[peakIdx].cacheWriteTokens || 0) + (buckets[peakIdx].cacheReadTokens || 0) + (buckets[peakIdx].inputTokens || 0) + peakOutMinusReason;
+      var peakLabel = "峰值 " + fmtTokens(peakTotal) +
         " · " + fmtBucket(bucketKey(buckets[peakIdx]), granularity);
       return React.createElement(
         "div",
         { style: s.chartSection },
+        // v0.4.1：图例 5 色（与 5 段堆叠一一对应）
         React.createElement(
           "div",
           { style: s.chartLegend },
+          React.createElement(
+            "span",
+            { style: { display: "inline-flex", alignItems: "center", gap: "6px" } },
+            React.createElement("span", { style: { display: "inline-block", width: "10px", height: "3px", background: C.reasoningBar, borderRadius: "1px" } }),
+            "推理"
+          ),
           React.createElement(
             "span",
             { style: { display: "inline-flex", alignItems: "center", gap: "6px" } },
@@ -76,9 +110,21 @@
             "span",
             { style: { display: "inline-flex", alignItems: "center", gap: "6px" } },
             React.createElement("span", { style: { display: "inline-block", width: "10px", height: "3px", background: C.inputBar, borderRadius: "1px" } }),
-            "输入"
+            "未命中"
           ),
-          React.createElement("span", { style: s.chartLegendHint }, "悬停查看缓存读 / 推理 / 请求数 · " + (granularity || "day") + " · " + N + " 桶")
+          React.createElement(
+            "span",
+            { style: { display: "inline-flex", alignItems: "center", gap: "6px" } },
+            React.createElement("span", { style: { display: "inline-block", width: "10px", height: "3px", background: C.cacheReadBar, borderRadius: "1px" } }),
+            "命中"
+          ),
+          React.createElement(
+            "span",
+            { style: { display: "inline-flex", alignItems: "center", gap: "6px" } },
+            React.createElement("span", { style: { display: "inline-block", width: "10px", height: "3px", background: C.cacheWriteBar, borderRadius: "1px" } }),
+            "缓存写"
+          ),
+          React.createElement("span", { style: s.chartLegendHint }, "悬停查看明细 · " + (granularity || "day") + " · " + N + " 桶")
         ),
         React.createElement(
           "div",
@@ -98,17 +144,45 @@
             { style: Object.assign({}, s.chartBarsRow, { width: totalWidth + "px" }) },
             buckets.map(function (b, i) {
               var k = bucketKey(b);
+              // v0.4.1：5 段堆叠。outputMinusReason = output - min(output, reasoning)
+              // 保证 reasoning 不超过 output（防御性），5 段总高与 totalTokensOf 一致。
+              var safeOut = b.outputTokens || 0;
+              var safeReas = Math.min(b.reasoningTokens || 0, safeOut);
+              var outputMinusReason = Math.max(0, safeOut - safeReas);
+              // v0.4.1：tooltip 包含全部 5 段 token + 请求数（之前只显示 input/output + cacheRead/reasoning）
               var title = k +
-                " · 输入 " + fmtTokens(b.inputTokens) +
-                " · 输出 " + fmtTokens(b.outputTokens) +
-                "\n缓存读 " + fmtTokens(b.cacheReadTokens) +
-                " · 推理 " + fmtTokens(b.reasoningTokens) +
-                " · 请求 " + b.requests + " 次";
+                "\n未命中 " + fmtTokens(b.inputTokens || 0) +
+                " · 命中 " + fmtTokens(b.cacheReadTokens || 0) +
+                " · 缓存写 " + fmtTokens(b.cacheWriteTokens || 0) +
+                "\n输出 " + fmtTokens(b.outputTokens || 0) +
+                " · 推理 " + fmtTokens(b.reasoningTokens || 0) +
+                "\n请求 " + (b.requests || 0) + " 次";
               return React.createElement(
                 "div",
-                { key: k, title: title, style: Object.assign({}, s.chartBar, { width: pxPerBar + "px" }) },
-                React.createElement("div", { style: Object.assign({}, s.chartBarOut, { height: hPx(b.outputTokens) + "px", background: C.outputBar }) }),
-                React.createElement("div", { style: Object.assign({}, s.chartBarIn, { height: hPx(b.inputTokens) + "px", background: C.inputBar }) })
+                // v0.4.1：override s.chartBar 的 minWidth 4px——minute 模式 pxPerBar=2 时
+                // 4px 会把柱撑到 4px 宽，破坏"柱宽收缩"的密度提升。minWidth 跟 width 走。
+                { key: k, title: title, style: Object.assign({}, s.chartBar, { width: pxPerBar + "px", minWidth: pxPerBar + "px" }) },
+                // DOM 顺序 = 自顶向下（flex-direction: column），故 5 段渲染顺序：
+                //   1. reasoning（顶部、黄色封顶、s.chartBarOut 给 top border-radius）
+                //   2. output - reasoning（橙色）
+                //   3. inputMiss（蓝色）
+                //   4. cacheRead（浅蓝）
+                //   5. cacheWrite（最浅蓝，底部）
+                React.createElement("div", {
+                  style: Object.assign({}, s.chartBarOut, { height: hPx(safeReas) + "px", background: C.reasoningBar })
+                }),
+                React.createElement("div", {
+                  style: Object.assign({}, s.chartBarIn, { height: hPx(outputMinusReason) + "px", background: C.outputBar })
+                }),
+                React.createElement("div", {
+                  style: Object.assign({}, s.chartBarIn, { height: hPx(b.inputTokens || 0) + "px", background: C.inputBar })
+                }),
+                React.createElement("div", {
+                  style: Object.assign({}, s.chartBarIn, { height: hPx(b.cacheReadTokens || 0) + "px", background: C.cacheReadBar })
+                }),
+                React.createElement("div", {
+                  style: Object.assign({}, s.chartBarIn, { height: hPx(b.cacheWriteTokens || 0) + "px", background: C.cacheWriteBar })
+                })
               );
             })
           )
@@ -121,7 +195,8 @@
             var isToday = i === todayIdx;
             return React.createElement("div", {
               key: k,
-              style: Object.assign({}, isToday ? s.chartAxisToday : s.chartAxis, { width: pxPerBar + "px" }),
+              // v0.4.1：override minWidth 4px 同步（同柱体注释）
+              style: Object.assign({}, isToday ? s.chartAxisToday : s.chartAxis, { width: pxPerBar + "px", minWidth: pxPerBar + "px" }),
               title: k
             }, showAxis(i) ? axisLabel(b) : "");
           })
@@ -129,8 +204,12 @@
         React.createElement(
           "div",
           { style: s.chartSummary },
-          React.createElement("span", { style: s.chartSummaryTotal }, "总量 ", fmtTokens(totalInput + totalOutput)),
+          // v0.4.1：总量改成 totalTokensOf 等价口径（input + output + cacheRead + cacheWrite；
+          // reasoning 不重复算）。同时把 cacheRead 单独提一行，让用户能直接看到"命中"的节省量。
+          React.createElement("span", { style: s.chartSummaryTotal }, "总量 ", fmtTokens(totalInput + totalOutput + totalCacheRead + totalCacheWrite)),
           React.createElement("span", null, "输出 ", React.createElement("span", { style: { color: C.accent, fontWeight: 600 } }, fmtTokens(totalOutput))),
+          React.createElement("span", { style: { color: C.cacheReadBar } }, "命中 ", fmtTokens(totalCacheRead)),
+          React.createElement("span", { style: { color: C.text3 } }, "推理 ", fmtTokens(totalReasoning)),
           React.createElement("span", { style: s.chartSummaryPeak }, peakLabel)
         )
       );
@@ -298,8 +377,10 @@
       }
 
       // 月份行（absolute 定位到 grid 上方，与周列同左对齐）
-      var weekColWidth = 11; // cell width
-      var weekGap = 2;
+      // v0.4.1：weekColWidth / weekGap 同步缩小（11/2 → 9/1，与 s.heatmapCell / s.heatmapWeekCol 一致）。
+      // 这两个常量之前硬编码 11/2（与 styles 解耦），不跟着缩会让月份标签与列错位。
+      var weekColWidth = 9;
+      var weekGap = 1;
       var weekStride = weekColWidth + weekGap;
       var monthRowNodes = monthLabels.map(function (ml) {
         return React.createElement(

@@ -4,6 +4,46 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.1] - 2026-09-05
+
+### 变更
+
+#### 客户端：图表视觉密度提升
+
+用户反馈 v0.4.0 的图表"看起来比较稀疏"——柱状图每根柱只用 input + output 两段（5 个 token 字段只用 2 个颜色），热力图 cell 11×11 + gap 2 也偏松。v0.4.1 把图表信息密度提升一档：
+
+- **柱状图（`DayChart`）5 段堆叠**：每根柱从底向上叠 5 段，按"色温从冷到暖"梯度：
+  - `cacheWrite` `#93c5fd`（最便宜）
+  - `cacheRead` `#60a5fa`（折扣）
+  - `inputMiss` `#3b82f6`（全价）
+  - `output` `#f59e0b`（生成）
+  - `reasoning` `#fbbf24`（推理，黄色封顶）
+
+  数学约定：reasoning ⊂ output，所以 `output 段高 = max(0, output - reasoning)`——5 段总高 = `cacheWrite + cacheRead + inputMiss + output` = `totalTokensOf()`，不重复算 reasoning（防御性 `Math.min(reasoning, output)` 兜底 provider 报异常）。
+
+- **柱宽收紧**：minute 3→2 / hour 8→6 / day|week 22→18；同步 override `s.chartBar` 的 `minWidth: 4px` → 跟随 `pxPerBar`，否则 minute 模式柱宽被 minWidth 撑回 4px。
+- **图例**：4 项 → 5 项（推理 / 输出 / 未命中 / 命中 / 缓存写）。
+- **tooltip**：原来只显示 input/output + cacheRead/reasoning；现在 5 项全显示（未命中 · 命中 · 缓存写 · 输出 · 推理）+ 请求数。
+- **峰值 / 摘要**：peakTotal / chartSummary 总量都改走 totalTokensOf 等价口径（`input + output + cacheRead + cacheWrite`），不再少算 cacheRead。chartSummary 多一行 "命中" + "推理"。
+- **热力图（`HeatmapCalendar`）cell 缩 11→9 + gap 2→1**：53 周宽度 689px → 530px，密度 +20%。同步：
+  - `s.heatmapCell` 11×11 → 9×9
+  - `s.heatmapScaleCell`（图例单元）同步
+  - `s.heatmapdowLabel` height 11→9（行错位防护）
+  - `s.heatmapGrid` / `s.heatmapWeekCol` gap 2→1
+  - `HeatmapCalendar` 内硬编码 `weekColWidth=11 / weekGap=2` → 9 / 1（月份标签 left 坐标要跟着 stride 走）
+
+#### 未变
+
+- **host 半段零改动**：`lib/index.js` 0 字节 diff。
+- **缓存协议零改动**：`CACHE_VERSION` 仍 7，v0.4.0 cache 文件继续可用。
+- **client 字节**：69290 → 75879（+6589 / +9.5%）。增量全部来自 5 段堆叠 + 图例 + tooltip + 热力图缩小。
+
+### 兼容性
+
+- **DSH 版本要求不变**：DSH 0.1.2-rc.1+。
+- **客户端 → 老 host 兼容**：v0.4.1 客户端在 v0.4.0 host 下仍正常工作（payload schema 未变，5 个 token 字段 v0.4.0 已经输出）。
+- **老 client → v0.4.1 host 兼容**：v0.4.0 客户端在 v0.4.1 host 下仍正常工作（payload schema 不变）。
+
 ## [0.4.0] - 2026-09-05
 
 ### 变更
