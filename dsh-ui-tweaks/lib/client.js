@@ -1,6 +1,36 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.3：设置页开关去边框——回归 v0.5.1 之前的「圆圆的」pill 形态
+ *
+ *   用户反馈：现在开关「都有一点方圆的」，更喜欢之前「圆圆的」那种。
+ *
+ *   根因：v0.6.0 给 `.DTPD_switch` 加了 `border:1px solid var(--dsw-alias-border-l2,#94a3b8)`，
+ *   在 22px 高的 pill 上绕一圈 1px 灰边，pill 的「圆」被边线削弱，视觉上偏「方圆」。
+ *   v0.5.1 之前（v0.2.0–v0.5.x）没有这条 border，pill 看起来是纯色椭圆，跟用户记忆中
+ *   的「圆圆的」一致。
+ *
+ *   修法：去掉 `border:1px solid ...` 这一段，其它所有属性（width:36px / height:22px /
+ *   border-radius:999px / thumb 18×18 + 50% / thumb box-shadow）保留。off 态靠
+ *   `background:var(--dsw-alias-bg-component-disabled,#cbd5e1)` 的 fallback 颜色
+ *   （亮色主题 `#cbd5e1` 浅灰 / 暗色主题走 var 解析值）保持可见，不依赖 border
+ *   兜底——v0.5.1 之前就是这个状态，本来就够清晰。
+ *
+ *   兼容性：tweak id / localStorage key / 类名 / 调试 API / 设置页 UI 全部不动；
+ *   只改 `35-styles.js` SECTION_CSS 的 `.DTPD_switch` 一行（删掉 border 声明）。
+ *   老用户开关状态保留。
+ *
+ *   诊断：浏览器 DevTools inspect 设置页开关元素，Computed 面板 `border` 应是
+ *   `medium none currentcolor`（无 border），`border-radius` 仍是 `999px`；
+ *   pill 形态与 v0.5.1 之前一致。
+ *
+ *   改动文件：`lib/client-src/35-styles.js`（删 `.DTPD_switch` 的 `border:1px solid ...`，
+ *   SECTION_CSS JSDoc 加 v0.10.3 段）；`lib/client-src/20-constants.js`（VERSION 0.10.2
+ *   → 0.10.3 + 头部 v0.10.3 注释）；`lib/client-src/00-banner.js`（本段）；
+ *   `package.json`（version 0.10.2 → 0.10.3 + description 同步）；`CHANGELOG.md`
+ *   加 [0.10.3] 段；走 `npm run build:client` + `node --check lib/client.js`
+ *   语法校验通过。
+ *
  * v0.10.2：conversation-shift 修复两个用户反馈
  *   1) 半屏浏览器时右缩看起来很奇怪
  *   2) 新建会话界面右缩不生效
@@ -772,7 +802,11 @@ window.__ModuleLoader__.load({
         //      半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例
         //   详见 `45-chatflow-marks.js` v0.10.2 banner 段 + `25-tweaks.js` 的
         //   conversation-shift buildCSS v0.10.2 注释段。
-        var VERSION = "0.10.2";
+        // v0.10.3：去掉设置页开关的 1px solid border（v0.6.0 起加的）——
+        //   用户反馈边框让 pill 看起来「有点方圆」不够圆润，去掉后跟
+        //   v0.5.1 之前无边框版一致。off 态靠 background fallback 色（`#cbd5e1`）
+        //   保持可见，无需 border 兜底。详见 `35-styles.js` 的 v0.10.3 注释段。
+        var VERSION = "0.10.3";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -1742,6 +1776,11 @@ window.__ModuleLoader__.load({
      * v0.10.0：加 `.DTPD_select`——"多选一"tweak（首例 stats-line-position）
      * 头部右侧渲染下拉框而非开关。外观对齐已有的 `.DTPD_input` 数字框
      * （同边框 / 圆角 / 内边距 / focus 色），只是宽度按内容给个下限。
+     *
+     * v0.10.3：去掉 `.DTPD_switch` 的 `border:1px solid`（v0.6.0 起加的）——
+     * 用户反馈 1px 边框让开关看起来"有点方圆"，去掉后 pill 形态更纯净，
+     * 跟 v0.5.1 之前无边框版一致。off 态靠 background fallback 颜色
+     * （`#cbd5e1`）保持可见，无需 border 兜底。
      */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
@@ -1753,7 +1792,7 @@ window.__ModuleLoader__.load({
       ".DTPD_itemHead{flex-direction:row;justify-content:space-between;align-items:center;gap:12px;display:flex}\n" +
       ".DTPD_itemName{margin:0;font-size:14px;font-weight:500;line-height:22px}\n" +
       // v0.7.5：.DTPD_itemDesc 规则移除——description 改用 HTML title，不渲染 <p>
-      ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:36px;height:22px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
+      ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:36px;height:22px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
       ".DTPD_switch:checked{background:var(--dsw-alias-state-business-primary,#2563eb)}\n" +
       ".DTPD_switch::after{content:\"\";position:absolute;top:1px;left:1px;width:18px;height:18px;background:var(--dsw-alias-bg-layer-1,#fff);border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.18)}\n" +
       ".DTPD_switch:checked::after{transform:translateX(14px)}\n" +

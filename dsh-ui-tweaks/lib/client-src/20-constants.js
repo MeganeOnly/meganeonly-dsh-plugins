@@ -139,7 +139,11 @@
         //      半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例
         //   详见 `45-chatflow-marks.js` v0.10.2 banner 段 + `25-tweaks.js` 的
         //   conversation-shift buildCSS v0.10.2 注释段。
-        var VERSION = "0.10.2";
+        // v0.10.3：去掉设置页开关的 1px solid border（v0.6.0 起加的）——
+        //   用户反馈边框让 pill 看起来「有点方圆」不够圆润，去掉后跟
+        //   v0.5.1 之前无边框版一致。off 态靠 background fallback 色（`#cbd5e1`）
+        //   保持可见，无需 border 兜底。详见 `35-styles.js` 的 v0.10.3 注释段。
+        var VERSION = "0.10.3";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

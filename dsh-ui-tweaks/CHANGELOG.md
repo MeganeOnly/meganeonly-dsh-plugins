@@ -4,6 +4,18 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.3] - 2026-09-05
+
+### 修复
+
+- **设置页开关去边框，回归 v0.5.1 之前的「圆圆的」pill 形态**（v0.10.3）：用户反馈「现在开关都有一点方圆的，我更喜欢之前那种圆圆的」。
+  - **根因**：v0.6.0（commit `f3c3d5f` 合并 simple-mode 进 ui-tweaks 时）给 `.DTPD_switch` 加了 `border:1px solid var(--dsw-alias-border-l2,#94a3b8)`。在 22px 高的 pill 上绕一圈 1px 灰边，把 pill 的「圆」削弱，视觉上偏「方圆」（介于方形和圆形之间）。v0.5.1 之前（v0.2.0–v0.5.x）没有这条 border，pill 是纯色椭圆，跟用户记忆里的「圆圆的」一致。
+  - **修法**：去掉 `.DTPD_switch` 里的 `border:1px solid var(--dsw-alias-border-l2,#94a3b8)` 一段，其它所有属性保留：`width:36px; height:22px; background:var(--dsw-alias-bg-component-disabled,#cbd5e1); border-radius:999px`（pill 形态）+ thumb `18×18` + `border-radius:50%` + `box-shadow:0 1px 2px rgba(0,0,0,.18)`（圆点带阴影）。
+  - **off 态可见性**：off 态靠 `background:var(--dsw-alias-bg-component-disabled,#cbd5e1)` 的 fallback 颜色保持可见（亮色主题 `#cbd5e1` 浅灰 / 暗色主题走 var 解析值）。v0.6.0 加 border 时本来就不是为了兜底可见性（CSS comment 里 v0.5.1 写的是"switch 用显式颜色作为 fallback，不依赖 `--dsw-alias-bg-component-disabled`，在某些 DSH 主题下变量值接近背景色导致开关看不见"——这是 fallback 颜色的职责，不是 border 的），所以去掉 border 不影响 fallback 兜底逻辑。
+  - **兼容性**：tweak id / `choices` / localStorage key / `.DTPD_switch` 类名 / 设置页 React 组件 / 调试 API 全部不动；只改 `SECTION_CSS` 的 `.DTPD_switch` 一行（删掉 border 声明）。老用户升级后开关状态保留，关闭/开启行为零变化。
+  - **诊断**：浏览器 DevTools inspect 设置页 `.DTPD_switch` 元素，Computed 面板 `border` 应是 `medium none currentcolor`（无 border），`border-radius` 仍是 `999px`，pill 形态与 v0.5.1 之前一致；勾选时 `background` 从 fallback 浅灰切到 `--dsw-alias-state-business-primary`（`#2563eb` 蓝），thumb `transform:translateX(14px)` 平滑滑到右侧——开关行为完全保留。
+  - **改动文件**：`lib/client-src/35-styles.js`（SECTION_CSS 的 `.DTPD_switch` 删 `border:1px solid ...` 一段 + JSDoc 加 v0.10.3 注释）；`lib/client-src/20-constants.js`（VERSION 0.10.2 → 0.10.3 + 头部 v0.10.3 注释）；`lib/client-src/00-banner.js`（加 v0.10.3 banner 段）；`package.json`（version 0.10.2 → 0.10.3 + description 同步）；本 CHANGELOG 加 [0.10.3] 段；走 `npm run build:client` + `node --check lib/client.js` 语法校验通过。
+
 ## [0.10.2] - 2026-09-04
 
 ### 修复

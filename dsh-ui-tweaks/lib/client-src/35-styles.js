@@ -76,6 +76,11 @@
      * v0.10.0：加 `.DTPD_select`——"多选一"tweak（首例 stats-line-position）
      * 头部右侧渲染下拉框而非开关。外观对齐已有的 `.DTPD_input` 数字框
      * （同边框 / 圆角 / 内边距 / focus 色），只是宽度按内容给个下限。
+     *
+     * v0.10.3：去掉 `.DTPD_switch` 的 `border:1px solid`（v0.6.0 起加的）——
+     * 用户反馈 1px 边框让开关看起来"有点方圆"，去掉后 pill 形态更纯净，
+     * 跟 v0.5.1 之前无边框版一致。off 态靠 background fallback 颜色
+     * （`#cbd5e1`）保持可见，无需 border 兜底。
      */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
@@ -87,7 +92,7 @@
       ".DTPD_itemHead{flex-direction:row;justify-content:space-between;align-items:center;gap:12px;display:flex}\n" +
       ".DTPD_itemName{margin:0;font-size:14px;font-weight:500;line-height:22px}\n" +
       // v0.7.5：.DTPD_itemDesc 规则移除——description 改用 HTML title，不渲染 <p>
-      ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:36px;height:22px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border:1px solid var(--dsw-alias-border-l2,#94a3b8);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
+      ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:36px;height:22px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
       ".DTPD_switch:checked{background:var(--dsw-alias-state-business-primary,#2563eb)}\n" +
       ".DTPD_switch::after{content:\"\";position:absolute;top:1px;left:1px;width:18px;height:18px;background:var(--dsw-alias-bg-layer-1,#fff);border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.18)}\n" +
       ".DTPD_switch:checked::after{transform:translateX(14px)}\n" +

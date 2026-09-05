@@ -1,6 +1,36 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.3：设置页开关去边框——回归 v0.5.1 之前的「圆圆的」pill 形态
+ *
+ *   用户反馈：现在开关「都有一点方圆的」，更喜欢之前「圆圆的」那种。
+ *
+ *   根因：v0.6.0 给 `.DTPD_switch` 加了 `border:1px solid var(--dsw-alias-border-l2,#94a3b8)`，
+ *   在 22px 高的 pill 上绕一圈 1px 灰边，pill 的「圆」被边线削弱，视觉上偏「方圆」。
+ *   v0.5.1 之前（v0.2.0–v0.5.x）没有这条 border，pill 看起来是纯色椭圆，跟用户记忆中
+ *   的「圆圆的」一致。
+ *
+ *   修法：去掉 `border:1px solid ...` 这一段，其它所有属性（width:36px / height:22px /
+ *   border-radius:999px / thumb 18×18 + 50% / thumb box-shadow）保留。off 态靠
+ *   `background:var(--dsw-alias-bg-component-disabled,#cbd5e1)` 的 fallback 颜色
+ *   （亮色主题 `#cbd5e1` 浅灰 / 暗色主题走 var 解析值）保持可见，不依赖 border
+ *   兜底——v0.5.1 之前就是这个状态，本来就够清晰。
+ *
+ *   兼容性：tweak id / localStorage key / 类名 / 调试 API / 设置页 UI 全部不动；
+ *   只改 `35-styles.js` SECTION_CSS 的 `.DTPD_switch` 一行（删掉 border 声明）。
+ *   老用户开关状态保留。
+ *
+ *   诊断：浏览器 DevTools inspect 设置页开关元素，Computed 面板 `border` 应是
+ *   `medium none currentcolor`（无 border），`border-radius` 仍是 `999px`；
+ *   pill 形态与 v0.5.1 之前一致。
+ *
+ *   改动文件：`lib/client-src/35-styles.js`（删 `.DTPD_switch` 的 `border:1px solid ...`，
+ *   SECTION_CSS JSDoc 加 v0.10.3 段）；`lib/client-src/20-constants.js`（VERSION 0.10.2
+ *   → 0.10.3 + 头部 v0.10.3 注释）；`lib/client-src/00-banner.js`（本段）；
+ *   `package.json`（version 0.10.2 → 0.10.3 + description 同步）；`CHANGELOG.md`
+ *   加 [0.10.3] 段；走 `npm run build:client` + `node --check lib/client.js`
+ *   语法校验通过。
+ *
  * v0.10.2：conversation-shift 修复两个用户反馈
  *   1) 半屏浏览器时右缩看起来很奇怪
  *   2) 新建会话界面右缩不生效
