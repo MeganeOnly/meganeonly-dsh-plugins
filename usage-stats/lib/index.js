@@ -435,36 +435,39 @@ export function rootsDaysAll(rootList) {
  * 归属 owner（caiyfa 描述："lands on its owner"），不摊销到祖先链上的每个 main
  * session——caiyfa 强调 counts speak in main sessions only。
  *
- * v0.4.0：父链遍历改走 ctx.sessionQuery.traceSession() —— framework 的 SessionId
- * 全局唯一 + 跨项目 SessionRecord header 自带 cwd / createdAt / parentSession，
- * 不再需要 plugin 自己 `byJsonIdByProject` 分桶。async 是 traceSession 的契约。
+ * v0.4.0.2 改造：plugin 自己用 buildSummary 顶部拿到的 `records`（每次 summary 只
+ * 调一次 listSessions）做 parentSession chain walk，**不再调 framework 的
+ * `sessionQuery.traceSession()`**。原因：framework traceSession 内部每次都
+ * `await _corpus.listSessions()`（dsh-session-query/lib/index.js:1059），对 N 个
+ * session rollup 调 N 次 traceSession = N×N 次 listSessions = O(N²) header
+ * 解析，N=437 时实测 30s+ timeout / OOM。plugin 用 records 自己走链是 O(N+D)
+ * （D 是 parentSession 链总深度），毫秒级。
  *
- * 防环：traceSession 内部走 SessionRecord 索引查 parentSession 链，orphan subagent
- * （父不在 corpus）回退到自身 identity，与 v0.3.8 的语义兼容。
+ * 防环：plugin 自己用 Set 跟踪已访问节点；orphan subagent（父不在 records）走
+ * 自身 identity，与 v0.3.8 语义兼容。
  */
-async function rollupByMainSession(aggs, sessionQuery) {
+async function rollupByMainSession(aggs, records) {
   function identity(agg) {
     return agg.id // SessionId（v0.4.0）—— DSH 保证全局唯一
   }
+  // 用 records 建 byId（O(N) 一次性）
+  const byId = new Map()
+  for (const r of records) byId.set(r.header.id, r)
   const rootIdMap = new Map()
-  // 一次遍历所有 agg，对每个 aggs 用 traceSession 找 root。
-  // traceSession 内部是 SessionCorpus 索引查询，O(depth) per call，无 I/O。
-  await Promise.all(aggs.map(async (agg) => {
+  for (const agg of aggs) {
     const idn = identity(agg)
-    if (idn == null) return
-    try {
-      const trace = await sessionQuery.traceSession(idn)
-      // complete=true 时 trace.root.header.id 是顶层 main session；
-      // complete=false 时（罕见，父不在 corpus）回退到 trace.target.header.id 自身。
-      const rootId = trace.complete
-        ? trace.root.header.id
-        : trace.target.header.id
-      rootIdMap.set(idn, rootId)
-    } catch {
-      // 找不到 trace（孤儿 subagent）→ 自身
-      rootIdMap.set(idn, idn)
+    if (idn == null) continue
+    // 走 parentSession 链查 root（用 records map，O(depth) per call）
+    const seen = new Set()
+    let cur = byId.get(idn)
+    while (cur != null && cur.header.parentSession != null) {
+      if (seen.has(cur.header.id)) break
+      seen.add(cur.header.id)
+      cur = byId.get(cur.header.parentSession)
     }
-  }))
+    const rootId = cur != null ? cur.header.id : idn // orphan 回退自身
+    rootIdMap.set(idn, rootId)
+  }
   const roots = new Map()
   function ensureRoot(rootId) {
     let r = roots.get(rootId)
@@ -828,7 +831,7 @@ export function apply(ctx) {
     let toolMs = 0
     // v0.3.0 子代理归并：所有聚合走 root main session（counts speak in main sessions only）
     // v0.4.0：async rollupByMainSession 内部走 ctx.sessionQuery.traceSession()
-    const rootAggs = await rollupByMainSession(aggs, ctx.sessionQuery)
+    const rootAggs = await rollupByMainSession(aggs, records)
     const rootList = [...rootAggs.values()]
     for (const root of rootList) {
       mergeBucket(totals, root.totals)
