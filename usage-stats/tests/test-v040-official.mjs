@@ -270,13 +270,15 @@ function cleanup(fx) {
       p1.reused === 1,
       `decoded=${p1.decoded}, reused=${p1.reused}`
     )
-    // 模拟 session 文件被改（v0.4.0 失效字段：header.createdAt）
+    // 模拟 session 文件被改（v0.4.0 失效字段：header.createdAt）。
+    // v0.4.0.3：plugin 缓存了 records 引用，普通 summary 调用复用 records cache
+    // 看不到 createdAt 变化——必须用 force=1 触发 records 重读 + aggregateSession 重跑。
     createdAt = 1700000099999
     records[0].header.createdAt = createdAt
     records[0].events[0].createdAt = createdAt
-    const p2 = await callHandler(handler, '/api/usage-stats/summary?t=' + Date.now())
+    const p2 = await callHandler(handler, '/api/usage-stats/summary?force=1&t=' + Date.now())
     assert(
-      '3.2 header.createdAt 改变后：reused = 0，decoded = 1（cache miss）',
+      '3.2 force=1 + header.createdAt 改变后：reused = 0，decoded = 1（cache miss）',
       p2.reused === 0 && p2.decoded === 1,
       `decoded=${p2.decoded}, reused=${p2.reused}`
     )
