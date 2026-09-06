@@ -150,29 +150,51 @@ function findInsertInnerItem(seq, id) {
 }
 
 /**
+ * [perf] patchDisabledIds mtime 缓存——patch 文件只在本插件 setEnabled() 里被改，
+ * 运行期基本恒定。每条 /list 请求都重 parseDocument 是不必要的 YAML 解析开销。
+ * key 用 path 即可（profile 路径单一）；mtimeMs 未变直接复用缓存的 Set。
+ */
+const patchDisabledCache = new Map() // absPath -> { mtimeMs: number, ids: Set<string> }
+
+/**
  * patch 文件里的停用覆盖状态（读取方）。启停真源是 patch 而非 loader 实时状态：
  * 停用覆盖要重启 DSH 才作用到 loader，“重启前撤回”必须看文件。
  */
 async function patchDisabledIds(ctx) {
-  let doc
+  const path = patchPathOf(ctx)
+  let stat
   try {
-    doc = parseDocument(await readFile(patchPathOf(ctx), 'utf8'))
+    stat = await import('node:fs/promises').then(m => m.stat(path))
   } catch {
     return new Set()
   }
+  const mtimeMs = stat.mtimeMs
+  const cached = patchDisabledCache.get(path)
+  if (cached && cached.mtimeMs === mtimeMs) return cached.ids
+
+  let doc
+  try {
+    doc = parseDocument(await readFile(path, 'utf8'))
+  } catch {
+    const empty = new Set()
+    patchDisabledCache.set(path, { mtimeMs, ids: empty })
+    return empty
+  }
   const seq = doc.contents
-  if (!seq || !Array.isArray(seq.items)) return new Set()
   const ids = new Set()
-  // 逐条收集：顶层覆盖条目与 insert 内层条目里 disabled: true 的 id
-  for (const it of seq.items) {
-    if (isMap(it) && it.get('id') !== undefined && it.get('disabled') === true) ids.add(it.get('id'))
-    if (!isMap(it)) continue
-    const inserted = it.get('insert')
-    if (inserted === null || inserted === undefined || !Array.isArray(inserted.items)) continue
-    for (const innerIt of inserted.items) {
-      if (isMap(innerIt) && innerIt.get('id') !== undefined && innerIt.get('disabled') === true) ids.add(innerIt.get('id'))
+  if (seq && Array.isArray(seq.items)) {
+    // 逐条收集：顶层覆盖条目与 insert 内层条目里 disabled: true 的 id
+    for (const it of seq.items) {
+      if (isMap(it) && it.get('id') !== undefined && it.get('disabled') === true) ids.add(it.get('id'))
+      if (!isMap(it)) continue
+      const inserted = it.get('insert')
+      if (inserted === null || inserted === undefined || !Array.isArray(inserted.items)) continue
+      for (const innerIt of inserted.items) {
+        if (isMap(innerIt) && innerIt.get('id') !== undefined && innerIt.get('disabled') === true) ids.add(innerIt.get('id'))
+      }
     }
   }
+  patchDisabledCache.set(path, { mtimeMs, ids })
   return ids
 }
 
@@ -274,6 +296,10 @@ async function setEnabled(ctx, targetId, enabled) {
   const tmp = `${path}.tmp`
   await writeFile(tmp, out, 'utf8')
   await rename(tmp, path)
+  if (changed) {
+    // [perf] 写盘后让 patchDisabledCache 失效，下次 /list 重 parse
+    patchDisabledCache.delete(path)
+  }
   return { ok: true, id: targetId, enabled, unchanged: false, restartRequired: true }
 }
 
