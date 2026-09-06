@@ -268,6 +268,7 @@ window.__ModuleLoader__.load({
       var next = !!v;
       if (this.deleteAfterSend === next) return;
       this.deleteAfterSend = next;
+      this.persist();
       this.notify();
     };
     BoardController.prototype.subscribe = function (fn) {
@@ -275,10 +276,14 @@ window.__ModuleLoader__.load({
       var self = this;
       return function () { self.listeners.delete(fn); };
     };
+    // [perf v0.x] notify() 拆为只通知 listeners（UI-only）+ persist() 显式触发 store.save。
+    // 旧的 notify() 同时 persist + notify，导致 toggleDrawer / expandTask 等瞬时态变化也写 localStorage。
     BoardController.prototype.notify = function () {
-      this.store.save({ tasks: this.tasks, pinned: this.pinned, deleteAfterSend: this.deleteAfterSend });
       var fns = Array.from(this.listeners);
       for (var i = 0; i < fns.length; i++) fns[i]();
+    };
+    BoardController.prototype.persist = function () {
+      this.store.save({ tasks: this.tasks, pinned: this.pinned, deleteAfterSend: this.deleteAfterSend });
     };
     BoardController.prototype.getSnapshot = function () {
       return {
@@ -305,6 +310,7 @@ window.__ModuleLoader__.load({
     BoardController.prototype.togglePin = function () {
       this.pinned = !this.pinned;
       this.drawerOpen = true;
+      this.persist();
       this.notify();
     };
     BoardController.prototype.expandTask = function (id) {
@@ -335,6 +341,7 @@ window.__ModuleLoader__.load({
       this.expandedId = task.id;
       this.confirmDelete = false;
       this.confirmSend = undefined;
+      this.persist();
       this.notify();
       return task;
     };
@@ -352,7 +359,7 @@ window.__ModuleLoader__.load({
         if (typeof n.content === "string") n.content = n.content.trim();
         return n;
       });
-      if (changed) self.notify();
+      if (changed) { self.persist(); self.notify(); }
     };
     BoardController.prototype.deleteTask = function (id) {
       var before = this.tasks.length;
@@ -360,7 +367,7 @@ window.__ModuleLoader__.load({
       if (this.expandedId === id) this.expandedId = undefined;
       if (this.confirmSend === id) this.confirmSend = undefined;
       this.confirmDelete = false;
-      if (this.tasks.length !== before) this.notify();
+      if (this.tasks.length !== before) { this.persist(); this.notify(); }
     };
     BoardController.prototype.requestDelete = function (id) {
       if (this.confirmDelete === id) {
@@ -471,6 +478,7 @@ window.__ModuleLoader__.load({
         }
       }
       this.tasks = tasks;
+      this.persist();
       this.notify();
     };
 
@@ -583,8 +591,9 @@ window.__ModuleLoader__.load({
         }
       }
 
-      var waitObserver = new MutationObserver(ensure);
-      waitObserver.observe(document.body, { childList: true, subtree: true });
+      // [perf v0.5.x] 移除 document.body subtree MutationObserver——
+      // ensure() 已在下面同步调用一次，且 apply() 在 DOM 就绪后跑，
+      // 后续 DSH 聊天 UI 的高频 mutation 触发 observer 早 return 是纯调度开销。
       document.addEventListener("click", onClickOutside, true);
       document.addEventListener(ACTIVATE_EVENT, onOtherActivate);
       var unsub = controller.subscribe(applyOpen);
@@ -594,7 +603,6 @@ window.__ModuleLoader__.load({
       return function () {
         document.removeEventListener("click", onClickOutside, true);
         document.removeEventListener(ACTIVATE_EVENT, onOtherActivate);
-        waitObserver.disconnect();
         unsub();
         document.documentElement.removeAttribute(DRAWER_ATTR);
         if (viewHandle && viewHandle.dispose) viewHandle.dispose();

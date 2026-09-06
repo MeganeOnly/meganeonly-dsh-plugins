@@ -24,6 +24,7 @@
       var next = !!v;
       if (this.deleteAfterSend === next) return;
       this.deleteAfterSend = next;
+      this.persist();
       this.notify();
     };
     BoardController.prototype.subscribe = function (fn) {
@@ -31,10 +32,14 @@
       var self = this;
       return function () { self.listeners.delete(fn); };
     };
+    // [perf v0.x] notify() 拆为只通知 listeners（UI-only）+ persist() 显式触发 store.save。
+    // 旧的 notify() 同时 persist + notify，导致 toggleDrawer / expandTask 等瞬时态变化也写 localStorage。
     BoardController.prototype.notify = function () {
-      this.store.save({ tasks: this.tasks, pinned: this.pinned, deleteAfterSend: this.deleteAfterSend });
       var fns = Array.from(this.listeners);
       for (var i = 0; i < fns.length; i++) fns[i]();
+    };
+    BoardController.prototype.persist = function () {
+      this.store.save({ tasks: this.tasks, pinned: this.pinned, deleteAfterSend: this.deleteAfterSend });
     };
     BoardController.prototype.getSnapshot = function () {
       return {
@@ -61,6 +66,7 @@
     BoardController.prototype.togglePin = function () {
       this.pinned = !this.pinned;
       this.drawerOpen = true;
+      this.persist();
       this.notify();
     };
     BoardController.prototype.expandTask = function (id) {
@@ -91,6 +97,7 @@
       this.expandedId = task.id;
       this.confirmDelete = false;
       this.confirmSend = undefined;
+      this.persist();
       this.notify();
       return task;
     };
@@ -108,7 +115,7 @@
         if (typeof n.content === "string") n.content = n.content.trim();
         return n;
       });
-      if (changed) self.notify();
+      if (changed) { self.persist(); self.notify(); }
     };
     BoardController.prototype.deleteTask = function (id) {
       var before = this.tasks.length;
@@ -116,7 +123,7 @@
       if (this.expandedId === id) this.expandedId = undefined;
       if (this.confirmSend === id) this.confirmSend = undefined;
       this.confirmDelete = false;
-      if (this.tasks.length !== before) this.notify();
+      if (this.tasks.length !== before) { this.persist(); this.notify(); }
     };
     BoardController.prototype.requestDelete = function (id) {
       if (this.confirmDelete === id) {
@@ -227,6 +234,7 @@
         }
       }
       this.tasks = tasks;
+      this.persist();
       this.notify();
     };
 

@@ -70,8 +70,9 @@
         }
       }
 
-      var waitObserver = new MutationObserver(ensure);
-      waitObserver.observe(document.body, { childList: true, subtree: true });
+      // [perf v0.5.x] 移除 document.body subtree MutationObserver——
+      // ensure() 已在下面同步调用一次，且 apply() 在 DOM 就绪后跑，
+      // 后续 DSH 聊天 UI 的高频 mutation 触发 observer 早 return 是纯调度开销。
       document.addEventListener("click", onClickOutside, true);
       document.addEventListener(ACTIVATE_EVENT, onOtherActivate);
       var unsub = controller.subscribe(applyOpen);
@@ -81,7 +82,6 @@
       return function () {
         document.removeEventListener("click", onClickOutside, true);
         document.removeEventListener(ACTIVATE_EVENT, onOtherActivate);
-        waitObserver.disconnect();
         unsub();
         document.documentElement.removeAttribute(DRAWER_ATTR);
         if (viewHandle && viewHandle.dispose) viewHandle.dispose();
