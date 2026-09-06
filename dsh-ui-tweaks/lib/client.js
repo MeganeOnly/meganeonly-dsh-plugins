@@ -2453,9 +2453,16 @@ window.__ModuleLoader__.load({
         return span;
       }
 
-      function findTurnStatus() {
+      // [perf v0.x] tick() 高频（250ms）跑，findTurnStatus + getLatestTurnStatus
+      // 都走 querySelectorAll(SIMPLE_TURN_STATUS_SEL)——两个调用共享一次结果。
+      function queryTurnStatusList() {
         if (typeof document === "undefined") return null;
-        var nodes = document.querySelectorAll(SIMPLE_TURN_STATUS_SEL);
+        return document.querySelectorAll(SIMPLE_TURN_STATUS_SEL);
+      }
+
+      function findTurnStatus(nodes) {
+        if (nodes === undefined) nodes = queryTurnStatusList();
+        if (nodes === null) return null;
         // 倒序遍历——文档顺序里最新 turn 在最后。当前正在运行的 turn 的 status
         // 元素会一直被 DSH 重渲保持在 DOM 末尾；历史已结束 turn 的 status 元素
         // 同样含 turnStatus 类但排在前。取最后一个可以确保状态行只注入当前 turn,
@@ -2492,18 +2499,20 @@ window.__ModuleLoader__.load({
       // 当前正在运行的 turn（即使它已包含我们的 span）。
       // DSH 在历史已结束 turn 里会保留 [class*="turnStatus"] 节点，
       // 此时最新 turnStatus 与 current 可能不同，需走 reattach 路径。
-      function getLatestTurnStatus() {
-        if (typeof document === "undefined") return null;
-        var nodes = document.querySelectorAll(SIMPLE_TURN_STATUS_SEL);
+      function getLatestTurnStatus(nodes) {
+        if (nodes === undefined) nodes = queryTurnStatusList();
+        if (nodes === null) return null;
         return nodes.length > 0 ? nodes[nodes.length - 1] : null;
       }
 
       function attach() {
         if (typeof document === "undefined") return;
+        // [perf] tick 高频（250ms）；先把 turnStatus 节点列表查一次，
+        // 后续 findTurnStatus / getLatestTurnStatus 共享。
+        var nodes = queryTurnStatusList();
         // 已经在 attach 到当前 turnStatus——watchTurnStatus 的 MutationObserver
         // 会负责把 span 重新挂回去（DSH 偶尔会把它 detach），不需要每 250ms 重新
-        // 跑 findTurnStatus + ensureStatusSpan + appendChild。tick 高频轮询下
-        // 跳过这些 DOM 操作显著降低开销。
+        // 跑 findTurnStatus + ensureStatusSpan + appendChild。
         //
         // 守卫条件收紧：除了「span 已挂在某个父节点」之外，还要求 current 是
         // DOM 里文档顺序的最后一个 turnStatus。DSH 在历史 turn 里会保留
@@ -2513,9 +2522,9 @@ window.__ModuleLoader__.load({
         // 会跟到历史里。
         if (current !== null) {
           var existing = document.getElementById(SIMPLE_STATUS_ID);
-          if (existing !== null && existing.parentNode === current && current === getLatestTurnStatus()) return;
+          if (existing !== null && existing.parentNode === current && current === getLatestTurnStatus(nodes)) return;
         }
-        var turnStatus = findTurnStatus();
+        var turnStatus = findTurnStatus(nodes);
         if (turnStatus === null) { current = null; return; }
         if (turnStatus !== lastTurnStatus) {
           lastTurnStatus = turnStatus;
