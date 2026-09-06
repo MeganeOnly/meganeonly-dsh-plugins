@@ -40,6 +40,13 @@
           "当前范围无用量。"
         );
       }
+      // [perf v0.4.x] 预合并 5 段柱样式：s.chartBarIn 共享 base（minHeight: 0），
+      // 每段只是 background 不同。预合并省 1440 × 4 = 5760 次 Object.assign。
+      var barReasoning = Object.assign({}, s.chartBarOut, { background: C.reasoningBar });
+      var barOutput = Object.assign({}, s.chartBarIn, { background: C.outputBar });
+      var barInput = Object.assign({}, s.chartBarIn, { background: C.inputBar });
+      var barCacheRead = Object.assign({}, s.chartBarIn, { background: C.cacheReadBar });
+      var barCacheWrite = Object.assign({}, s.chartBarIn, { background: C.cacheWriteBar });
       // v0.4.1：peak 用 totalTokensOf 等价口径——cacheWrite + cacheRead + inputMiss + output，
       // 排除 reasoning（reasoning ⊂ output，避免峰值与 output 段双计）。
       var max = 0;
@@ -169,19 +176,19 @@
                 //   4. cacheRead（浅蓝）
                 //   5. cacheWrite（最浅蓝，底部）
                 React.createElement("div", {
-                  style: Object.assign({}, s.chartBarOut, { height: hPx(safeReas) + "px", background: C.reasoningBar })
+                  style: Object.assign({}, barReasoning, { height: hPx(safeReas) + "px" })
                 }),
                 React.createElement("div", {
-                  style: Object.assign({}, s.chartBarIn, { height: hPx(outputMinusReason) + "px", background: C.outputBar })
+                  style: Object.assign({}, barOutput, { height: hPx(outputMinusReason) + "px" })
                 }),
                 React.createElement("div", {
-                  style: Object.assign({}, s.chartBarIn, { height: hPx(b.inputTokens || 0) + "px", background: C.inputBar })
+                  style: Object.assign({}, barInput, { height: hPx(b.inputTokens || 0) + "px" })
                 }),
                 React.createElement("div", {
-                  style: Object.assign({}, s.chartBarIn, { height: hPx(b.cacheReadTokens || 0) + "px", background: C.cacheReadBar })
+                  style: Object.assign({}, barCacheRead, { height: hPx(b.cacheReadTokens || 0) + "px" })
                 }),
                 React.createElement("div", {
-                  style: Object.assign({}, s.chartBarIn, { height: hPx(b.cacheWriteTokens || 0) + "px", background: C.cacheWriteBar })
+                  style: Object.assign({}, barCacheWrite, { height: hPx(b.cacheWriteTokens || 0) + "px" })
                 })
               );
             })
@@ -247,6 +254,18 @@
      * 悬停 title：日期 + 输入 / 输出 / 请求数 + 当前筛选模型。
      */
     function HeatmapCalendar(days, modelFilter, byModel) {
+      // [perf v0.4.x] 预合并 7 个 cell style + empty style，heatmapCell 是 base，
+      // heatmapCellL1..L7 只覆盖 background。预合并省掉 53×7×2 ≈ 742 次 Object.assign。
+      var cellStyles = [
+        s.heatmapCell,
+        Object.assign({}, s.heatmapCell, s.heatmapCellL1),
+        Object.assign({}, s.heatmapCell, s.heatmapCellL2),
+        Object.assign({}, s.heatmapCell, s.heatmapCellL3),
+        Object.assign({}, s.heatmapCell, s.heatmapCellL4),
+        Object.assign({}, s.heatmapCell, s.heatmapCellL5),
+        Object.assign({}, s.heatmapCell, s.heatmapCellL6),
+        Object.assign({}, s.heatmapCell, s.heatmapCellL7),
+      ];
       if (days == null || days.length === 0) {
         return React.createElement("div", { style: s.heatmapEmpty }, "暂无日级用量。");
       }
@@ -361,8 +380,7 @@
             ("0" + cellDate.getUTCDate()).slice(-2);
           var info = dayMap[ck];
           var lv = info ? levelFor(info.total) : 0;
-          var bg = cellBgStyle(lv);
-          var cellStyleMerged = bg ? Object.assign({}, s.heatmapCell, bg) : s.heatmapCell;
+          var cellStyleMerged = cellStyles[lv];
           var titleText;
           if (info) {
             titleText = ck + "\n输入 " + fmtTokens(info.input) + "\n输出 " + fmtTokens(info.output) +
@@ -409,6 +427,7 @@
         { style: s.heatmapLegend },
         React.createElement("span", null, "少"),
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell) }),
+        // [perf] 7 个图例 cell 也预合并
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL1) }),
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL2) }),
         React.createElement("div", { style: Object.assign({}, s.heatmapScaleCell, s.heatmapCellL3) }),

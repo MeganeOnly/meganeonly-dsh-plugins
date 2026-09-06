@@ -802,34 +802,40 @@ export function apply(ctx) {
     let reused = 0
     let cacheDirty = false
     const liveIds = new Set()
+    // [perf v0.4.x] cache miss 的 session 并发 readSession + aggregate——
+    // 原串行 N 次 readSession 串行 await 对 N 较大的项目（437 sessions）实测 30s+
+    // timeout。这里走 Promise.all，cached 与 needs-read 分两轮，单次 round-trip ≈ 1×readSession。
+    const missRecords = []
     for (const record of records) {
       const id = record.header.id
       liveIds.add(id)
       const cached = cache.sessions[id]
-      // v0.4.0：cache key = SessionId（DSH 全局唯一），失效字段 = header.createdAt
-      // （session 创建后不再变；append events 不改 createdAt）。
-      // 删除 v0.3.8 的 fileId / projectOf 工程与 v0.3.8.1 的 isUsableAggregate 治本
-      // 逻辑：header.id + header.createdAt 双字段校验已等价覆盖原 fileId 工程
-      // （跨项目同 SessionId 在 DSH 框架下不可能，UUID 唯一）+ partial agg 防御
-      // （identity 一致但 agg 内容错由 framework 的 replay-validate 兜底）。
       if (!force && cached && cached.createdAt === record.header.createdAt && cached.agg && typeof cached.agg === 'object') {
         aggs.push(cached.agg)
         reused += 1
         continue
       }
-      try {
-        const log = await ctx.sessionQuery.readSession(id)
+      missRecords.push(record)
+    }
+    if (missRecords.length > 0) {
+      const settled = await Promise.allSettled(missRecords.map((record) => ctx.sessionQuery.readSession(record.header.id)))
+      for (let mi = 0; mi < missRecords.length; mi++) {
+        const record = missRecords[mi]
+        const id = record.header.id
+        const result = settled[mi]
+        if (result.status !== 'fulfilled') {
+          const reason = result.reason
+          errors.push(`${id}: ${String(reason && reason.message ? reason.message : reason)}`)
+          continue
+        }
+        const log = result.value
         // v0.4.0：events 已由 framework 的 replay-validate 校过（partial / 坏行
-        // 不会到达这里）；不再需要 plugin 自己做 typeof event === 'object' 守卫
-        // ——但 aggregateSession 内部的守卫保留作为 defense in depth（events 来自
-        // framework 但 schema 字段仍可能 drift）。
+        // 不会到达这里）；aggregateSession 内部的守卫保留作为 defense in depth。
         const agg = aggregateSession(log.events, log.session.id)
         cache.sessions[id] = { createdAt: record.header.createdAt, agg }
         cacheDirty = true
         aggs.push(agg)
         decoded += 1
-      } catch (error) {
-        errors.push(`${id}: ${String(error && error.message ? error.message : error)}`)
       }
     }
     // 修剪已删除会话的缓存条目，防缓存文件无限膨胀
