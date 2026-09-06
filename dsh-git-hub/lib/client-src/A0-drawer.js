@@ -60,8 +60,9 @@
         if (e && e.detail && e.detail !== PANEL_NAME) controller.closeDrawer();
       }
 
-      var waitObserver = new MutationObserver(ensure);
-      waitObserver.observe(document.body, { childList: true, subtree: true });
+      // [perf] 移除 document.body subtree MutationObserver——ensure() 已在下面
+      // 同步调用一次，apply() 在 DOM 就绪后跑，DSH 后续聊天 UI mutation 触发 observer
+      // 早 return 是纯调度开销。
       document.addEventListener(ACTIVATE_EVENT, onOtherActivate);
       var unsub = controller.subscribe(applyOpen);
       applyOpen();
@@ -72,7 +73,6 @@
 
       return function () {
         document.removeEventListener(ACTIVATE_EVENT, onOtherActivate);
-        waitObserver.disconnect();
         unsub();
         // v0.2.1：dispose 时兜底停掉 push poll timer（避免悬挂 interval）
         controller.stopPushPoll();

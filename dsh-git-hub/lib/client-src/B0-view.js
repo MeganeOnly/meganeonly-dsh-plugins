@@ -1,6 +1,11 @@
     // ===== 抽屉视图 =====
     function renderDrawerView(container, controller) {
       var headerEl, bodyEl, pushStatusEl;
+      // [perf v0.5.x] diff-skip 缓存：renderHeader / renderPushStatus / renderBody
+      // 各自记一个 key，对应字段无变化就 early-return，避免每次 notify 全量重渲染。
+      var lastHeaderKey = "";
+      var lastPushKey = "";
+      var lastBodyKey = "";
 
       function build() {
         container.innerHTML = "";
@@ -24,6 +29,14 @@
       function renderHeader() {
         var snap = controller.getSnapshot();
         var toolAvail = snap.config && snap.config.toolAvailable;
+        // [perf v0.5.x] diff-skip：仅当影响 header 渲染的字段变化时才重 render
+        var headerKey =
+          (snap.config && snap.config.toolAvailable ? "1" : "0") + "|" +
+          (snap.selectionMode ? "1" : "0") + "|" +
+          (snap.configPanelOpen ? "1" : "0") + "|" +
+          (snap.optionsOpen ? "1" : "0");
+        if (headerKey === lastHeaderKey) return;
+        lastHeaderKey = headerKey;
         // v0.5.0：commit-toggle 升级为「显示选项」按钮——commitVisible 改为 optionsOpen（菜单开/关态）
         var optionsOpen = !!snap.optionsOpen;
         var headerHtml =
@@ -127,6 +140,11 @@
 
       function renderPushStatus() {
         var snap = controller.getSnapshot();
+        // [perf v0.5.x] diff-skip：lastPush + sections.pushStatus 字段未变则跳过
+        var pushKey = (snap.sections && snap.sections.pushStatus === true ? "1" : "0") + "|" +
+          JSON.stringify(snap.lastPush || null);
+        if (pushKey === lastPushKey) return;
+        lastPushKey = pushKey;
         // v0.5.0：pushStatus 受 sections.pushStatus 控制——关闭时彻底隐藏（不留空容器）
         if (!(snap.sections && snap.sections.pushStatus === true)) {
           pushStatusEl.style.display = "none";
@@ -149,6 +167,25 @@
 
       function renderBody() {
         var snap = controller.getSnapshot();
+        // [perf v0.5.x] diff-skip：body 整体 key 包含影响 list / pinned / hidden / sections / loading 的字段
+        // 注意：commitRepos / mergeRepos / loading 也参与——这些变化必须重 render
+        var bodyKey =
+          (snap.repos ? snap.repos.length : 0) + "|" +
+          (snap.commitRepos ? snap.commitRepos.length : 0) + "|" +
+          (snap.mergeRepos ? snap.mergeRepos.length : 0) + "|" +
+          (snap.pinnedPaths instanceof Set ? snap.pinnedPaths.size : snap.pinnedPaths.length) + "|" +
+          (snap.hiddenPaths instanceof Set ? snap.hiddenPaths.size : snap.hiddenPaths.length) + "|" +
+          (snap.selectionMode ? "1" : "0") + "|" +
+          (snap.showHidden ? "1" : "0") + "|" +
+          (snap.sections ? JSON.stringify(snap.sections) : "") + "|" +
+          (snap.loading ? "1" : "0") + "|" +
+          (snap.configPanelOpen ? "1" : "0") + "|" +
+          (snap.lastMergeResult ? "1" : "0") + "|" +
+          (snap.error || "") + "|" +
+          (snap.commitBusy ? "1" : "0") + "|" +
+          (snap.mergeBusy ? "1" : "0");
+        if (bodyKey === lastBodyKey) return;
+        lastBodyKey = bodyKey;
 
         // v0.2.2：commit 工具区（持久显示，紧贴 header 下；多仓库）
         // v0.5.0：受 sections.commit 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
@@ -215,14 +252,14 @@
         }
 
         // v0.1.7："已隐藏 N 个" 小条只在 selectionMode 激活时显示在 body 底部
-        var hiddenCount = snap.repos.filter(function (r) { return snap.hiddenPaths.indexOf(r.path) >= 0; }).length;
+        var hiddenCount = snap.repos.filter(function (r) { return snap.hiddenPaths.has(r.path); }).length;
 
         // 仓库列表
         var oldList = bodyEl.querySelector(".DGH_list, .DGH_empty, .DGH_loading");
         var newList;
         // v0.1.7 过滤逻辑：默认隐藏所有 hidden；selectionMode 激活时如 showHidden=true 则展开
         var visibleRepos = snap.repos.filter(function (r) {
-          var isHidden = snap.hiddenPaths.indexOf(r.path) >= 0;
+          var isHidden = snap.hiddenPaths.has(r.path);
           // selectionMode=true + showHidden=true：展开；其他情况隐藏
           return !isHidden || (snap.selectionMode && snap.showHidden);
         });
@@ -246,12 +283,12 @@
           // selectionMode 模式下，已隐藏项排前面（用户当前在管理 hidden 列表）
           var sorted = visibleRepos.slice().sort(function (a, b) {
             if (snap.selectionMode) {
-              var ah = snap.hiddenPaths.indexOf(a.path) >= 0 ? 0 : 1;
-              var bh = snap.hiddenPaths.indexOf(b.path) >= 0 ? 0 : 1;
+              var ah = snap.hiddenPaths.has(a.path) ? 0 : 1;
+              var bh = snap.hiddenPaths.has(b.path) ? 0 : 1;
               if (ah !== bh) return ah - bh;
             }
-            var ap = snap.pinnedPaths.indexOf(a.path) >= 0 ? 0 : 1;
-            var bp = snap.pinnedPaths.indexOf(b.path) >= 0 ? 0 : 1;
+            var ap = snap.pinnedPaths.has(a.path) ? 0 : 1;
+            var bp = snap.pinnedPaths.has(b.path) ? 0 : 1;
             if (ap !== bp) return ap - bp;
             return a.name.localeCompare(b.name);
           });

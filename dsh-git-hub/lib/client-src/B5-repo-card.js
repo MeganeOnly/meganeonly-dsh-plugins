@@ -20,8 +20,8 @@
       var li = document.createElement("li");
       li.className = "DGH_repo";
       li.dataset.repoPath = repo.path;
-      if (snap.pinnedPaths.indexOf(repo.path) >= 0) li.dataset.pinned = "true";
-      var isHidden = snap.hiddenPaths.indexOf(repo.path) >= 0;
+      if (snap.pinnedPaths.has(repo.path)) li.dataset.pinned = "true";
+      var isHidden = snap.hiddenPaths.has(repo.path);
       if (isHidden) li.dataset.hidden = "true";
       // v0.1.7：selectionMode 模式下整张卡片可点切换 hide
       if (snap.selectionMode) li.dataset.selecting = "true";

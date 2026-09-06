@@ -49,8 +49,8 @@
         // 仓库名（basename）让 toast 更易读
         var repoName = (data.cwd || "").split(/[\\/]/).pop() || "?";
         showToast(repoName + " 已 commit " + data.sha + "（" + data.filesChanged + " 个文件）", "info");
-        // 刷新 commit 状态 + 仓库列表
-        return self.loadCommitStatus().then(function () { return self.refresh(true); });
+        // [perf] refresh(true) 末尾自己调 loadCommitStatus，这里删掉省一次 HTTP + 一次扫描
+        return self.refresh(true);
       }).catch(function (e) {
         showToast("commit 失败：" + (e && e.message ? e.message : e), "error");
       }).then(function () {

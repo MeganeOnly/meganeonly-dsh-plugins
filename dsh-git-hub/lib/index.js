@@ -33,7 +33,6 @@
  *
  * 作者：MeganeOnly
  */
-import { execFile, execFileSync } from 'node:child_process'
 import { readFile, writeFile, rename, readdir, stat } from 'node:fs/promises'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, sep, basename } from 'node:path'
@@ -133,10 +132,30 @@ function readJsonBody(req) {
   })
 }
 
+import { execFile, execFileSync } from 'node:child_process'
+import { promisify } from 'node:util'
+const execFileAsync = promisify(execFile)
+
 /** 同步执行 git 命令，timeout 5s，失败返回 null。 */
 function gitSync(args, cwd) {
   try {
     const stdout = execFileSync('git', args, {
+      cwd,
+      timeout: GIT_CMD_TIMEOUT_MS,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    return stdout
+  } catch (e) {
+    return null
+  }
+}
+
+/** [perf] 异步版 gitSync——失败返回 null（与 gitSync 行为一致），用于并发扫描。 */
+async function gitAsync(args, cwd) {
+  try {
+    const { stdout } = await execFileAsync('git', args, {
       cwd,
       timeout: GIT_CMD_TIMEOUT_MS,
       encoding: 'utf8',
@@ -308,7 +327,7 @@ function scanRoot(rootPath, sharedSeen) {
  * RepoStatusReader：对单仓库跑 git 命令集，串行
  * ------------------------------------------------------------------ */
 
-function readRepoStatus(repoPath) {
+async function readRepoStatus(repoPath) {
   const name = basename(repoPath)
   const result = {
     path: repoPath,
@@ -322,16 +341,22 @@ function readRepoStatus(repoPath) {
     error: null,
   }
 
-  // branch
-  const branch = gitSync(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath)
-  if (branch !== null) result.branch = branch.trim() || null
+  // [perf v0.5.x] 6 个 git 命令改并发——互相无依赖，gitAsync 返回 Promise。
+  // 同步串行时一个慢 repo 会阻塞所有后续；并发上限由 getAllRepos 端的
+  // 简易并发池控制（见下），这里只 await 所有结果。
+  const today = beijingToday()
+  const [branch, upstream, statusOut, unpushedOut, todayLogOut, lastCommitRaw] = await Promise.all([
+    gitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath),
+    gitAsync(['rev-parse', '--abbrev-ref', '@{u}'], repoPath),
+    gitAsync(['status', '--porcelain'], repoPath),
+    null, // 占位——下面 conditional 再查
+    gitAsync(['log', `--since=${today} 00:00`, '--oneline'], repoPath),
+    gitAsync(['log', '-1', '--format=%H|%s|%aI'], repoPath),
+  ])
 
-  // upstream（失败 = 无 upstream，常见于全新本地仓库）
-  const upstream = gitSync(['rev-parse', '--abbrev-ref', '@{u}'], repoPath)
+  if (branch !== null) result.branch = branch.trim() || null
   if (upstream !== null) result.upstream = upstream.trim() || null
 
-  // status --porcelain 输出非空行数
-  const statusOut = gitSync(['status', '--porcelain'], repoPath)
   if (statusOut === null) {
     result.error = 'git status failed'
     return result
@@ -341,7 +366,7 @@ function readRepoStatus(repoPath) {
 
   // unpushed count（仅在有 upstream 时计算）
   if (result.upstream) {
-    const unpushed = gitSync(['log', `${result.upstream}..HEAD`, '--oneline'], repoPath)
+    const unpushed = await gitAsync(['log', `${result.upstream}..HEAD`, '--oneline'], repoPath)
     if (unpushed !== null) {
       result.unpushedCount = unpushed.split('\n').filter((l) => l.trim().length > 0).length
     } else {
@@ -351,15 +376,10 @@ function readRepoStatus(repoPath) {
     result.unpushedCount = -1 // 无 upstream，前端用 badge 提示
   }
 
-  // 今日 commit 数（北京时间 today 0 点以来）
-  const today = beijingToday()
-  const todayLog = gitSync(['log', `--since=${today} 00:00`, '--oneline'], repoPath)
-  if (todayLog !== null) {
-    result.todayCommitCount = todayLog.split('\n').filter((l) => l.trim().length > 0).length
+  if (todayLogOut !== null) {
+    result.todayCommitCount = todayLogOut.split('\n').filter((l) => l.trim().length > 0).length
   }
 
-  // 最新 commit
-  const lastCommitRaw = gitSync(['log', '-1', '--format=%H|%s|%aI'], repoPath)
   if (lastCommitRaw !== null) {
     const trimmed = lastCommitRaw.trim()
     if (trimmed) {
@@ -376,6 +396,11 @@ function readRepoStatus(repoPath) {
  * ------------------------------------------------------------------ */
 
 let scanCache = { at: 0, repos: [] }
+// [perf v0.5.x] listChangedRepos / listMergeableRepos 复用同一个 5s 缓存窗口——
+// 每次开抽屉、每次 commit/merge 都触发 HTTP 调用，原来每次都全量 rescan + git 命令。
+// commit/merge 操作后立即清缓存（见 setEnabled 路径），保证 UI 看到最新状态。
+let commitCache = { at: 0, repos: [] }
+let mergeCache = { at: 0, repos: [] }
 
 async function getAllRepos(force) {
   const now = Date.now()
@@ -396,13 +421,19 @@ async function getAllRepos(force) {
       console.warn('[dsh-git-hub] scanRoot failed for', root, e?.message || e)
     }
   }
-  // 串行读每个 repo 状态（避免磁盘 IO 风暴 + git 锁冲突）
+  // [perf v0.5.x] 并发读每个 repo 状态，限制 8 路并发（避免 spawn 风暴 + 锁竞争）
+  // readRepoStatus 内部已把 6 个 git 命令并发——这里只需控制 repo 级并发
+  const REPO_CONCURRENCY = 8
   const repos = []
-  for (const p of repoPaths) {
-    try {
-      repos.push(readRepoStatus(p))
-    } catch (e) {
-      console.warn('[dsh-git-hub] readRepoStatus failed for', p, e?.message || e)
+  for (let i = 0; i < repoPaths.length; i += REPO_CONCURRENCY) {
+    const slice = repoPaths.slice(i, i + REPO_CONCURRENCY)
+    const settled = await Promise.allSettled(slice.map((p) => readRepoStatus(p)))
+    for (let j = 0; j < settled.length; j++) {
+      if (settled[j].status === 'fulfilled') {
+        repos.push(settled[j].value)
+      } else {
+        console.warn('[dsh-git-hub] readRepoStatus failed for', slice[j], settled[j].reason?.message || settled[j].reason)
+      }
     }
   }
   scanCache = { at: now, repos }
@@ -706,7 +737,11 @@ export function apply(ctx) {
   }
 
   /** 扫所有 scanRoots 下的 git 仓库，返回有改动的那些（不 add）。 */
-  async function listChangedRepos() {
+  async function listChangedRepos(force) {
+    const now = Date.now()
+    if (!force && commitCache.repos.length >= 0 && now - commitCache.at < SCAN_CACHE_TTL_MS) {
+      return commitCache.repos
+    }
     const cfg = await loadConfig()
     const repoPaths = []
     // 跨根去重——嵌套 scanRoots 下避免同一 repo 被列两次（commit 区不重复展示）
@@ -725,6 +760,7 @@ export function apply(ctx) {
         if (state && state.filesChanged > 0) results.push(state)
       } catch (_) { /* skip unreadable repo */ }
     }
+    commitCache = { at: now, repos: results }
     return results
   }
 
@@ -1012,7 +1048,11 @@ export function apply(ctx) {
    *   - mergeInProgress / rebaseInProgress（需要 abort）
    * 其它仓库不展示，避免噪声。
    */
-  async function listMergeableRepos() {
+  async function listMergeableRepos(force) {
+    const now = Date.now()
+    if (!force && mergeCache.repos.length >= 0 && now - mergeCache.at < SCAN_CACHE_TTL_MS) {
+      return mergeCache.repos
+    }
     const cfg = await loadConfig()
     const repoPaths = []
     // 跨根去重——嵌套 scanRoots 下避免同一 repo 在 merge 区重复展示
@@ -1038,6 +1078,7 @@ export function apply(ctx) {
         if (actionable) results.push(info)
       } catch (_) { /* skip unreadable repo */ }
     }
+    mergeCache = { at: now, repos: results }
     return results
   }
 
@@ -1076,6 +1117,8 @@ export function apply(ctx) {
           json(res, status, { ok: false, error: result.error, stderr: result.stderr, stdout: result.stdout })
           return
         }
+        // [perf] commit 成功后清 commitCache，下次 /commit-status 重算
+        commitCache = { at: 0, repos: [] }
         json(res, 200, { ok: true, sha: result.sha, filesChanged: result.filesChanged, message: result.message, cwd })
       } catch (e) {
         console.error('[dsh-git-hub] /commit error:', e)
@@ -1093,8 +1136,9 @@ export function apply(ctx) {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return
         }
+        const force = new URL(req.url, 'http://localhost').searchParams.get('force') === '1'
         // 扫所有 scanRoots 下的 git 仓库，返回有改动的列表
-        const repos = await listChangedRepos()
+        const repos = await listChangedRepos(force)
         json(res, 200, { ok: true, repos })
       } catch (e) {
         console.error('[dsh-git-hub] /commit-status error:', e)
@@ -1177,6 +1221,10 @@ export function apply(ctx) {
         const result = runMerge(check.path, source, noFF)
         // 冲突 → 409，前端展示冲突文件列表 + abort 按钮
         const status = !result.ok && result.error === 'conflict' ? 409 : (!result.ok ? 500 : 200)
+        if (result.ok) {
+          // [perf] merge 成功后清 mergeCache（branch / mergeInProgress 状态变了）
+          mergeCache = { at: 0, repos: [] }
+        }
         json(res, status, result)
       } catch (e) {
         console.error('[dsh-git-hub] /repos/merge error:', e)
@@ -1208,6 +1256,10 @@ export function apply(ctx) {
         const rebase = !!body.rebase
         const result = runPull(check.path, rebase)
         const status = !result.ok && result.error === 'conflict' ? 409 : (!result.ok ? 500 : 200)
+        if (result.ok) {
+          // [perf] pull 成功后清 mergeCache
+          mergeCache = { at: 0, repos: [] }
+        }
         json(res, status, result)
       } catch (e) {
         console.error('[dsh-git-hub] /repos/pull error:', e)
@@ -1238,6 +1290,10 @@ export function apply(ctx) {
         }
         const result = runMergeAbort(check.path)
         const status = !result.ok && result.error === 'nothing-to-abort' ? 400 : (!result.ok ? 500 : 200)
+        if (result.ok) {
+          // [perf] abort 成功后清 mergeCache
+          mergeCache = { at: 0, repos: [] }
+        }
         json(res, status, result)
       } catch (e) {
         console.error('[dsh-git-hub] /repos/merge-abort error:', e)
@@ -1256,7 +1312,8 @@ export function apply(ctx) {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return
         }
-        const repos = await listMergeableRepos()
+        const force = new URL(req.url, 'http://localhost').searchParams.get('force') === '1'
+        const repos = await listMergeableRepos(force)
         json(res, 200, { ok: true, repos })
       } catch (e) {
         console.error('[dsh-git-hub] /repos/merge-status error:', e)

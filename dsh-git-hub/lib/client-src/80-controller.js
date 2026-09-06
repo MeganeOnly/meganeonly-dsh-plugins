@@ -29,8 +29,8 @@
     }
     Controller.prototype._persist = function () {
       this.store.save({
-        pinnedPaths: Array.from(this.pinnedPaths),
-        hiddenPaths: Array.from(this.hiddenPaths),
+        pinnedPaths: this.pinnedPaths,       // [perf] 直接暴露 Set，省 Array.from 让 renderer 用 .has
+        hiddenPaths: this.hiddenPaths,
         sections: this.sections,
       });
     };
@@ -60,8 +60,8 @@
         mergeBusy: this.mergeBusy,          // v0.3.0
         lastMergeResult: this.lastMergeResult, // v0.3.0
         sections: this.sections,                     // v0.5.0：统一管理 4 个功能区可见性
-        pinnedPaths: Array.from(this.pinnedPaths),
-        hiddenPaths: Array.from(this.hiddenPaths),
+        pinnedPaths: this.pinnedPaths,       // [perf] 直接暴露 Set，省 Array.from 让 renderer 用 .has
+        hiddenPaths: this.hiddenPaths,
         optionsOpen: this.optionsOpen,               // v0.5.0：options 下拉菜单开关（不持久化）
         drawerOpen: this.drawerOpen,
       };
