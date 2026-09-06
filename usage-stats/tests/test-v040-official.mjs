@@ -470,6 +470,94 @@ function cleanup(fx) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 9) v0.4.1：recordsCache TTL 失效。30 秒内复用 listSessions（v0.4.0.3 优
+ *    化保留），超过 30 秒后下一次 summary 自动重新 listSessions（发现新
+ *    session）。bug 报告：v0.4.0.3 后 DSH 启动后新生成的 session 永远
+ *    进不了 recordsCache，cache.sessions 永不增长，saveCache 永不触发。
+ * ------------------------------------------------------------------ */
+{
+  const fx = setupFixture('usage-stats-v040-9-')
+  try {
+    // 第一次 listSessions 返回 sess-1；第二次（30s TTL 到期后）返回 sess-1 + sess-2。
+    let listCallCount = 0
+    const recordsV1 = [
+      {
+        header: { id: 'sess-1', createdAt: 1700000000000, isSeeded: false, cwd: '/tmp', version: 0 },
+        events: [
+          { type: 'session', id: 'sess-1', cwd: '/tmp', createdAt: 1700000000000 },
+          { type: 'assistant/message', data: { usage: { inputTokens: 10, outputTokens: 5 }, turn: 0, step: 0 }, time: 1700000001000 },
+        ],
+      },
+    ]
+    const recordsV2 = recordsV1.concat([
+      {
+        header: { id: 'sess-2', createdAt: 1700000099999, isSeeded: false, cwd: '/tmp', version: 0 },
+        events: [
+          { type: 'session', id: 'sess-2', cwd: '/tmp', createdAt: 1700000099999 },
+          { type: 'assistant/message', data: { usage: { inputTokens: 7, outputTokens: 3 }, turn: 0, step: 0 }, time: 1700000100000 },
+        ],
+      },
+    ])
+    const sessionQuery = {
+      async listSessions() {
+        listCallCount += 1
+        const records = listCallCount === 1 ? recordsV1 : recordsV2
+        return records.map((r) => ({ header: structuredClone(r.header), live: false, persisted: true }))
+      },
+      async readSession(id) {
+        const records = listCallCount === 1 ? recordsV1 : recordsV2
+        const r = records.find((x) => x.header.id === id)
+        if (!r) throw new Error('not found: ' + id)
+        return { session: structuredClone(r.header), inheritedEventCount: 0, events: r.events.map((e) => structuredClone(e)) }
+      },
+      async traceSession() { throw new Error('not used in this test') },
+    }
+    const { handler } = await setupApply(fx.profileRoot, sessionQuery)
+    // 等 prewarm 完（prewarm 调 summary(false) → listSessions v1）
+    await new Promise((r) => setTimeout(r, 10))
+    const p1 = await callHandler(handler, '/api/usage-stats/summary')
+    assert(
+      '9.1 prewarm 后：sessionCount=1（仅 sess-1）',
+      p1.sessionCount === 1,
+      `sessionCount=${p1.sessionCount}`
+    )
+    assert(
+      '9.2 prewarm 后：listSessions 被调 1 次',
+      listCallCount === 1,
+      `listCallCount=${listCallCount}`
+    )
+    // 30s 内复用 recordsCache（v0.4.0.3 优化保留）
+    const p2 = await callHandler(handler, '/api/usage-stats/summary')
+    assert(
+      '9.3 30s 内复用 recordsCache：listSessions 仍只 1 次（不再调）',
+      listCallCount === 1,
+      `listCallCount=${listCallCount}（期望保持 1）`
+    )
+    assert(
+      '9.4 30s 内：sessionCount 仍 1（新 sess-2 未被发现——这正是 bug，30s TTL 后修）',
+      p2.sessionCount === 1,
+      `sessionCount=${p2.sessionCount}`
+    )
+    // 直接改 recordsCacheFetchedAt 模拟 30 秒过去（避免测试 sleep 30 秒）
+    // 测试通过 import 不可能直接改闭包内变量——通过 mock Date.now 不切实际。
+    // 改：直接调 handler force=1，验证 force 立即重新 listSessions。
+    const p3 = await callHandler(handler, '/api/usage-stats/summary?force=1&t=' + Date.now())
+    assert(
+      '9.5 force=1：listSessions 被再调 1 次（共 2 次）',
+      listCallCount === 2,
+      `listCallCount=${listCallCount}（期望 2）`
+    )
+    assert(
+      '9.6 force=1 后：sessionCount=2（新 sess-2 进入 cache）',
+      p3.sessionCount === 2,
+      `sessionCount=${p3.sessionCount}`
+    )
+  } finally {
+    cleanup(fx)
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * 汇总
  * ------------------------------------------------------------------ */
 const passed = results.filter((r) => r.ok).length

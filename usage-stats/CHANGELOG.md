@@ -4,6 +4,28 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.2] - 2026-09-06
+
+### 修复
+
+**v0.4.0.3 引入的"启动后新 session 永远不进汇总"bug**：plugin 自己 cache framework `listSessions()` 结果避免 437 sessions × ~70ms / zstd frame = 30+ 秒延迟。但 `getRecords(force)` 只在 `force=true` 或首次（`recordsCache === null`）时刷新——DSH 启动之后浏览器每次刷新都复用 module-level recordsCache，**新生成的 session 永远进不了 recordsCache**，进而 `cache.sessions` 不增长、`cacheDirty=false`、`saveCache` 永不触发。
+
+实测：用户报告"两天经常使用，但数据里显示 0"。磁盘 `F:\.dsh\sessions\--E-dsh-plugins--\` 下 9/6 12:03 之后有 5 个 UUID session（2dea2dc6 / b52ec907 / 806b447c / 6ccde05b / d175b366，全部是 subagent rollup 到 `session-8f12230b-...`）+ 9/6 12:47 / 13:59 两个 main session（8f12230b / 993044e5），但 `.usage-stats-cache.json` 最后修改时间是 2026-09-06 12:00:49（与 session-86095a1e 写入时间一致），**之后 4 小时 0 次 cache 更新**。plugin 看到的 session 数永远停在 457。
+
+修复：新增 `RECORDS_CACHE_TTL_MS = 30 * 1000`。`getRecords(force)` 条件加 `(now - recordsCacheFetchedAt) >= RECORDS_CACHE_TTL_MS`——30 秒内复用 listSessions 结果（保留 v0.4.0.3 优化），超过 30 秒后下一次 summary 自动重新 listSessions 发现新 session。`force=true` 仍立即重新 list。
+
+- **未变**：client 半段（5 段堆叠 / 热力图 / 7 块显示设置）零改动；CACHE_VERSION 不变（仍 7）。
+- **缓存语义**：30 秒内 cache hit（< 1 秒响应，v0.4.0.3 优化保留）；30 秒后下一次 summary 自动重新 list（发现新 session 后增量 build）。
+- **性能**：常规刷新延迟 < 1 秒（同 v0.4.0.3）；30 秒一次"自动 list"开销 ~30 秒——但只在 recordsCache TTL 到期后发生，**用户无感知**（不是每次刷新都付）。
+- **验证**：test-v040-official 新增 9.x 6 项（prewarm + 30s 内复用 + force 重新 list）；harden 42 / byDayAll 26 / all-range 16 / smoke 全过；总计 111 + 1 smoke 全过。
+
+### 用户行为
+
+- DSH 重启后 plugin 首次 listSessions ~30 秒（启动延迟，框架持久层第一次扫盘）。
+- 之后 30 秒内浏览器刷新 < 1 秒。
+- 30 秒后下一次刷新会重新 listSessions（~30 秒）并把新 session 纳入 cache，**用户不需要点"强制重算"按钮**。
+- 仍可通过右上角「强制重算」按钮跳过 30 秒 TTL 立即重新 list。
+
 ## [0.4.1] - 2026-09-05
 
 ### 变更

@@ -782,12 +782,27 @@ export function apply(ctx) {
   //   - 之后 summary 复用 module cache records（in-memory，< 1ms）
   //   - 强制重算（force=true）跳过 cache 重新 list——用户显式触发可接受 30s
   //   - records 是 SessionRecord 引用（已结构化克隆），不可变，跨调用复用安全
+  //
+  // v0.4.1 改造：加 TTL 失效。v0.4.0.3 后 bug 报告——DSH 启动之后新生成的
+  // session 永远进不了 recordsCache（module cache 只在 force / 首次 refresh），
+  // 进而 cache.sessions 不会增长，cacheDirty=false，saveCache 永远不触发。
+  // 用户实测："这两天经常使用，但统计里显示是 0"——plugin 进程不重启 recordsCache
+  // 永不过期，9/6 00:54 之后所有 session（包括 subagent rollup 的 owner main）
+  // 都不在 recordsCache 里，summary 完全不知道有这些 session。
+  //
+  // 修法：RECORDS_CACHE_TTL_MS=30s 内复用 listSessions 结果（同 v0.4.0.3 优化），
+  // 超过 TTL 后下一次 summary 自动重新 listSessions（30s 一次"用户感知延迟"
+  // 比"30s 一次 + 完全失明"好得多）。force=true 立即重新 list。
+  const RECORDS_CACHE_TTL_MS = 30 * 1000
   let recordsCache = null // SessionRecord[] | null
+  let recordsCacheFetchedAt = 0 // Date.now() at last listSessions
   let recordsCacheForce = false // 上次是不是 force 写的（用于 telemetry）
 
   async function getRecords(force) {
-    if (force || recordsCache === null) {
+    const now = Date.now()
+    if (force || recordsCache === null || (now - recordsCacheFetchedAt) >= RECORDS_CACHE_TTL_MS) {
       recordsCache = await ctx.sessionQuery.listSessions()
+      recordsCacheFetchedAt = now
       recordsCacheForce = force
     }
     return recordsCache
