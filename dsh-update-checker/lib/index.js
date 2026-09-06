@@ -238,31 +238,6 @@ async function verifyAndRecoverShim(before) {
   }
 }
 
-/** 读取请求 JSON body（带大小上限），失败返回 undefined。 */
-function readJsonBody(req) {
-  return new Promise((resolve) => {
-    let size = 0
-    const chunks = []
-    req.on('data', (chunk) => {
-      size += chunk.length
-      if (size > MAX_OUTPUT_BYTES) {
-        req.destroy()
-        resolve(undefined)
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
-      } catch {
-        resolve(undefined)
-      }
-    })
-    req.on('error', () => resolve(undefined))
-  })
-}
-
 export function apply(ctx) {
   /** 检查/更新状态机：单飞（同一时刻只允许一个检查或一个更新进行）。 */
   const state = {
