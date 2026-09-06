@@ -177,7 +177,8 @@ async function loadQueue(ctx) {
 async function saveQueue(ctx, queue) {
   const path = queuePathOf(ctx)
   const tmp = `${path}.tmp`
-  await writeFile(tmp, JSON.stringify(queue, null, 2), 'utf8')
+  // [perf] 不需要 pretty-print；磁盘上 JSON 仅做持久化，~30% 字节与序列化开销节省
+  await writeFile(tmp, JSON.stringify(queue), 'utf8')
   await rename(tmp, path)
 }
 
@@ -215,6 +216,10 @@ export function apply(ctx, config) {
   const lockModels = resolveLockModels(config?.lockModels)
   const staleAfterMs = resolveStaleAfterMs(config?.staleAfterMs)
   const queue = { entries: [] }
+  // [perf] O(1) 索引：dedup `queue.entries.some(...message.id)` 与 management API
+  // `findIndex` 都从 O(N) 降到 O(1)。任何对 queue.entries 的 push/splice 都必须
+  // 同步 idIndex；clear / load 时整体重建。
+  const idIndex = new Map() // message.id -> entry
   const loadedAt = Date.now() // 插件本次启动时刻（启动遗留缓冲计时用）
   let lastInPeak = inPeakWindow() // 启动时刻的高峰状态
   let peakEndedAt = null // 本次高峰结束时刻（ms）；null = 尚未观察到出高峰
@@ -240,6 +245,11 @@ export function apply(ctx, config) {
     const kept = loaded.entries.filter((e) => typeof e.ts === 'number' && e.ts >= cutoff)
     stalePrunedAtBoot = before - kept.length
     queue.entries = kept
+    idIndex.clear()
+    for (const entry of queue.entries) {
+      const id = entry.message?.id
+      if (typeof id === 'string') idIndex.set(id, entry)
+    }
     if (stalePrunedAtBoot > 0) await saveQueue(ctx, queue)
   }).catch(() => {})
 
@@ -288,13 +298,15 @@ export function apply(ctx, config) {
       let added = 0
       for (const msg of userMsgs) {
         // 按 message.id 去重：同一条消息（如重试触发的重复 pre-step）不重复入队
-        if (queue.entries.some((e) => e.message?.id === msg.id)) continue
-        queue.entries.push({
+        if (idIndex.has(msg.id)) continue
+        const entry = {
           sessionId,
           message: toRecord(msg),
           model,
           ts: Date.now(),
-        })
+        }
+        queue.entries.push(entry)
+        idIndex.set(msg.id, entry)
         added += 1
       }
       if (added > 0) {
@@ -318,6 +330,12 @@ export function apply(ctx, config) {
         remain.push(entry)
       }
       queue.entries = remain
+      // 同步 idIndex：投递成功的条目需从索引移除
+      idIndex.clear()
+      for (const e of queue.entries) {
+        const id = e.message?.id
+        if (typeof id === 'string') idIndex.set(id, e)
+      }
       await saveQueue(ctx, queue)
     }).catch(() => {})
   }
@@ -431,18 +449,21 @@ export function apply(ctx, config) {
           if (action === 'clear') {
             // 清空全部暂存（不投递）
             queue.entries = []
+            idIndex.clear()
             await saveQueue(ctx, queue)
             json(res, 200, { ok: true })
             return
           }
-          const index = queue.entries.findIndex((entry) => entry.message?.id === id)
-          if (index === -1) {
+          // [perf] O(1) 查找替换 O(N) findIndex
+          const entry = idIndex.get(id)
+          if (entry === undefined) {
             json(res, 404, { ok: false, error: 'not-found' })
             return
           }
-          const entry = queue.entries[index]
+          const index = queue.entries.indexOf(entry)
           if (action === 'delete') {
             queue.entries.splice(index, 1)
+            idIndex.delete(id)
             await saveQueue(ctx, queue)
             json(res, 200, { ok: true })
             return
@@ -469,6 +490,7 @@ export function apply(ctx, config) {
             return
           }
           queue.entries.splice(index, 1)
+          idIndex.delete(id)
           await saveQueue(ctx, queue)
           json(res, 200, { ok: true })
         })

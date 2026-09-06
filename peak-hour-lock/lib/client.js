@@ -466,6 +466,24 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /**
+     * [perf v0.x] 倒计时秒级刷新抽到独立子组件——PeakStatusLine 父组件不再因
+     * 每秒触发而全树重渲染。子组件自己跑 1Hz setInterval；flushTarget 变化时
+     * 父组件重新挂载 / 重置子组件（React 自动处理 key/flushTarget 切换）。
+     */
+    function CountdownRemaining(props) {
+      var tickState = React.useState(Date.now());
+      var setTick = tickState[1];
+      var tick = tickState[0];
+      React.useEffect(function () {
+        var id = setInterval(function () { setTick(Date.now()); }, 1000);
+        return function () { clearInterval(id); };
+      }, []);
+      // tick 用于触发 re-render；输出仅依赖 flushTarget + tick
+      var remaining = formatRemaining(props.flushTarget - tick);
+      return React.createElement("span", { className: "dsh-phl-countdown" }, remaining);
+    }
+
     /** 输入框上方状态横幅 + 可展开的暂存管理面板。 */
     function PeakStatusLine() {
       var statusState = React.useState({ inPeak: false, queued: 0, flushAt: null, blocked: 0, config: null });
@@ -476,11 +494,11 @@ window.__ModuleLoader__.load({
       var itemsState = React.useState(null);
       var items = itemsState[0];
       var setItems = itemsState[1];
-      var tickState = React.useState(Date.now());
-      var setTick = tickState[1];
       var flashState = React.useState(false);
+      var flash = flashState[0];
       var setFlash = flashState[1];
       var failState = React.useState(false);
+      var loadFailed = failState[0];
       var setLoadFailed = failState[1];
 
       var openRef = React.useRef(false);
@@ -504,6 +522,14 @@ window.__ModuleLoader__.load({
               setStatus({ inPeak: inPeakWindow(), queued: 0, flushAt: null, blocked: 0, config: null, lastIntercepted: null });
               return;
             }
+            // [perf] shallow-compare 关键字段，无变化则跳过 setStatus（避免每 20s 强制 re-render）
+            var prev = statusState[0];
+            if (prev.inPeak === d.inPeak && prev.queued === d.queued &&
+                prev.flushAt === d.flushAt && (prev.blocked || 0) === (d.blocked || 0) &&
+                prev.config === d.config && prev.lastIntercepted === (d.lastIntercepted || null)) {
+              prevQueuedRef.current = d.queued;
+              return;
+            }
             setStatus({
               inPeak: d.inPeak,
               queued: d.queued,
@@ -520,18 +546,13 @@ window.__ModuleLoader__.load({
             }
             prevQueuedRef.current = d.queued;
             initedRef.current = true;
+            // [perf] 队列拉取仅在面板打开时 piggyback；常态下不再每 20s 多发一请求
             if (openRef.current && d.queued > 0) reloadQueue();
             if (d.queued === 0) setOpen(false);
           });
         };
         load();
         var id = setInterval(load, 20000);
-        return function () { clearInterval(id); };
-      }, []);
-
-      // 倒计时秒级刷新
-      React.useEffect(function () {
-        var id = setInterval(function () { setTick(Date.now()); }, 1000);
         return function () { clearInterval(id); };
       }, []);
 
@@ -544,7 +565,6 @@ window.__ModuleLoader__.load({
 
       var flushTarget = s.flushAt;
       if (!flushTarget && s.inPeak) flushTarget = nextFlushAt();
-      var remaining = flushTarget ? formatRemaining(flushTarget - tickState[0]) : null;
 
       // 锁住规则摘要：多条规则取首条后省略；横幅里只放短提示，详情进管理面板看
       var rules = s.config && Array.isArray(s.config.lockModels) ? s.config.lockModels : [];
@@ -554,17 +574,22 @@ window.__ModuleLoader__.load({
           ? formatRule(rules[0])
           : formatRule(rules[0]) + " 等 " + rules.length + " 条";
 
-      var text;
+      // [perf] 父组件只算静态文本，剩余时间交给 <CountdownRemaining> 子组件每秒自渲
+      var msgChildren;
       if (s.inPeak) {
-        text = "高峰时段 · 消息将暂存" + (rulesSummary ? "（仅锁 " + rulesSummary + "）" : "");
-        if (s.queued > 0) text += "，已暂存 " + s.queued + " 条";
-        if (remaining) text += " · 约 " + remaining + " 后自动发出";
-      } else if (remaining) {
-        text = s.queued + " 条暂存消息 · 约 " + remaining + " 后自动发回原会话";
+        var p1 = "高峰时段 · 消息将暂存" + (rulesSummary ? "（仅锁 " + rulesSummary + "）" : "");
+        if (s.queued > 0) p1 += "，已暂存 " + s.queued + " 条";
+        if (flushTarget) {
+          msgChildren = [p1, " · 约 ", React.createElement(CountdownRemaining, { key: "cd", flushTarget: flushTarget }), " 后自动发出"];
+        } else {
+          msgChildren = [p1];
+        }
+      } else if (flushTarget) {
+        msgChildren = [s.queued + " 条暂存消息 · 约 ", React.createElement(CountdownRemaining, { key: "cd", flushTarget: flushTarget }), " 后自动发回原会话"];
       } else if (s.blocked > 0) {
-        text = s.queued + " 条暂存消息未能自动发出（原会话无法恢复），可编辑后手动发送或删除";
+        msgChildren = [s.queued + " 条暂存消息未能自动发出（原会话无法恢复），可编辑后手动发送或删除"];
       } else {
-        text = s.queued + " 条暂存消息 · 即将自动发回原会话";
+        msgChildren = [s.queued + " 条暂存消息 · 即将自动发回原会话"];
       }
 
       return React.createElement(
@@ -574,7 +599,7 @@ window.__ModuleLoader__.load({
           "div",
           { className: "dsh-phl-banner" + (flash ? " dsh-phl-flash" : "") },
           s.inPeak ? React.createElement("span", { className: "dsh-phl-dot" }) : null,
-          React.createElement("span", { className: "dsh-phl-msg" }, text),
+          React.createElement("span", { className: "dsh-phl-msg" }, msgChildren),
           s.queued > 0
             ? React.createElement(
                 Btn,
@@ -589,7 +614,7 @@ window.__ModuleLoader__.load({
               reload: reloadQueue,
               inPeak: s.inPeak,
               config: s.config,
-              loadFailed: failState[0],
+              loadFailed: loadFailed,
             })
           : null
       );
