@@ -151,6 +151,42 @@ function authorOf(data) {
   return read(data.author)
 }
 
+// [perf v0.x] SKILL.md 按 mtimeMs 缓存 frontmatter parse 结果——skills provider 的
+// list() 在 agent/pre-step 高频触发，没缓存时 N 个 skill = N 次 readFile + YAML parse。
+// control.invalidate() 调用 invalidateSkillCache() 让缓存失效一次。
+const skillFrontmatterCache = new Map() // absPath -> { mtimeMs, data: { name, description, author, userOnly } | null }
+
+async function readSkillFrontmatter(path) {
+  let st
+  try {
+    st = await stat(path)
+  } catch {
+    return null
+  }
+  const mtimeMs = st.mtimeMs
+  const cached = skillFrontmatterCache.get(path)
+  if (cached && cached.mtimeMs === mtimeMs) return cached.data
+  const raw = await readTextOrNull(path)
+  if (raw === undefined) return null
+  const data = parseFrontmatter(raw)
+  if (data === undefined) return null
+  const name = typeof data.name === 'string' ? data.name : ''
+  const description = typeof data.description === 'string' ? data.description : ''
+  if (name === '' || !SKILL_NAME_RE.test(name) || description === '') return null
+  const parsed = {
+    name,
+    description,
+    author: authorOf(data),
+    userOnly: truthyFrontmatter(data['disable-model-invocation']),
+  }
+  skillFrontmatterCache.set(path, { mtimeMs, data: parsed })
+  return parsed
+}
+
+function invalidateSkillCache() {
+  skillFrontmatterCache.clear()
+}
+
 /** 扫描单个根目录（名字以 frontmatter.name 为准，与 DSH 一致；junction/symlink 会跟随）。 */
 async function scanRoot(root) {
   const skills = []
@@ -175,18 +211,13 @@ async function scanRoot(root) {
     const path = kind === 'directory' ? join(entryPath, 'SKILL.md')
       : kind === 'file' && entry.name.endsWith('.md') ? entryPath : undefined
     if (path === undefined) continue
-    const raw = await readTextOrNull(path)
-    if (raw === undefined) continue
-    const data = parseFrontmatter(raw)
-    if (data === undefined) continue
-    const name = typeof data.name === 'string' ? data.name : ''
-    const description = typeof data.description === 'string' ? data.description : ''
-    if (name === '' || !SKILL_NAME_RE.test(name) || description === '') continue // DSH 同样忽略
+    const parsed = await readSkillFrontmatter(path)
+    if (parsed === null) continue
     skills.push({
-      name,
-      description,
-      author: authorOf(data),
-      userOnly: truthyFrontmatter(data['disable-model-invocation']),
+      name: parsed.name,
+      description: parsed.description,
+      author: parsed.author,
+      userOnly: parsed.userOnly,
       source: root.source,
       rank: root.rank,
       scanned: root.scanned,
@@ -458,7 +489,12 @@ export async function apply(ctx) {
   await loadState(ctx)
 
   ctx.effect(() => ctx.skills.registerProvider((control) => {
-    invalidateCatalog = control.invalidate
+    // [perf] 把 control.invalidate 包装成同时清 SKILL.md 缓存——
+    // framework invalidate 同时清 collect 缓存，下次 list() 触发全量重读
+    invalidateCatalog = () => {
+      invalidateSkillCache()
+      control.invalidate()
+    }
     return {
       name: 'skill-manager',
       list: (options) => listShadows(options),
