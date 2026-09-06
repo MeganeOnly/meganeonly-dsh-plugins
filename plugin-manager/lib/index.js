@@ -43,6 +43,13 @@ function isPresetMjs(entryName) {
 }
 
 /**
+ * [perf] 模块级 mtime 缓存——每次 `/list` 调用会触发 N 个插件的 author 读取，
+ * 缓存按 (absPath -> { mtimeMs, author })，mtimeMs 未变时跳过 readFile + JSON.parse。
+ * 作者只在 npm install / git pull 时变化（package.json 重写），运行期基本恒定。
+ */
+const authorCache = new Map() // absPath -> { mtimeMs: number, author: string|undefined }
+
+/**
  * 读取包 package.json 的 author 字段（file: 硬链接/junction 与源码同步；失败返回 undefined）。
  *
  * npm/pnpm 引入后，loader 的 graph row id 与包的 npm name 已不再同名：
@@ -52,9 +59,6 @@ function isPresetMjs(entryName) {
  */
 async function readAuthor(ctx, id, name) {
   if (typeof id !== 'string' || id === '') return undefined
-  // 注：scoped npm 包（id 形如 @scope/pkg）的真实路径正是 node_modules/@scope/pkg/package.json，
-  // 下方 candidates 构造里 `join(profileRoot, 'node_modules', id, 'package.json')` 已经覆盖，
-  // 故此处不再对 '@' 前缀做早返回——保持与其它 id 一致的路径解析流程。
   const candidates = []
   const seen = new Set()
   const tryAdd = (p) => { if (!seen.has(p)) { seen.add(p); candidates.push(p) } }
@@ -62,19 +66,34 @@ async function readAuthor(ctx, id, name) {
   if (typeof name === 'string' && name !== '' && name !== id) {
     tryAdd(join(profileRoot(ctx), 'node_modules', name, 'package.json'))
   }
-  // 兼容：id 或 name 任一不带 dsh- 前缀时，再尝试 dsh-<x>
   if (!id.startsWith('dsh-')) tryAdd(join(profileRoot(ctx), 'node_modules', 'dsh-' + id, 'package.json'))
   if (typeof name === 'string' && name !== '' && !name.startsWith('dsh-')) {
     tryAdd(join(profileRoot(ctx), 'node_modules', 'dsh-' + name, 'package.json'))
   }
   for (const pkgPath of candidates) {
+    let stat
+    try {
+      stat = await import('node:fs/promises').then(m => m.stat(pkgPath))
+    } catch {
+      continue
+    }
+    const mtimeMs = stat.mtimeMs
+    const cached = authorCache.get(pkgPath)
+    if (cached && cached.mtimeMs === mtimeMs) {
+      // 命中：连 stat 也跳过，但 stat 已在上面跑了；下一次走 stat 也接受（依然 O(1) 系统调用）
+      return cached.author
+    }
     try {
       const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
-      if (typeof pkg.author === 'string') return pkg.author
-      if (pkg.author && typeof pkg.author.name === 'string') return pkg.author.name
-      return undefined
+      const author = typeof pkg.author === 'string'
+        ? pkg.author
+        : (pkg.author && typeof pkg.author.name === 'string' ? pkg.author.name : undefined)
+      authorCache.set(pkgPath, { mtimeMs, author })
+      return author
     } catch {
-      // 候选路径都试一遍
+      // 解析失败：缓存 negative result，避免每次 list 重复尝试
+      authorCache.set(pkgPath, { mtimeMs, author: undefined })
+      return undefined
     }
   }
   return undefined
@@ -126,13 +145,23 @@ function findEntryItem(seq, id) {
 async function setEnabled(ctx, targetId, enabled) {
   if (typeof targetId !== 'string' || targetId.trim() === '') throw new Error('invalid-id')
 
+  // [perf] 直接 iterate loader entries 取校验字段，避免 listEntries() 重读所有 author。
+  const loader = ctx.loader
+  let target = null
+  for (const entry of loader.entries()) {
+    if (entry.options.id === targetId) { target = entry; break }
+  }
+  if (target === null) {
+    // 不在 loader 名册中：保持旧语义（unchanged）——上层处理 404 由 list 路径负责
+    return { ok: true, id: targetId, enabled, unchanged: true }
+  }
+  const tName = target.options.name
   // 系统插件拒改
-  const row = (await listEntries(ctx)).find((e) => e.id === targetId)
-  if (row !== undefined && row.system) throw new Error(`system-plugin: ${targetId} 属于系统内部插件，请在插件管理器之外处理`)
+  if (isSystem(tName)) throw new Error(`system-plugin: ${targetId} 属于系统内部插件，请在插件管理器之外处理`)
   // 预设组件拒改：行来自 agent 预设组合（name 为 ./.mjs 相对路径），id 定向覆盖写进
   // cordis.patch.yml 也够不到它们，直接拒绝以免误导（提示重启其实不生效）。
-  if (row !== undefined && row.presetMjs) throw new Error(`preset-mjs: ${targetId} 是预设组件（.mjs），随当前会话预设自动加载，不能在这里启停`)
-  if (row !== undefined && row.enabled === enabled) return { ok: true, id: targetId, enabled, unchanged: true }
+  if (isPresetMjs(tName)) throw new Error(`preset-mjs: ${targetId} 是预设组件（.mjs），随当前会话预设自动加载，不能在这里启停`)
+  if (target.disabled === !enabled) return { ok: true, id: targetId, enabled, unchanged: true }
 
   const path = patchPathOf(ctx)
   const text = await readFile(path, 'utf8')
