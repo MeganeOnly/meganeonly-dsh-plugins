@@ -10,9 +10,8 @@
 
     function mcpMatches(e, q) {
       if (!q) return true;
-      var hay = String(e.serverName) + " " + String(e.id) + " " + String(e.endpoint) + " " + String(e.transport);
-      for (var i = 0; i < e.tools.length; i++) hay += " " + String(e.tools[i].name);
-      return hay.toLowerCase().indexOf(q.toLowerCase()) !== -1;
+      // [perf] 读 load 时预计算的 _searchHayLower，避免每次 keystroke 重构 + lowercase
+      return (e._searchHayLower || "").indexOf(q.toLowerCase()) !== -1;
     }
 
     function McpManagerPage() {
@@ -43,6 +42,15 @@
           })
           .then(function (payload) {
             if (!payload.ok) throw new Error(payload.error || "list failed");
+            // [perf] 预计算 search haystack（避免每次 keystroke 重构 tools 拼接）
+            for (var i = 0; i < payload.entries.length; i++) {
+              var e = payload.entries[i];
+              var hay = String(e.serverName) + " " + String(e.id) + " " + String(e.endpoint) + " " + String(e.transport);
+              if (e.tools) {
+                for (var j = 0; j < e.tools.length; j++) hay += " " + String(e.tools[j].name);
+              }
+              e._searchHayLower = hay.toLowerCase();
+            }
             setData(payload.entries);
             setPending({});
             setLoading(false);

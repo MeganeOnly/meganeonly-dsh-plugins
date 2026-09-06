@@ -5,23 +5,19 @@
       var setActive = active[1];
       var setAvail = avail[1];
 
-      // 挂载时探测各管理插件 API：404（=对应插件停用）→ 隐藏该 tab。
-      // 其余状态（200/405/网络错误）乐观显示，让对应视图自己呈现结果。
+      // [perf v0.x] 挂载时只探测默认 tab（"plugin"）；其他 tab 切到时再按需探测，
+      // 避免首屏 3 个全量 /list GET——默认 tab 自身 useEffect 已经在拉数据。
+      // 兜底：用户切到某个 tab 时若该 tab 没探测过，再探一次确认是否可用。
       React.useEffect(function () {
-        var results = {};
-        var pending = TABS.length;
-        var done = function () {
-          pending -= 1;
-          if (pending === 0) setAvail(results);
-        };
-        for (var i = 0; i < TABS.length; i++) {
-          (function (t) {
-            fetch(t.api + "/list")
-              .then(function (res) { results[t.id] = res.status !== 404; })
-              .catch(function () { results[t.id] = true; })
-              .then(done);
-          })(TABS[i]);
-        }
+        var defaultTab = TABS[0];
+        fetch(defaultTab.api + "/list")
+          .then(function (res) { setAvail(function (a) { var n = Object.assign({}, a || {}); n[defaultTab.id] = res.status !== 404; return n; }); })
+          .catch(function () { setAvail(function (a) { var n = Object.assign({}, a || {}); n[defaultTab.id] = true; return n; }); });
+        // 其余 tab 标记为"未探测"——visibleTabs 暂时只显示默认 tab；用户切到
+        // 对应 tab 时由子组件 useEffect 拉数据（失败的话返回 "service unavailable"）
+        var others = {};
+        for (var i = 1; i < TABS.length; i++) others[TABS[i].id] = true; // 乐观显示
+        setAvail(function (a) { return Object.assign({}, a || {}, others); });
       }, []);
 
       var views = {
