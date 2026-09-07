@@ -1,6 +1,49 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.4：设置页开关尺寸回退到 v0.5.1 之前的紧凑 pill——真的「圆圆的」需要更紧凑的尺寸
+ *
+ *   用户反馈：v0.10.3 修了 border 之后开关「看起来还是方方的」。
+ *
+ *   根因：v0.10.3 标题写「回归 v0.5.1 之前的「圆圆的」pill 形态」但**只完成了一半**——
+ *   v0.6.0 合并 simple-mode 进 ui-tweaks 时，把 `.DTPD_switch` 尺寸从 v0.5.1 的
+ *   `34×20` / thumb `16×16` 调大到 `36×22` / thumb `18×18`，**同时**加了 1px solid border。
+ *   v0.10.3 只删了 border、但忘了把尺寸回退——结果是「无 border 的 36×22 大版本」，
+ *   在 22px 高度上 thumb `18×18 + top:1px` 只剩 2px 上下边距、pill 两端的圆形
+ *   轮廓被厚 thumb 压缩，视觉上仍是「方圆」（chunky rectangle）。
+ *
+ *   「圆圆的」v0.5.1 形态：34×20 + thumb 16×16 + top:2px left:2px + 4px 上下边距
+ *   —— pill 两端的圆形轮廓明显可见，跟用户记忆中一致。
+ *
+ *   修法：尺寸三个值同时回退——
+ *     - `.DTPD_switch` 的 `width:36px;height:22px` → `width:34px;height:20px`
+ *     - `.DTPD_switch::after` 的 `width:18px;height:18px;top:1px;left:1px` → `width:16px;height:16px;top:2px;left:2px`
+ *     - `.DTPD_switch:checked::after` 的 `transform:translateX(14px)` 保持不变
+ *       （34px 宽里 14+16+2=32、knob 右边距 2px；36px 宽里 14+18+1=33、knob 右边距 3px——
+ *       数值上 translateX 14px 在两种宽度下都成立，knob 右侧都留 2-3px gap）
+ *   其它属性（border-radius:999px / thumb border-radius:50% / thumb box-shadow /
+ *   off 态 fallback 色 / transition / flex / margin / padding 等）全部保留。
+ *
+ *   兼容性：tweak id / localStorage key / 类名 / 调试 API / 设置页 UI / React 组件
+ *   / debug API / 节流轮询 等全部不动；只改 `35-styles.js` SECTION_CSS 的
+ *   `.DTPD_switch` / `.DTPD_switch::after` 两个选择器的 width/height/top/left
+ *   共四个值，老用户开关状态保留、关闭/开启行为零变化。
+ *
+ *   诊断：浏览器 DevTools inspect 设置页 `.DTPD_switch` 元素——
+ *     - Computed 面板 `width` 应是 `34px`、`height` 应是 `20px`（v0.10.3 时是 36×22）
+ *     - Computed 面板 `border-radius` 仍是 `999px`、`border` 仍是 `medium none currentcolor`
+ *     - `::after` 伪元素 `width` 应是 `16px`、`height` 应是 `16px`、`top` 应是 `2px`、
+ *       `left` 起始 `2px` / 勾选后 `16px`（v0.10.3 时是 18×18 + top:1 / left:1 → 15）
+ *     - 视觉上 pill 两端圆形轮廓比 v0.10.3 更明显（thumb 上下边距从 2px 增到 4px，
+ *       pill 高度的 20% 留给 thumb 之外的轨道），跟 v0.5.1 之前一致
+ *
+ *   改动文件：`lib/client-src/35-styles.js`（SECTION_CSS 的 `.DTPD_switch` /
+ *   `.DTPD_switch::after` 尺寸回退 + JSDoc 加 v0.10.4 段）；`lib/client-src/20-constants.js`
+ *   （VERSION 0.10.3 → 0.10.4 + 头部 v0.10.4 注释）；`lib/client-src/00-banner.js`（本段）；
+ *   `package.json`（version 0.10.3 → 0.10.4 + description 同步）；`CHANGELOG.md`
+ *   加 [0.10.4] 段；走 `npm run build:client` + `node --check lib/client.js`
+ *   语法校验通过。
+ *
  * v0.10.3：设置页开关去边框——回归 v0.5.1 之前的「圆圆的」pill 形态
  *
  *   用户反馈：现在开关「都有一点方圆的」，更喜欢之前「圆圆的」那种。
@@ -10,11 +53,15 @@
  *   v0.5.1 之前（v0.2.0–v0.5.x）没有这条 border，pill 看起来是纯色椭圆，跟用户记忆中
  *   的「圆圆的」一致。
  *
- *   修法：去掉 `border:1px solid ...` 这一段，其它所有属性（width:36px / height:22px /
+ *   修法（部分）：去掉 `border:1px solid ...` 这一段，其它所有属性（width:36px / height:22px /
  *   border-radius:999px / thumb 18×18 + 50% / thumb box-shadow）保留。off 态靠
  *   `background:var(--dsw-alias-bg-component-disabled,#cbd5e1)` 的 fallback 颜色
  *   （亮色主题 `#cbd5e1` 浅灰 / 暗色主题走 var 解析值）保持可见，不依赖 border
  *   兜底——v0.5.1 之前就是这个状态，本来就够清晰。
+ *
+ *   **本次只完成了一半**：尺寸仍为 v0.6.0 放大的 36×22 / thumb 18×18，没回退到
+ *   v0.5.1 的 34×20 / thumb 16×16。用户实测「去掉边框后还是方方的」→ v0.10.4
+ *   继续把尺寸回退到 v0.5.1 之前的 34×20 / thumb 16×16。详见 v0.10.4 banner 段。
  *
  *   兼容性：tweak id / localStorage key / 类名 / 调试 API / 设置页 UI 全部不动；
  *   只改 `35-styles.js` SECTION_CSS 的 `.DTPD_switch` 一行（删掉 border 声明）。
@@ -22,7 +69,7 @@
  *
  *   诊断：浏览器 DevTools inspect 设置页开关元素，Computed 面板 `border` 应是
  *   `medium none currentcolor`（无 border），`border-radius` 仍是 `999px`；
- *   pill 形态与 v0.5.1 之前一致。
+ *   pill 形态与 v0.5.1 之前**部分**一致（border 一致，尺寸仍是 v0.6.0 放大版）。
  *
  *   改动文件：`lib/client-src/35-styles.js`（删 `.DTPD_switch` 的 `border:1px solid ...`，
  *   SECTION_CSS JSDoc 加 v0.10.3 段）；`lib/client-src/20-constants.js`（VERSION 0.10.2

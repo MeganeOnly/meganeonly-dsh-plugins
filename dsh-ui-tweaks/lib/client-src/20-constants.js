@@ -139,11 +139,23 @@
         //      半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例
         //   详见 `45-chatflow-marks.js` v0.10.2 banner 段 + `25-tweaks.js` 的
         //   conversation-shift buildCSS v0.10.2 注释段。
+        // v0.10.4：把 `.DTPD_switch` 尺寸从 v0.6.0 起放大的 `36×22` /
+        //   thumb `18×18` 回退到 v0.5.1 之前的 `34×20` / thumb `16×16`——
+        //   用户实测反馈 v0.10.3 修了 border 但「开关看起来还是方方的」，
+        //   真正的「圆圆的」需要在更紧凑的尺寸下两端圆形轮廓才能显现。
+        //   v0.6.0 合并 simple-mode 时一并把尺寸调大（border 也是那时加
+        //   的），v0.10.3 只删 border、忘了改尺寸；本次完整回退到 v0.5.1
+        //   之前的紧凑 pill。translateX 保持 `14px`（数值上 34px 宽与
+        //   36px 宽都能让 knob 右边距保持 2-3px）。详见 `35-styles.js`
+        //   的 v0.10.4 注释段 + CHANGELOG [0.10.4]。
         // v0.10.3：去掉设置页开关的 1px solid border（v0.6.0 起加的）——
         //   用户反馈边框让 pill 看起来「有点方圆」不够圆润，去掉后跟
         //   v0.5.1 之前无边框版一致。off 态靠 background fallback 色（`#cbd5e1`）
-        //   保持可见，无需 border 兜底。详见 `35-styles.js` 的 v0.10.3 注释段。
-        var VERSION = "0.10.3";
+        //   保持可见，无需 border 兜底。但本次仅去 border、未恢复尺寸——
+        //   尺寸仍为 v0.6.0 放大的 36×22 / thumb 18×18，用户实测「去掉
+        //   边框后还是方方的」→ v0.10.4 继续把尺寸回退到 v0.5.1 之前的
+        //   34×20 / thumb 16×16。详见 `35-styles.js` 的 v0.10.4 注释段。
+        var VERSION = "0.10.4";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

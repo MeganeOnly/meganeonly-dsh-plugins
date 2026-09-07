@@ -4,6 +4,31 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.4] - 2026-09-06
+
+### 修复
+
+- **设置页开关尺寸回退到 v0.5.1 之前的紧凑 pill——v0.10.3「圆圆的」修复只完成了一半**（v0.10.4）：用户实测反馈「v0.10.3 修了 border 之后开关『看起来还是方方的』」——v0.10.3 CHANGELOG 标题写「回归 v0.5.1 之前的「圆圆的」pill 形态」但**实际只删了 border**，尺寸仍为 v0.6.0 合并 simple-mode 时放大的 `36×22` / thumb `18×18`（v0.5.1 是 `34×20` / thumb `16×16`）。
+  - **根因（v0.10.3 不彻底的根因）**：v0.6.0（commit `f3c3d5f` 合并 simple-mode 进 ui-tweaks 时）**同时**做了两件事——① 给 `.DTPD_switch` 加 `border:1px solid var(--dsw-alias-border-l2,#94a3b8)`；② 把尺寸从 `width:34px; height:20px` 调到 `width:36px; height:22px`、把 thumb 从 `16×16 + top:2px; left:2px` 调到 `18×18 + top:1px; left:1px`。这两件事是同时发生的，作者大概率没意识到它们共同削弱了 pill 的「圆」——border 是显式的 1px 灰边（用户第一眼能看到），尺寸放大是隐式的（chunky thumb 压缩 pill 末端圆形轮廓）。v0.10.3 看 user 反馈「现在开关都有一点方圆的」时只注意到了 border 这一显式变量，把 border 删了就以为修好；尺寸放大这一隐式变量被漏掉，用户实测「去掉边框后还是方方的」→ 这次才被定位到。
+  - **修法：尺寸三个值同时回退到 v0.5.1 之前的紧凑 pill**——
+    - `.DTPD_switch` 的 `width:36px; height:22px` → `width:34px; height:20px`
+    - `.DTPD_switch::after` 的 `width:18px; height:18px; top:1px; left:1px` → `width:16px; height:16px; top:2px; left:2px`
+    - `.DTPD_switch:checked::after` 的 `transform:translateX(14px)` **保持不变**——translateX 14px 在两种宽度下都成立：34px 宽里 `14+16+2=32`、knob 右边距 2px；36px 宽里 `14+18+1=33`、knob 右边距 3px。数值上两种宽度都给 knob 留 2-3px right gap，无需调整
+  - **「圆圆的」如何从尺寸放大里恢复**：22px 高度 + 18px thumb + top:1px → thumb 上下边距各 2px（thumb 高度占 switch 高度的 82%），pill 两端的圆形轮廓被厚 thumb 压缩；20px 高度 + 16px thumb + top:2px → thumb 上下边距各 4px（thumb 高度占 switch 高度的 80%，但绝对边距从 2px 增到 4px——视觉上 pill 末端有「更明显的圆」可见）。border-radius:999px 本身没变，变的只是容器和 thumb 的尺寸比例与 thumb 离边缘的距离。
+  - **兼容性**：tweak id / `choices` / localStorage key / `.DTPD_switch` 类名 / 设置页 React 组件 / `<input type="checkbox" className="DTPD_switch">` 的 DOM 形状 / debug API / 状态事件总线 全部不动；只改 `SECTION_CSS` 的 `.DTPD_switch` / `.DTPD_switch::after` 两个选择器的 width/height/top/left 共 4 个 CSS 值（其余属性 border-radius:999px / thumb 50% / thumb box-shadow / off 态 fallback 色 / transition / flex / margin / padding 全部保留）。老用户升级后开关状态保留、关闭/开启行为零变化、键盘焦点圈与 ARIA role="switch" 完全不变。
+  - **诊断**：浏览器 DevTools inspect 设置页 `.DTPD_switch` 元素——
+    - Computed 面板 `width` 应是 `34px`、`height` 应是 `20px`（v0.10.3 时是 36×22）
+    - Computed 面板 `border-radius` 仍是 `999px`、`border` 仍是 `medium none currentcolor`（v0.10.3 已删）
+    - `::after` 伪元素 `width` 应是 `16px`、`height` 应是 `16px`、`top` 应是 `2px`、`left` 起始 `2px` / 勾选后 `16px`（v0.10.3 时是 18×18 + top:1 / left:1 或 15）
+    - 视觉上 pill 两端圆形轮廓比 v0.10.3 更明显（thumb 上下边距从 2px 增到 4px，pill 高度的 20% 留给 thumb 之外的轨道），跟 v0.5.1 之前一致
+    - 控制台 `window.__dshUiTweaks.getInjectedCSS()` 返回的 CSS 含 `.DTPD_switch{...width:34px;height:20px;...}` + `.DTPD_switch::after{...width:16px;height:16px;top:2px;left:2px;...}`
+  - **改动文件**：`lib/client-src/35-styles.js`（SECTION_CSS 的 `.DTPD_switch` width/height + `.DTPD_switch::after` width/height/top/left 五个值回退 + JSDoc 加 v0.10.4 段 + v0.10.3 段更新为"只完成了一半"叙述）；`lib/client-src/20-constants.js`（VERSION 0.10.3 → 0.10.4 + 头部加 v0.10.4 注释 + v0.10.3 注释加"本次仅去 border、未恢复尺寸"补注）；`lib/client-src/00-banner.js`（加 v0.10.4 banner 段在最顶部 + v0.10.3 banner 段补"本次只完成了一半"叙述）；`package.json`（version 0.10.3 → 0.10.4 + description 开篇换成 v0.10.4 摘要）；本 CHANGELOG 加 [0.10.4] 段；走 `npm run build:client` + `node --check lib/client.js` 语法校验通过。
+
+### 兼容性（DSH 0.1.2-rc.1）
+
+- 与 v0.10.3 相同——DOM 锚点不变（`[data-conversation-scroll]` / `[data-slot=...]` / `[data-chat-flow-kind]` / `[data-variant="think"]` / `[class*="..."]`），CSS Module 类名 hash 变化不命中任何规则，DSH 升级换 hash 行为零变化。
+- v0.10.4 仅修改 `.DTPD_switch` / `.DTPD_switch::after` 两个选择器的尺寸 4 个值，与 DSH 0.1.2-rc.1 完全无关——这是本插件自己的开关组件，不依赖任何 DSH DOM 形状。
+
 ## [0.10.3] - 2026-09-05
 
 ### 修复

@@ -1,6 +1,49 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.4：设置页开关尺寸回退到 v0.5.1 之前的紧凑 pill——真的「圆圆的」需要更紧凑的尺寸
+ *
+ *   用户反馈：v0.10.3 修了 border 之后开关「看起来还是方方的」。
+ *
+ *   根因：v0.10.3 标题写「回归 v0.5.1 之前的「圆圆的」pill 形态」但**只完成了一半**——
+ *   v0.6.0 合并 simple-mode 进 ui-tweaks 时，把 `.DTPD_switch` 尺寸从 v0.5.1 的
+ *   `34×20` / thumb `16×16` 调大到 `36×22` / thumb `18×18`，**同时**加了 1px solid border。
+ *   v0.10.3 只删了 border、但忘了把尺寸回退——结果是「无 border 的 36×22 大版本」，
+ *   在 22px 高度上 thumb `18×18 + top:1px` 只剩 2px 上下边距、pill 两端的圆形
+ *   轮廓被厚 thumb 压缩，视觉上仍是「方圆」（chunky rectangle）。
+ *
+ *   「圆圆的」v0.5.1 形态：34×20 + thumb 16×16 + top:2px left:2px + 4px 上下边距
+ *   —— pill 两端的圆形轮廓明显可见，跟用户记忆中一致。
+ *
+ *   修法：尺寸三个值同时回退——
+ *     - `.DTPD_switch` 的 `width:36px;height:22px` → `width:34px;height:20px`
+ *     - `.DTPD_switch::after` 的 `width:18px;height:18px;top:1px;left:1px` → `width:16px;height:16px;top:2px;left:2px`
+ *     - `.DTPD_switch:checked::after` 的 `transform:translateX(14px)` 保持不变
+ *       （34px 宽里 14+16+2=32、knob 右边距 2px；36px 宽里 14+18+1=33、knob 右边距 3px——
+ *       数值上 translateX 14px 在两种宽度下都成立，knob 右侧都留 2-3px gap）
+ *   其它属性（border-radius:999px / thumb border-radius:50% / thumb box-shadow /
+ *   off 态 fallback 色 / transition / flex / margin / padding 等）全部保留。
+ *
+ *   兼容性：tweak id / localStorage key / 类名 / 调试 API / 设置页 UI / React 组件
+ *   / debug API / 节流轮询 等全部不动；只改 `35-styles.js` SECTION_CSS 的
+ *   `.DTPD_switch` / `.DTPD_switch::after` 两个选择器的 width/height/top/left
+ *   共四个值，老用户开关状态保留、关闭/开启行为零变化。
+ *
+ *   诊断：浏览器 DevTools inspect 设置页 `.DTPD_switch` 元素——
+ *     - Computed 面板 `width` 应是 `34px`、`height` 应是 `20px`（v0.10.3 时是 36×22）
+ *     - Computed 面板 `border-radius` 仍是 `999px`、`border` 仍是 `medium none currentcolor`
+ *     - `::after` 伪元素 `width` 应是 `16px`、`height` 应是 `16px`、`top` 应是 `2px`、
+ *       `left` 起始 `2px` / 勾选后 `16px`（v0.10.3 时是 18×18 + top:1 / left:1 → 15）
+ *     - 视觉上 pill 两端圆形轮廓比 v0.10.3 更明显（thumb 上下边距从 2px 增到 4px，
+ *       pill 高度的 20% 留给 thumb 之外的轨道），跟 v0.5.1 之前一致
+ *
+ *   改动文件：`lib/client-src/35-styles.js`（SECTION_CSS 的 `.DTPD_switch` /
+ *   `.DTPD_switch::after` 尺寸回退 + JSDoc 加 v0.10.4 段）；`lib/client-src/20-constants.js`
+ *   （VERSION 0.10.3 → 0.10.4 + 头部 v0.10.4 注释）；`lib/client-src/00-banner.js`（本段）；
+ *   `package.json`（version 0.10.3 → 0.10.4 + description 同步）；`CHANGELOG.md`
+ *   加 [0.10.4] 段；走 `npm run build:client` + `node --check lib/client.js`
+ *   语法校验通过。
+ *
  * v0.10.3：设置页开关去边框——回归 v0.5.1 之前的「圆圆的」pill 形态
  *
  *   用户反馈：现在开关「都有一点方圆的」，更喜欢之前「圆圆的」那种。
@@ -10,11 +53,15 @@
  *   v0.5.1 之前（v0.2.0–v0.5.x）没有这条 border，pill 看起来是纯色椭圆，跟用户记忆中
  *   的「圆圆的」一致。
  *
- *   修法：去掉 `border:1px solid ...` 这一段，其它所有属性（width:36px / height:22px /
+ *   修法（部分）：去掉 `border:1px solid ...` 这一段，其它所有属性（width:36px / height:22px /
  *   border-radius:999px / thumb 18×18 + 50% / thumb box-shadow）保留。off 态靠
  *   `background:var(--dsw-alias-bg-component-disabled,#cbd5e1)` 的 fallback 颜色
  *   （亮色主题 `#cbd5e1` 浅灰 / 暗色主题走 var 解析值）保持可见，不依赖 border
  *   兜底——v0.5.1 之前就是这个状态，本来就够清晰。
+ *
+ *   **本次只完成了一半**：尺寸仍为 v0.6.0 放大的 36×22 / thumb 18×18，没回退到
+ *   v0.5.1 的 34×20 / thumb 16×16。用户实测「去掉边框后还是方方的」→ v0.10.4
+ *   继续把尺寸回退到 v0.5.1 之前的 34×20 / thumb 16×16。详见 v0.10.4 banner 段。
  *
  *   兼容性：tweak id / localStorage key / 类名 / 调试 API / 设置页 UI 全部不动；
  *   只改 `35-styles.js` SECTION_CSS 的 `.DTPD_switch` 一行（删掉 border 声明）。
@@ -22,7 +69,7 @@
  *
  *   诊断：浏览器 DevTools inspect 设置页开关元素，Computed 面板 `border` 应是
  *   `medium none currentcolor`（无 border），`border-radius` 仍是 `999px`；
- *   pill 形态与 v0.5.1 之前一致。
+ *   pill 形态与 v0.5.1 之前**部分**一致（border 一致，尺寸仍是 v0.6.0 放大版）。
  *
  *   改动文件：`lib/client-src/35-styles.js`（删 `.DTPD_switch` 的 `border:1px solid ...`，
  *   SECTION_CSS JSDoc 加 v0.10.3 段）；`lib/client-src/20-constants.js`（VERSION 0.10.2
@@ -802,11 +849,23 @@ window.__ModuleLoader__.load({
         //      半屏时 40% 上限自动收紧到「聊天列 60% 内容 + 40% 右缩」的比例
         //   详见 `45-chatflow-marks.js` v0.10.2 banner 段 + `25-tweaks.js` 的
         //   conversation-shift buildCSS v0.10.2 注释段。
+        // v0.10.4：把 `.DTPD_switch` 尺寸从 v0.6.0 起放大的 `36×22` /
+        //   thumb `18×18` 回退到 v0.5.1 之前的 `34×20` / thumb `16×16`——
+        //   用户实测反馈 v0.10.3 修了 border 但「开关看起来还是方方的」，
+        //   真正的「圆圆的」需要在更紧凑的尺寸下两端圆形轮廓才能显现。
+        //   v0.6.0 合并 simple-mode 时一并把尺寸调大（border 也是那时加
+        //   的），v0.10.3 只删 border、忘了改尺寸；本次完整回退到 v0.5.1
+        //   之前的紧凑 pill。translateX 保持 `14px`（数值上 34px 宽与
+        //   36px 宽都能让 knob 右边距保持 2-3px）。详见 `35-styles.js`
+        //   的 v0.10.4 注释段 + CHANGELOG [0.10.4]。
         // v0.10.3：去掉设置页开关的 1px solid border（v0.6.0 起加的）——
         //   用户反馈边框让 pill 看起来「有点方圆」不够圆润，去掉后跟
         //   v0.5.1 之前无边框版一致。off 态靠 background fallback 色（`#cbd5e1`）
-        //   保持可见，无需 border 兜底。详见 `35-styles.js` 的 v0.10.3 注释段。
-        var VERSION = "0.10.3";
+        //   保持可见，无需 border 兜底。但本次仅去 border、未恢复尺寸——
+        //   尺寸仍为 v0.6.0 放大的 36×22 / thumb 18×18，用户实测「去掉
+        //   边框后还是方方的」→ v0.10.4 继续把尺寸回退到 v0.5.1 之前的
+        //   34×20 / thumb 16×16。详见 `35-styles.js` 的 v0.10.4 注释段。
+        var VERSION = "0.10.4";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -1777,10 +1836,24 @@ window.__ModuleLoader__.load({
      * 头部右侧渲染下拉框而非开关。外观对齐已有的 `.DTPD_input` 数字框
      * （同边框 / 圆角 / 内边距 / focus 色），只是宽度按内容给个下限。
      *
+     * v0.10.4：把 `.DTPD_switch` 尺寸从 v0.6.0 起放大的 `36×22` / thumb `18×18`
+     *   回退到 v0.5.1 之前的 `34×20` / thumb `16×16`——用户实测反馈
+     *   「现在开关看起来方方的」（v0.10.3 修了 border 但尺寸仍偏大，
+     *   视觉上仍偏方圆，达不到用户记忆里的「圆圆的」）。v0.6.0 合并
+     *   simple-mode 时一并把尺寸调大（border 也是那时加的），v0.10.3
+     *   只删 border、忘了改尺寸。本次同时把尺寸恢复到 v0.5.1 之前的
+     *   紧凑 pill：thumb `top:2px; left:2px`（v0.6.0 起是 `top:1px; left:1px`
+     *   ——22px 高 + 18px thumb 只剩 2px 上下边距，看上去 thumb 几乎贴满高度，
+     *   pill 的「圆」被压缩；20px 高 + 16px thumb + 2px 上下边距 = 4px 边距，
+     *   pill 两端圆形轮廓更明显）。translateX 保持 `14px`（v0.5.1 与
+     *   v0.6.0 起都是这个值，34px 宽里 14+16+2=32、knob 右边距 2px，
+     *   36px 宽里 14+18+1=33、knob 右边距 3px，数值上都成立）。
      * v0.10.3：去掉 `.DTPD_switch` 的 `border:1px solid`（v0.6.0 起加的）——
-     * 用户反馈 1px 边框让开关看起来"有点方圆"，去掉后 pill 形态更纯净，
-     * 跟 v0.5.1 之前无边框版一致。off 态靠 background fallback 颜色
-     * （`#cbd5e1`）保持可见，无需 border 兜底。
+     *   用户反馈 1px 边框让开关看起来"有点方圆"，去掉后 pill 形态更纯净。
+     *   off 态靠 background fallback 颜色（`#cbd5e1`）保持可见，无需
+     *   border 兜底。但本次仅去 border、**未恢复尺寸**——尺寸仍为 v0.6.0
+     *   放大的 36×22 / thumb 18×18，用户实测「去掉边框后还是方方的」→
+     *   v0.10.4 继续把尺寸回退到 v0.5.1 之前的 34×20 / thumb 16×16。
      */
     var SECTION_CSS =
       ".DTPD_section{max-width:760px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:18px;display:flex}\n" +
@@ -1792,9 +1865,12 @@ window.__ModuleLoader__.load({
       ".DTPD_itemHead{flex-direction:row;justify-content:space-between;align-items:center;gap:12px;display:flex}\n" +
       ".DTPD_itemName{margin:0;font-size:14px;font-weight:500;line-height:22px}\n" +
       // v0.7.5：.DTPD_itemDesc 规则移除——description 改用 HTML title，不渲染 <p>
-      ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:36px;height:22px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
+      // v0.10.4：尺寸从 v0.6.0 起放大的 36×22 / thumb 18×18 回退到 v0.5.1
+      //   之前的 34×20 / thumb 16×16——用户实测「去掉边框后还是方方的」，
+      //   真正的「圆圆的」需要在更紧凑的尺寸下、两端圆形轮廓才能显现出来。
+      ".DTPD_switch{appearance:none;-webkit-appearance:none;cursor:pointer;width:34px;height:20px;background:var(--dsw-alias-bg-component-disabled,#cbd5e1);border-radius:999px;position:relative;transition:background .15s ease;flex:none;margin:0;padding:0}\n" +
       ".DTPD_switch:checked{background:var(--dsw-alias-state-business-primary,#2563eb)}\n" +
-      ".DTPD_switch::after{content:\"\";position:absolute;top:1px;left:1px;width:18px;height:18px;background:var(--dsw-alias-bg-layer-1,#fff);border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.18)}\n" +
+      ".DTPD_switch::after{content:\"\";position:absolute;top:2px;left:2px;width:16px;height:16px;background:var(--dsw-alias-bg-layer-1,#fff);border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.18)}\n" +
       ".DTPD_switch:checked::after{transform:translateX(14px)}\n" +
       ".DTPD_valueRow{align-items:center;gap:8px;display:flex}\n" +
       ".DTPD_valueLabel{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;min-width:64px}\n" +
