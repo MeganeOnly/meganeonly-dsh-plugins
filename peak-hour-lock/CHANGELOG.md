@@ -4,6 +4,12 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.4] - 2026-09-08
+
+### 维护
+
+- 注释精简：review `lib/client.js`，review found nothing redundant——所有现有注释（顶部 banner / `// ---------- X ----------` section marker / 函数 JSDoc / `// why` WHY 注释 / `[perf]` perf WHY / 分钟常量尾注）均符合 dsh-ui-tweaks v0.10.6 起精简规范，无需移除。Host 半端 `lib/index.js` 不在本任务内（ES2015+ 风格不同，通用规范 § 三三 ES5-only 规则不适用）。
+
 ## [0.3.3] - 2026-08-19
 
 作为独立 npm 包发布的初始版本，包含以下已有功能。
