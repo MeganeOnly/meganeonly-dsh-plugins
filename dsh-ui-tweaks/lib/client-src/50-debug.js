@@ -24,6 +24,28 @@
       };
     }
 
+    // inspect 单个 DOM 元素（不走 selector——调用方已有 nodes 数组）。
+    // 与 inspectMatch 不同：本函数不依赖 document.querySelector，能直接对
+    // querySelectorAll 返回的 nodeList 元素逐一产生诊断条目——避免
+    // applyDebugMode 重复 querySelectorAll + 只 inspect 第 1 个匹配。
+    function inspectElement(el) {
+      if (el === null || el === undefined) return { found: false };
+      var cs = (typeof window !== "undefined" && window.getComputedStyle) ? window.getComputedStyle(el) : null;
+      var rect = (typeof el.getBoundingClientRect === "function") ? el.getBoundingClientRect() : null;
+      return {
+        found: true,
+        tagName: el.tagName,
+        className: typeof el.className === "string" ? el.className : "",
+        offsetWidth: el.offsetWidth,
+        offsetHeight: el.offsetHeight,
+        paddingRight: cs ? cs.paddingRight : "",
+        boxSizing: cs ? cs.boxSizing : "",
+        position: cs ? cs.position : "",
+        display: cs ? cs.display : "",
+        rect: rect ? { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) } : null
+      };
+    }
+
     /**
      * 切调试高亮 + 把当前 px 值写到命中元素上（让 ::before label 显出来）。
      * 调试模式独立于 conversation-shift 开关——README 已说明"对话右缩关闭时也能开"。
@@ -36,13 +58,13 @@
         document.documentElement.setAttribute(DEBUG_HTML_ATTR, "");
         // v0.5.3 起：写到 JS 探测标记的元素 [data-dsh-ui-tweaks-shift-target] 上
         var nodes = document.querySelectorAll('[' + SHIFT_TARGET_ATTR + ']');
+        var diagnostics = [];
         for (var i = 0; i < nodes.length; i++) {
           nodes[i].setAttribute("data-shift-px", String(shiftPx || 0));
+          diagnostics.push(inspectElement(nodes[i]));
         }
         try {
-          console.info("[dsh-ui-tweaks] conversation-shift-debug matched elements (JS 探测标记的元素):", [
-            inspectMatch('[' + SHIFT_TARGET_ATTR + ']')
-          ]);
+          console.info("[dsh-ui-tweaks] conversation-shift-debug matched elements (JS 探测标记的元素):", diagnostics);
         } catch (e) { /* 静默 */ }
       } else {
         document.documentElement.removeAttribute(DEBUG_HTML_ATTR);
