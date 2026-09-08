@@ -90,7 +90,6 @@
         if (typeof console !== "undefined") console.warn("[dsh-test] appendBadge failed", e);
         return;
       }
-      // 异步获取 host 端响应，更新徽标状态
       fetchHello().then(function (text) {
         var state = text.indexOf("ERR") === 0 ? "err" : "ok";
         setBadge(badge, state, text);
