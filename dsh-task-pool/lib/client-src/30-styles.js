@@ -1,10 +1,7 @@
     // ===== styles =====
-    // ===== CSS =====
     var CSS = "" +
-      // 抽屉容器
       "[data-dsh-taskpool-drawer]{position:fixed;top:0;right:0;bottom:0;width:" + DRAWER_WIDTH + "px;max-width:90vw;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:13px;border-left:1px solid var(--dsw-alias-border-l1);box-shadow:0 2px 12px rgba(0,0,0,.12);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s ease;box-sizing:border-box;}" +
       "html[" + DRAWER_ATTR + "] [data-dsh-taskpool-drawer]{transform:translateX(0);}" +
-      // header
       ".DTPD_header{display:flex;align-items:center;gap:8px;flex:none;padding:14px 16px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);}" +
       ".DTPD_newPlus{flex:none;font-size:18px;font-weight:600;color:var(--dsw-alias-label-tertiary);width:18px;text-align:center;line-height:1;user-select:none;}" +
       ".DTPD_newInput{flex:1;min-width:0;background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;outline:none;transition:border-color .12s;box-sizing:border-box;}" +
@@ -13,11 +10,9 @@
       ".DTPD_iconBtn{font:inherit;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid transparent;border-radius:8px;padding:6px 8px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;flex:none;}" +
       ".DTPD_iconBtn:hover{background:var(--dsw-specific-sidebar-nav-item-hover);color:var(--dsw-alias-label-primary);}" +
       ".DTPD_iconBtn[data-active=\"true\"]{background:var(--dsw-specific-sidebar-nav-item-active);color:var(--dsw-alias-label-primary);}" +
-      // body / list
       ".DTPD_body{flex:1;min-height:0;overflow-y:auto;padding:12px 16px 16px;}" +
       ".DTPD_empty{padding:24px 8px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:13px;}" +
       ".DTPD_list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}" +
-      // 单条长条卡片
       ".DTPD_row{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;transition:border-color .12s,background .12s;overflow:hidden;}" +
       ".DTPD_row:hover{border-color:var(--dsw-alias-label-dimmed);}" +
       ".DTPD_row[data-expanded=\"true\"]{border-color:var(--dsw-alias-button-info-fill);background:var(--dsw-alias-bg-layer-3);}" +
@@ -30,12 +25,10 @@
       ".DTPD_rowMeta{flex:none;font-size:12px;color:var(--dsw-alias-label-tertiary);align-self:center;}" +
       ".DTPD_rowChevron{flex:none;align-self:center;color:var(--dsw-alias-label-tertiary);font-size:10px;width:14px;height:14px;display:flex;align-items:center;justify-content:center;transition:transform .14s;}" +
       ".DTPD_row[data-expanded=\"true\"] .DTPD_rowChevron{transform:rotate(90deg);color:var(--dsw-alias-label-primary);}" +
-      // 拖动视觉提示
       ".DTPD_row.DTPD_dragging{opacity:.4;}" +
       ".DTPD_row.DTPD_dropBefore{box-shadow:0 -2px 0 var(--dsw-alias-button-info-fill);}" +
       ".DTPD_row.DTPD_dropAfter{box-shadow:0 2px 0 var(--dsw-alias-button-info-fill);}" +
       ".DTPD_list.DTPD_dropEnd{box-shadow:0 2px 0 var(--dsw-alias-button-info-fill) inset;}" +
-      // 卡片展开面板
       ".DTPD_panel{border-top:1px solid var(--dsw-alias-border-l2);padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--dsw-alias-bg-base);animation:DTPD_fadeIn .14s ease;}" +
       "@keyframes DTPD_fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}" +
       ".DTPD_textarea{font:inherit;background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:8px 10px;outline:none;width:100%;box-sizing:border-box;font-size:13px;resize:vertical;min-height:140px;font-family:inherit;line-height:1.5;}" +
@@ -43,7 +36,6 @@
       ".DTPD_label{font-size:11px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.04em;}" +
       ".DTPD_meta{font-size:12px;color:var(--dsw-alias-label-tertiary);line-height:1.5;}" +
       ".DTPD_panelFooter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;}" +
-      // header 内的"发送后删除"开关（全局）
       ".DTPD_toggleHeader{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;user-select:none;white-space:nowrap;}" +
       ".DTPD_toggleHeader input[type=checkbox]{width:13px;height:13px;cursor:pointer;margin:0;accent-color:var(--dsw-alias-button-info-fill);}" +
       ".DTPD_toggleHeader:hover{color:var(--dsw-alias-label-primary);}" +
@@ -56,7 +48,6 @@
       ".DTPD_btnDangerConfirm{animation:DTPD_pulse 1s ease-in-out infinite;}" +
       ".DTPD_btnSendConfirm{background:#ea580c !important;border-color:#ea580c !important;color:#fff !important;animation:DTPD_pulse 1s ease-in-out infinite;}" +
       "@keyframes DTPD_pulse{0%,100%{opacity:1;}50%{opacity:.55;}}" +
-      // FAB（右上角，top:78px 避开 DSH 顶部元素重叠；drawer 打开自动让位；下移 22px = 球半径）
       ".DTPD_fab{position:fixed;top:78px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
       ".DTPD_fab:hover{transform:scale(1.06);}" +
       ".DTPD_fab[data-state=\"open\"]{background:var(--dsw-alias-bg-layer-3);}" +

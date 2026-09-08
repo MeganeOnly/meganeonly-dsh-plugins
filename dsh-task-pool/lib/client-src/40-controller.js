@@ -1,5 +1,4 @@
     // ===== controller =====
-    // ===== BoardController（v0.5.0：新增 deps + confirmSend + sendTask） =====
     function BoardController(store, deps) {
       this.store = store;
       this.deps = deps || {};
@@ -32,8 +31,7 @@
       var self = this;
       return function () { self.listeners.delete(fn); };
     };
-    // [perf v0.x] notify() 拆为只通知 listeners（UI-only）+ persist() 显式触发 store.save。
-    // 旧的 notify() 同时 persist + notify，导致 toggleDrawer / expandTask 等瞬时态变化也写 localStorage。
+    // [perf] notify() 只通知 listeners；persist 由调用方按需显式触发（避免 toggleDrawer / expandTask 等瞬时态变化写 localStorage）。
     BoardController.prototype.notify = function () {
       var fns = Array.from(this.listeners);
       for (var i = 0; i < fns.length; i++) fns[i]();

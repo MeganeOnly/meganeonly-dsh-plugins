@@ -4,6 +4,19 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.2] - 2026-09-04
+
+### 注释精简
+
+- **注释精简**：移除 19 行冗余段头 + 版本历程注释；保留 section marker / WHY / JSDoc。
+  - 移除 9 处段首中文重复 marker（`// ===== 常量 =====` 等）+ 中文类名 / 角色描述（"LocalStorageTaskStore"、"FAB 图标（精确居中）"、"Right drawer mount"、"Drawer view"）
+  - 移除 `30-styles.js` 的 8 处 inline CSS 段头（`// 抽屉容器` / `// header` / `// body / list` / `// 单条长条卡片` / `// 拖动视觉提示` / `// 卡片展开面板` / `// header 内的"发送后删除"开关（全局）` / `// FAB（…）`）
+  - 移除 `40-controller.js` / `50-drawer.js` 的 `[perf v0.x]` / `[perf v0.5.x]` 版本号 stamp——保留 `[perf]` WHY 主体但去掉版本引用
+  - 移除 `40-controller.js` 段首 `BoardController（v0.5.0：新增 deps + confirmSend + sendTask） =====` 这类带版本历程的 marker
+- **bundle 大小**：`lib/client.js` 从 46999 字节 → 46223 字节（-776B / -1.7%）
+- **保留的注释**：`30-styles.js` FAB 让位公式长解释（`calc(var(--active-drawer-width, 380px) + 24px)`）、`50-drawer.js` `applyOpen` race condition 长解释（live v0.5.6 关键修复）；`35-storage.js` 旧 schema 迁移说明
+- **doc**：`docs/maintainability.md` 新增 § 二「注释约定」+ 调整 § 三 / § 四；通用规范 `docs/maintainability.md` § 三三 + § 三半 继续适用
+
 ## [0.6.1] - 2026-09-04
 
 ### 重构

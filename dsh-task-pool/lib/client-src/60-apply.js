@@ -1,5 +1,4 @@
     // ===== apply =====
-    // ===== apply =====
     function apply(ctx) {
       injectCSS();
       var controller = new BoardController(

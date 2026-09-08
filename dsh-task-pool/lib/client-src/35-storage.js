@@ -1,5 +1,4 @@
     // ===== storage =====
-    // ===== LocalStorageTaskStore =====
     function isTaskShape(v) {
       if (typeof v !== "object" || v === null) return false;
       if (typeof v.id !== "string" || v.id === "") return false;

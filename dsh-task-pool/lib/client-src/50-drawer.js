@@ -1,5 +1,4 @@
     // ===== drawer =====
-    // ===== Right drawer mount =====
     function mountRightDrawer(controller) {
       var container, viewHandle;
 
@@ -70,9 +69,8 @@
         }
       }
 
-      // [perf v0.5.x] 移除 document.body subtree MutationObserver——
-      // ensure() 已在下面同步调用一次，且 apply() 在 DOM 就绪后跑，
-      // 后续 DSH 聊天 UI 的高频 mutation 触发 observer 早 return 是纯调度开销。
+      // [perf] 不用 document.body subtree MutationObserver：ensure() 已在下面同步调用一次，
+      // apply() 在 DOM 就绪后跑；DSH 聊天 UI 高频 mutation 触发 observer 早 return 是纯调度开销。
       document.addEventListener("click", onClickOutside, true);
       document.addEventListener(ACTIVATE_EVENT, onOtherActivate);
       var unsub = controller.subscribe(applyOpen);

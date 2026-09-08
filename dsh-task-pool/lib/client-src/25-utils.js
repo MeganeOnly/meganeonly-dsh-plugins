@@ -1,5 +1,4 @@
     // ===== utils =====
-    // ===== 工具函数 =====
     function uuid() {
       var c = globalThis.crypto;
       if (c && c.getRandomValues) {

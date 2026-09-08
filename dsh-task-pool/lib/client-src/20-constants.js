@@ -1,5 +1,4 @@
     // ===== constants =====
-    // ===== 常量 =====
     var STORAGE_KEY = "dsh.taskPool.v1";
     var DRAWER_ATTR = "data-dsh-taskpool-drawer-open";
     // 任何右侧抽屉打开时设的统一 attr；所有 FAB CSS 监听它→让位到屏幕左侧

@@ -1,5 +1,4 @@
     // ===== view =====
-    // ===== Drawer view =====
     function renderDrawerView(container, controller) {
       var headerEl, bodyEl, listEl, newInputEl;
       var keyHandler = null;
