@@ -159,7 +159,6 @@ window.__ModuleLoader__.load({
         fetchStatus().then(applySnapshot);
       }, []);
 
-      // 更新进行中：轮询直到结束
       React.useEffect(function () {
         if (!s.updating) return;
         var id = setInterval(function () {

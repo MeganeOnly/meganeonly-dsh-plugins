@@ -4,6 +4,12 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.4] - 2026-09-05
+
+### 变更
+
+- 注释精简：删除 1-3 行冗余 inline 注释（`// 更新进行中：轮询直到结束` 等）；保留 section mini-marker / banner / 关键 WHY。
+
 ## [0.1.3] - 2026-09-04
 
 ### 新增

@@ -1,6 +1,6 @@
 {
   "name": "dsh-update-checker",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": "MeganeOnly",
   "description": "检查 DeepSeek Harness 本体（@deepseek-ai/dsh）在 npm 上是否有新版本，并提供一键升级（npm install -g @deepseek-ai/dsh@latest）。升级期间保护 dsh 命令 shim 不被 npm 解包窗口期打断，UI 升级遮罩 + useLayoutEffect 同步重新注入 CSS 防 HMR 移除；升级后提示重启生效。",
   "license": "MIT",
