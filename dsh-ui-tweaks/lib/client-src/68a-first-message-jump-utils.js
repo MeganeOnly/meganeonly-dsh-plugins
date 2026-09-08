@@ -1,4 +1,4 @@
-// ===== first-message-jump utils =====
+    // ===== first-message-jump utils =====
     // ====================================================================
     // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 `port` 作参
     // 数）。从 68-first-message-jump.js 拆出（v0.9.0 → v0.9.2 三轮迭
@@ -277,3 +277,4 @@
       var n = raw ? parseFloat(raw) : NaN;
       return isFinite(n) ? n : null;
     }
+

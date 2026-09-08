@@ -3139,7 +3139,8 @@ window.__ModuleLoader__.load({
         get running() { return isRunning; }
       };
     }
-// ===== first-message-jump =====
+
+    // ===== first-message-jump =====
     // ====================================================================
     // v0.9.1：上数第二条卡住 bug 修复 + Shift+点击一键极限（双按钮对称）：
     //   - 用 topVisible（视口内最顶部可见 user 行）替代 lastVisible 作
@@ -3691,7 +3692,8 @@ window.__ModuleLoader__.load({
         get running() { return isRunning; }
       };
     }
-// ===== first-message-jump utils =====
+
+    // ===== first-message-jump utils =====
     // ====================================================================
     // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 `port` 作参
     // 数）。从 68-first-message-jump.js 拆出（v0.9.0 → v0.9.2 三轮迭
@@ -3970,6 +3972,7 @@ window.__ModuleLoader__.load({
       var n = raw ? parseFloat(raw) : NaN;
       return isFinite(n) ? n : null;
     }
+
     // ===== stats-line-position =====
     // ====================================================================
     // v0.10.0：统计行位置（stats-line-position tweak）
@@ -4377,6 +4380,7 @@ window.__ModuleLoader__.load({
         children: children
       });
     }
+
     // ===== react-section =====
     /** 顶级 section 组件。自包含——内部 useState 用 loadState() 做 lazy init。 */
     function UiTweaksSection() {

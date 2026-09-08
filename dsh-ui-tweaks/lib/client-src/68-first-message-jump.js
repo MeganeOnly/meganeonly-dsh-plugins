@@ -1,4 +1,4 @@
-// ===== first-message-jump =====
+    // ===== first-message-jump =====
     // ====================================================================
     // v0.9.1：上数第二条卡住 bug 修复 + Shift+点击一键极限（双按钮对称）：
     //   - 用 topVisible（视口内最顶部可见 user 行）替代 lastVisible 作
@@ -550,3 +550,4 @@
         get running() { return isRunning; }
       };
     }
+
