@@ -4299,6 +4299,7 @@ window.__ModuleLoader__.load({
         if (raw === "" || raw === "-") return; // 允许临时清空，不写 state
         var n = Number(raw);
         if (!isFinite(n) || n < 0) return;
+        if (n > 800) n = 800; // 与 input max="800" + 25-tweaks.js / 35-styles.js cap 对齐
         if (n === value) return;
         var next = {};
         for (var k in state) next[k] = state[k];
@@ -4461,6 +4462,7 @@ window.__ModuleLoader__.load({
       // 5) 调试模式：按 initialState 即时生效
       var px = Number(initialState.conversationShiftPx);
       if (!isFinite(px) || px < 0) px = 380;
+      if (px > 800) px = 800; // safety cap（与 25-tweaks.js / 35-styles.js 对齐）
       applyDebugMode(!!initialState.conversationShiftDebug, !!initialState.conversationShift, px);
 
       // 6) 简洁模式状态行 controller
@@ -4543,6 +4545,7 @@ window.__ModuleLoader__.load({
         if (!detail || typeof detail !== "object") return;
         var newPx = Number(detail.conversationShiftPx);
         if (!isFinite(newPx) || newPx < 0) newPx = 380;
+        if (newPx > 800) newPx = 800; // safety cap（与 25-tweaks.js / 35-styles.js 对齐）
         applyDebugMode(!!detail.conversationShiftDebug, !!detail.conversationShift, newPx);
         if (detail.simpleModeEnabled) {
           if (!simpleController.running) {

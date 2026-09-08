@@ -39,6 +39,7 @@
       // 5) 调试模式：按 initialState 即时生效
       var px = Number(initialState.conversationShiftPx);
       if (!isFinite(px) || px < 0) px = 380;
+      if (px > 800) px = 800; // safety cap（与 25-tweaks.js / 35-styles.js 对齐）
       applyDebugMode(!!initialState.conversationShiftDebug, !!initialState.conversationShift, px);
 
       // 6) 简洁模式状态行 controller
@@ -121,6 +122,7 @@
         if (!detail || typeof detail !== "object") return;
         var newPx = Number(detail.conversationShiftPx);
         if (!isFinite(newPx) || newPx < 0) newPx = 380;
+        if (newPx > 800) newPx = 800; // safety cap（与 25-tweaks.js / 35-styles.js 对齐）
         applyDebugMode(!!detail.conversationShiftDebug, !!detail.conversationShift, newPx);
         if (detail.simpleModeEnabled) {
           if (!simpleController.running) {

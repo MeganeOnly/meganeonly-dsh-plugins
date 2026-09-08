@@ -60,6 +60,7 @@
         if (raw === "" || raw === "-") return; // 允许临时清空，不写 state
         var n = Number(raw);
         if (!isFinite(n) || n < 0) return;
+        if (n > 800) n = 800; // 与 input max="800" + 25-tweaks.js / 35-styles.js cap 对齐
         if (n === value) return;
         var next = {};
         for (var k in state) next[k] = state[k];
