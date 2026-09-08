@@ -1,57 +1,24 @@
     // ===== first-message-jump =====
-    // ====================================================================
-    // v0.9.1：上数第二条卡住 bug 修复 + Shift+点击一键极限（双按钮对称）：
-    //   - 用 topVisible（视口内最顶部可见 user 行）替代 lastVisible 作
-    //     为锚点；v0.9.0 的 lastVisible 锚点在短消息 + 滚到 rows[1] 时
-    //     会因为下方 rows[2..N] 仍可见 → lastVisible 始终是 rows[N]
-    //     → target 始终是 rows[N-1] → 死循环（按钮永不隐藏、永远到
-    //     不了 rows[0]）。topVisible = rows[1] 时 target = rows[0]，
-    //     点击后 topVisible = rows[0] → target = null → 按钮正确隐藏。
-    //   - 单击我的按钮 = 上一条 user 行（topVisible.previous）
-    //   - **Shift+单击**我的按钮 = 一键到 rows[0]（恢复 v0.8.0 的
-    //     "一键回到最早"语义，但用 Shift 修饰，与 step-by-step 共存）
-    //   - 单击原生「回到底部」按钮 = 下一条 user 行（topVisible.next）——
-    //     行为从 v0.9.0 / v0.8.0 的"一键到底"改为"下一条"
-    //   - **Shift+单击**原生「回到底部」按钮 = 一键到 rows[N]（原本的
-    //     "一键到底"语义现在需要 Shift 修饰；DSH 原生 click handler
-    //     不被 preventDefault，让它正常跑就行）
+    // 「上一条我发的消息」按钮 + 对称拦截 DSH 原生「回到底部」按钮：
+    //   我的按钮 单击 = 上一条 user 行（锚点 topVisible）；
+    //   我的按钮 Shift+单击 = 一键到当前会话第一条（跳过 compaction）；
+    //   原生按钮 单击 = 下一条 user 行（capture-phase document click listener 拦截后调 jumpToNext）；
+    //   原生按钮 Shift+单击 = 一键到底（放行 DSH 原生 handler）。
     //
-    // v0.9.0：「上一条我发的消息」按钮 controller（单向上导航）——
-    // 对话区右下角（输入框上方）挂一个悬浮按钮，**点击 = 跳到当前视口内
-    // 最底部可见的 user 消息的上一条**。连续点击可一路向上导航，最终到
-    // 达最早一条 user 消息（即 v0.8.0 的"回到最早"终点）。
-    // 实现用 lastVisible（视口内最底部可见 user 行）作为锚点——在短
-    // 消息场景下有"上数第二条卡住"bug，v0.9.1 改用 topVisible 修复。
+    // 锚点策略（v0.9.1 起）：用 topVisible（视口内最顶部可见 user 行）作锚点；
+    // v0.9.0 的 lastVisible 在短消息 + 滚到 rows[1] 时会"上数第二条卡死"
+    // （rows[2..N] 仍可见 → lastVisible 始终是 rows[N] → target = rows[N-1] 死循环）。
     //
-    // v0.8.0：原"回到最早消息"按钮——点击一次直达最早一条 user 行。
+    // DOM 锚点（DSH 稳定 attribute，不随 CSS module hash 变化）：
+    //   滚动容器 [data-conversation-scroll]（ConversationRoot.scrollBody）
+    //   user 行 [data-chat-flow-kind="user"]
+    //   输入框 seat [data-composer-seat]
+    //   原生「回到底部」按钮 aria-label "回到底部" / "Back to bottom"
     //
-    // 按钮外观：单 SVG ▲（朝上）+ aria-label "上一条我发的消息" +
-    // title "上一条我发的消息（Shift+点击 = 回到最早）"。DOM / 位置 /
-    // 尺寸 / 样式 / ID / CSS 选择器 [data-dsh-ui-tweaks-jump] 全部
-    // 不变；localStorage key `firstMessageJump` 不动，老用户开关状态
-    // 保留。
-    //
-    // DOM 契约（DSH 当前版本，均为稳定 attribute，不随 CSS module hash 变化）：
-    //   - 滚动容器：[data-conversation-scroll]（ConversationRoot.scrollBody）
-    //   - 用户消息行：[data-chat-flow-kind="user"]（ChatNodeSeat 的 kind 标记）
-    //   - 输入框 seat：[data-composer-seat]（sticky bottom，随输入高度变化）
-    //   - 原生「回到底部」按钮：aria-label "回到底部" / "Back to bottom"
-    // 按钮样式由 25-tweaks.js 的 buildCSS 输出；本 controller 只负责挂载 /
-    // 显隐 / 定位 / 点击滚动，与 tweak 开关同生命周期。原生「回到底部」
-    // 按钮的钩子（capture-phase document click listener）也在本文件——
-    // 负责拦截 click 事件并按 Shift 状态分发到"下一条"或"放行原生"。
-    //
-    // 文件拆分（v0.9.x → v0.9.2）：纯 finder / scanner 函数（不依赖
-    // 闭包状态，全部以 port 作参数）抽到 68a-first-message-jump-utils.js
-    // ——主文件从拆分前的 645 行 / 31.2 KB 降到拆分后约 553 行 / ~28 KB
-    // （utils 约 280 行 / ~14 KB），回到 maintainability.md 30 KB 阈值下。
-    // 函数名共享工厂函数 scope（client-src/ 按文件名升序整段拼接），
-    // 不需要 require/import。共享常量 (JUMP_*_SEL / JUMP_DRAWER_ATTR) 仍
-    // 由 20-constants.js 单点定义。
-    // ====================================================================
+    // 纯 finder/scanner 函数（不依赖闭包状态）抽到 68a-first-message-jump-utils.js——
+    // 30 KB 阈值维护动作；client-src/ 按文件名升序整段拼接进 bundle，函数共享工厂 scope 无需 require。
 
     function createFirstMessageJumpController() {
-      // 控制器逻辑（定位 / 显隐 / 点击 / 生命周期 / 诊断）；纯 finder/scanner 见 68a
 
       var button = null;
       var scrollport = null;

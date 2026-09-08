@@ -1,36 +1,19 @@
     // ===== simple-mode =====
-    // 简洁模式：状态行 DOM controller（从原 dsh-simple-mode/lib/client.js 移植）
+    // 简洁模式：状态行 DOM controller（从原 dsh-simple-mode/lib/client.js 移植）。
     //
-    // v0.9.12 关键修复：v0.9.10 三层 CSS reset 不够（用户反馈 v0.9.10 / v0.9.11
-    //   后底部状态行还是会一闪一闪的，且 think / 工具调用穿插几次后会"首行缩进"）。
-    //   走 v0.9.10 CHANGELOG [Unreleased] line 63 预设的回退路径——
-    //   JS 路径接管容器：
-    //     1) `purgeTurnStatus()` 在 appendChild 之前先清空容器，保留 clock 再追加，
-    //        杀干净 DSH 原生的 loader / shimmer child（v0.9.10 CSS 第 3 层 `[class*
-    //        ="turnStatus"] > *:not(.dsh-ui-tweaks-status):not([class*="turnStatusClock"])`
-    //        没覆盖的子元素——例如 DSH 升级后改 class 名而 substring 失效的 loader，
-    //        或 React mount 后第一帧 CSS 还没应用时的瞬闪）
-    //     2) `watchTurnStatus()` 升级：观察 document.body subtree（不再是 DSH 重渲
-    //        时被换掉的 el.parentNode），任何新 turnStatus 节点（直接添加或深层
-    //        嵌套）出现就**立即** purge——杀零 tick 250ms 间隔的闪援窗口
-    //     3) `purgeTurnStatus()` 同时把 turnStatus 的 inline padding-left /
-    //        margin-left 归零，修"穿插几次后 status 像是首行缩进"——DSH 在
-    //        assistant-step 累加后给 turnStatus 父链加缩进 padding 是常见手法，
-    //        我方 CSS reset 只作用当前节点不够
+    // 关键修复（v0.9.5）：`simplePickToolNameFromDom` 之前查 `[data-tool-name]`（命名错误），
+    // DSH 实际渲染 `[data-tool]`——v0.9.3 起的 8 类语义色全部从 v0.9.3 发布起就未生效过。
+    // 同时新增 simpleIsThinkingFromDom 识别 reasoning block（不在 tool-call 容器里，
+    // 在 assistant-step 的 [data-variant="think"] 上），simplePickActivityName 统一
+    // 入口 think 优先 → tool-call → fallback。
     //
-    // v0.9.5 关键修复：`simplePickToolNameFromDom` 之前查 `[data-tool-name]`
-    // 找不到任何工具名——DSH 实际渲染的是 `data-tool`（见 dsh-client-ui-tool
-    // lib/client.js ToolRow：`"data-tool": toolName`）。这导致 v0.9.3 起的 8 类
-    // 语义色（think 蓝 / read 中性 / write 琥珀 / bash 紫 / task 青 / plan
-    // 绿 / goal 粉 / git 石板）**全部从 v0.9.3 发布起就未生效过**——所有活动
-    // 都 fallback 到 "正在处理…" / generic 灰。同时 think / reasoning block
-    // 不在 tool-call 容器里（它在 assistant-step 的 data-variant="think"
-    // 上），即使修了 data-tool 也识别不到。新增 simpleIsThinkingFromDom +
-    // simplePickActivityName 统一入口：think 优先 → tool-call → fallback。
-    // 真实工具名映射扩展覆盖 DSH 全部内置工具（bash / pwsh / *_persistent /
-    // read_image / todo_write / *_goal / subagent / workflow / ralph / skill /
-    // ask_user_question / job_* / send_message / interrupt_agent / list_agents
-    // / cordis_* 等）——见 simpleActivityCategory / simpleActivityText 注释。
+    // 关键修复（v0.9.12）：v0.9.10 三层 CSS reset 不够（用户反馈状态行还会一闪一闪，
+    // think / 工具调用穿插几次后"首行缩进"）。走 JS 路径接管：
+    //   1) `purgeTurnStatus()` appendChild 前先清空容器，保留 clock 再追加——杀干净
+    //      DSH 原生 loader / shimmer child（v0.9.10 CSS 第 3 层没覆盖的子元素）
+    //   2) `watchTurnStatus()` 升级：观察 document.body subtree，任何新 turnStatus
+    //      节点出现就立即 purge——杀零 tick 250ms 间隔的闪援窗口
+    //   3) `purgeTurnStatus()` 把 inline padding-left / margin-left 归零，修"首行缩进"
 
     function simpleActivityText(name) {
       if (!name) return "正在处理…";

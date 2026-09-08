@@ -1,44 +1,17 @@
     // ===== hover-card-hider =====
-    // v0.6.2：侧栏 HoverCard 隐藏 controller（hide-sidebar-tooltip 副作用）
-    // DSH HoverCard 组件（`@deepseek-ai/dsh-client-ui-primitives/lib/types/HoverCard.js`）
-    // 在侧栏会话项 / 工作窗口 hover 500ms 后，通过 `createPortal(card, document.body)`
-    // 渲染一个 div 到 body 直接子级。card 本身没有 className（HoverCard.module.css
-    // 是空 stub），role 只在 copyable=true 时才有 role="button"。
+    // 侧栏 HoverCard 隐藏 controller（hide-sidebar-tooltip 副作用）。
+    // DSH HoverCard 组件在侧栏会话项 / 工作窗口 hover 500ms 后通过
+    // createPortal(card, document.body) 渲染 div 到 body 直接子级——
+    // 巡检 body children 找到含 hover 相关 hash 类的 div，打 attribute 标记，
+    // CSS `[data-dsh-ui-tweaks-hidden-hover-card]{display:none!important}` 命中隐藏。
     //
-    // 内部内容：
-    //   - 会话：SessionHoverContent（`dsh-client-ui-workspace/lib/client.js:614`），
-    //           CSS Module hash 类名 `YDXeBa_hoverContent / _hoverTitle / _hoverTime / _hoverStatus`
-    //   - 工作窗口：WorkspaceHoverContent（同上 :417），类名同上 + `YDXeBa_hoverPath`
-    //
-    // controller 职责：
-    //   1. 巡检 body 直接子元素 div，找到含 hover 相关 hash 类的 div
-    //      （content / title / time / status / path 任何一个命中即视为 HoverCard）
-    //   2. 给这个 div 打 `data-dsh-ui-tweaks-hidden-hover-card="true"` 标记
-    //   3. CSS `[data-dsh-ui-tweaks-hidden-hover-card]{display:none!important}` 命中隐藏
-    //
-    // 为什么用 JS 标记 + attribute selector 而不是直接 CSS class selector：
-    //   - 不用 JS：得写 `[class*="YDXeBa_hoverContent"]` 这种 selector，
-    //     依赖 DSH CSS module hash——hash 随 DSH 升级会变（v0.6.0 → v0.6.1
-    //     我们的 selector 因为依赖 TooltipContent 字串就出过事）。
-    //   - 用 JS：attribute 名（`data-dsh-ui-tweaks-hidden-hover-card`）由我们
-    //     控制，永远不变；唯一变的"探测目标"是 DSH 的 CSS module hash 类名
-    //     ——集中在一个数组里，DSH 升级后改一处即可。
-    //
-    // 为什么探测 body 直接子元素（而不是用 `:has()` 选择器）：
-    //   - `:has()` 也能命中，但每次 DSH 升级后 CSS 选择器都得改；JS-side 探测
-    //     更稳健——只要 DSH 把卡片 portal 到 body（HoverCard 实现就是这样），
-    //     逻辑就不变。
-    //
-    // MutationObserver 观察 document.body 子树——DSH React hover 行为会让
-    // HoverCard 动态 mount/unmount portal div，必须重新巡检。
+    // 为什么 JS 探测 + attribute selector 而非直接 CSS class selector：
+    // CSS class hash 随 DSH 升级会变（v0.6.0 → v0.6.1 我们的 TooltipContent
+    // selector 因依赖字串出过事）；attribute 名由我们控制永远不变，DSH 升级
+    // 只改一个 hash 数组即可。
 
-    // HoverCard 内部内容用到的 CSS Module hash 类名（DSH workspace 包）。
-    // 包含 _hoverContent（外层 wrapper）+ _hoverTitle / _hoverTime / _hoverStatus
-    // / _hoverPath（内部子元素）。
-    // 任一命中即视为 HoverCard——content 可能不存在（copyable + copied 状态下
-    // content 被 .YDXeBa_copied 替代），但 _hoverContent wrapper 总会存在。
-    // 用 `_hoverContent` 作为主指标，其它作为冗余。
-    // DSH 升级后 hash 变了改这里一处即可（其它 selector 都是 attribute selector 不受影响）。
+    // HoverCard 内部内容用到的 CSS Module hash 类名（DSH workspace 包）——DSH 升级
+    // 后 hash 变了改这里一处即可。任一命中即视为 HoverCard。
     var HOVER_CARD_CLASS_HINTS = [
       "_hoverContent",
       "_hoverTitle",

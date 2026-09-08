@@ -1,8 +1,5 @@
     // ===== shim =====
-    // ====================================================================
-    // Self-shim：自己种 data-pane="conversation" 属性
-    // 4 层 selector 策略，按可信度递减
-    // ====================================================================
+    // Self-shim：自己种 data-pane="conversation" 属性（4 层 fallback selector，按可信度递减）
 
     /**
      * 找 AppFrame（grid 容器）的 3 个 grid 子元素：sidebar / center / details。
@@ -93,13 +90,10 @@
     function startShellShimObserver() {
       if (typeof MutationObserver === "undefined" || typeof document === "undefined") return;
       var observer = new MutationObserver(function () {
-        // v0.5.5 patch：self-shim 重跑时顺便跑一次 chatflow 探测。
-        // 原因：startChatflowMarksObserver 在 apply() 时如果 centerCol 还没
-        //   渲染就会找不到 col 而静默失败，DSH React 后续渲染 centerCol
-        //   时没人去探测 chatflow 容器。self-shim observer 启动早且观察
-        //   body subtree，必然能捕获后续所有变化——是 chatflow 探测的兜底。
-        // 配合 applyChatflowShiftMarks v0.5.5 幂等性：已是最优标记就跳过
-        //   重打，不会破坏 v0.5.4 修过的"来回弹"循环。
+        // 顺带跑一次 chatflow 探测——self-shim observer 启动早且观察 body subtree，
+        // 必然能捕获 centerCol 后续渲染；startChatflowMarksObserver 在 apply() 时
+        // 如果 centerCol 还没渲染会静默失败，这里作兜底。applyChatflowShiftMarks
+        // 幂等性（已是最优标记就跳过重打）保证不会破坏 v0.5.4 修过的"来回弹"循环。
         applyShellShim();
         applyChatflowShiftMarks();
       });

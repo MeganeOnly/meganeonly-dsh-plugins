@@ -1,7 +1,5 @@
     // ===== debug =====
-    // ====================================================================
-    // 调试高亮：toggle <html> 属性 + 给命中元素写 data-shift-px
-    // ====================================================================
+    // 调试高亮：toggle <html data-dsh-ui-tweaks-shift-debug> 属性 + 给命中元素写 data-shift-px
 
     function inspectMatch(selector) {
       if (typeof document === "undefined") return { selector: selector, found: false };

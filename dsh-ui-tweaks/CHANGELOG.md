@@ -4,6 +4,64 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.6] - 2026-09-08
+
+### 重构
+
+- **client-src 注释精简（-110 KB bundle 载荷，-41%）**：v0.10.6 之前每个 section 文件 header 都有 30–190 行版本历程 + 多段 inline 版本注释解释"为什么这条 CSS 这么写"，且与本 CHANGELOG 高度重复。本次精简：所有"v0.X.Y 修了这个 + 根因 + 修法 + 兼容性 + 改动文件列表"段落从 source 文件迁出，**CHANGELOG.md 升级为版本历程的唯一来源**；source 文件 header 只保留与当前实现直接相关的"是什么 / 为什么"（不含版本号）+ JSDoc 函数说明 + 非显然设计决策的 inline `// why` 注释。详细规则见 `docs/maintainability.md` § 二。
+
+- **bundle 大小汇总**：`lib/client.js` 276894 → 162331 bytes（-114563 bytes, -41%）；主要削减：
+  - `00-banner.js` 50.8 KB → 1.9 KB（原 banner 是 716 行 JSDoc，是整个 CHANGELOG 在 bundle 里的副本）
+  - `20-constants.js` 23.4 KB → 4.4 KB（删 ~190 行版本历史注释）
+  - `25-tweaks.js` 56.0 KB → 28.4 KB（每个 tweak 的 buildCSS 内 ~10 段"v0.X.Y 起"注释精简）
+  - `55-simple-mode.js` 22.1 KB → 20.7 KB（头注释 30 行→15 行）
+  - `68-first-message-jump.js` 28.1 KB → 25.5 KB（头注释 50 行→14 行）
+  - `68a-first-message-jump-utils.js` 14.4 KB → 13.0 KB（头注释 38 行→14 行）
+  - `45-chatflow-marks.js` 14.2 KB → 12.5 KB（头注释 30 行→12 行）
+  - `67-disclosure-end-collapse.js` 7.3 KB → 6.6 KB（头注释 29 行→13 行）
+  - `69-stats-line-position.js` 10.2 KB → 8.5 KB（头注释 46 行→20 行）
+  - `85-apply.js` 8.1 KB → 5.8 KB（"v0.X.Y" inline 注释合并 + if/else 折叠为 else if）
+  - `60-tab-hider.js` 6.0 KB → 3.9 KB（头注释 21 行→6 行）
+  - `65-hover-card-hider.js` 6.2 KB → 4.3 KB（头注释 33 行→9 行）
+  - `40-shim.js` 5.6 KB → 5.2 KB（头注释 4 行→1 行）
+  - `35-styles.js` 8.5 KB → 6.5 KB（多段 inline 注释合并到 JSDoc）
+  - `75-react-tweak-row.js` 5.5 KB → 4.9 KB（JSDoc 三段合并为一段）
+  - `30-storage.js` / `50-debug.js` 微调（删标题 banner 装饰线）
+
+### 维护
+
+- **`docs/maintainability.md` § 二新增"注释约定"**：明确"版本历程只在 CHANGELOG.md、source 文件 header 只保留 why not what、移除段落级版本历史"等规则——避免未来 AI 重构时再次重复 v0.10.5 之前的多文件 changelog 副本问题。
+- **section 索引表简化**：表格里每行的"角色"列从 ~200 字精简到 ~80 字（具体版本影响挪到 CHANGELOG / source 头注释）。
+
+### 兼容性
+
+- 行为兼容性：所有改动对用户可见行为零变化——bundle 重新生成后所有 tweak / React 组件 / 调试 API / 状态事件总线 / localStorage key 行为完全保持。
+- 注释内容兼容性：原 source 文件中的版本历程内容已全部完整保留在 `CHANGELOG.md` 各版本段——按版本号 + 文件名 + 行号 / 段落描述能定位到完整上下文。本次只是把"代码注释里的 changelog"搬到"changelog 文件"。
+
+### 改动文件
+
+- `lib/client-src/00-banner.js`（50.8 KB → 1.9 KB）
+- `lib/client-src/20-constants.js`（23.4 KB → 4.4 KB）
+- `lib/client-src/25-tweaks.js`（56.0 KB → 28.4 KB）
+- `lib/client-src/30-storage.js`（1.8 KB → 1.7 KB）
+- `lib/client-src/35-styles.js`（8.5 KB → 6.5 KB）
+- `lib/client-src/40-shim.js`（5.6 KB → 5.2 KB）
+- `lib/client-src/45-chatflow-marks.js`（14.2 KB → 12.5 KB）
+- `lib/client-src/50-debug.js`（3.9 KB → 3.8 KB）
+- `lib/client-src/55-simple-mode.js`（22.1 KB → 20.7 KB）
+- `lib/client-src/60-tab-hider.js`（6.0 KB → 3.9 KB）
+- `lib/client-src/65-hover-card-hider.js`（6.2 KB → 4.3 KB）
+- `lib/client-src/67-disclosure-end-collapse.js`（7.3 KB → 6.6 KB）
+- `lib/client-src/68-first-message-jump.js`（28.1 KB → 25.5 KB）
+- `lib/client-src/68a-first-message-jump-utils.js`（14.4 KB → 13.0 KB）
+- `lib/client-src/69-stats-line-position.js`（10.2 KB → 8.5 KB）
+- `lib/client-src/75-react-tweak-row.js`（5.5 KB → 4.9 KB）
+- `lib/client-src/85-apply.js`（8.1 KB → 5.8 KB）
+- `lib/client.js`（生成产物，276894 → 162331 bytes）
+- `docs/maintainability.md`（新增 § 二"注释约定" + 简化 § 一 section 索引表）
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.10.5 → 0.10.6，description 同步）
+
 ## [0.10.5] - 2026-09-08
 
 ### 修复

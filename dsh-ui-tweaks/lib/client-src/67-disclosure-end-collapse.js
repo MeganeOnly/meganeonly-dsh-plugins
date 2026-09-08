@@ -1,32 +1,23 @@
     // ===== disclosure-end-collapse =====
-    // ====================================================================
-    // v0.9.6：折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾
-    //   追加"收起"按钮，解决"展开后想收起需要一直往前翻到头部"的痛点
-    // --------------------------------------------------------------------
-    // 背景：DSH 用 DisclosureRow 渲染三类可展开块——
-    //   1. ReasoningRow (data-variant="think"): Think 推理块——长内容最常见
-    //   2. GenericCommandCard (data-variant="others"): 工具调用输出（bash /
-    //      edit / read / grep / glob 等多行输出时 body 才会渲染）
+    // 折叠块末尾收起按钮——给所有 DisclosureRow 展开后的 body 末尾追加"收起"按钮，
+    // 解决"展开后想收起需要一直往前翻到头部"的痛点。
+    //
+    // 覆盖三类 DisclosureRow（选择器在 20-constants.js 的 DISCLOSURE_BODY_SELECTORS）：
+    //   1. ReasoningRow (data-variant="think"): Think 推理块
+    //   2. GenericCommandCard (data-variant="others"): 工具调用多行输出
     //   3. ContextInjectionRow (class 含 _root 且 data-open): 上下文注入
-    // 全部 expandOnRowClick=true——点击头部行切换展开。展开后阅读完毕想收起
-    //   时必须滚回头部点行；长 Think 内容滚回很烦（尤其 reasoning 流式输出几 KB）。
     //
-    // 解法：JS MutationObserver 巡检 body 元素（仅当 expanded 时 body 才在 DOM 里）
-    //   给每个 body 末尾注入 wrapper div + "收起 ▴" 按钮。点击时找 body 父元素
-    //   里 className 含 _row 的兄弟，调 .click() 触发 DSH React onToggle →
-    //   setExpanded(false) → row 折叠，body 与按钮一起被卸载。stopPropagation
-    //   防止冒泡——虽然 row 是 body 的兄弟不在祖先链上，但保险起见 stop。
+    // 实现：MutationObserver 巡检 body 元素（仅 expanded 时 body 才在 DOM 里），给每个
+    // body 末尾注入 wrapper div + "收起 ▴" 按钮。点击时找 body 父元素里 className 含
+    // _row 的兄弟，调 .click() 触发 DSH React onToggle → setExpanded(false) →
+    // row 折叠，body 与按钮一起被卸载（按钮无需手动 remove）。
     //
-    // 兼容性：依赖 DSH row 元素接收 native click 事件并触发 React handler。
-    //   React 17+ 委托到 root container，row.click() 会冒泡触发 onToggle。
-    //   不修改 DSH 任何代码，纯附加层。
-    //
-    // v0.9.6 决策依据：之前反复考虑把按钮放在 body 内 vs body 外（兄弟）。
-    //   选 body 内（append）— 按钮随 body 一起出现/消失，无需复杂生命周期管理；
-    //   body 卸载时按钮自动 remove（React unmount 也会带走 wrapper div）；
-    //   inline 位置由 body padding-left/margin-left 决定（Think 22px / Command
-    //   16px / Context 22px），无需每个变体单独处理 indent。
-    // ====================================================================
+    // 设计决策（v0.9.6）：按钮放在 body 内（append）而非 body 外（兄弟）——按钮随 body
+    // 一起出现/消失，无需复杂生命周期管理；inline 位置由 body padding-left/margin-left
+    // 决定（Think 22px / Command 16px / Context 22px），无需每个变体单独处理 indent。
+    // wrapper 强制 display:block 让按钮独占一行（不被 pre-wrap 文本内联吃掉）。
+    // stopPropagation 是保险（row 实际是 body 兄弟不在祖先链上，但 click 也会途经
+    // DisclosureRow wrapper）。
 
     /**
      * 给定已展开的 body 元素，找它在 DisclosureRow 里的"点击行"——也就是

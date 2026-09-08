@@ -1,42 +1,20 @@
     // ===== first-message-jump utils =====
-    // ====================================================================
-    // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 `port` 作参
-    // 数）。从 68-first-message-jump.js 拆出（v0.9.0 → v0.9.2 三轮迭
-    // 代累积后主文件 645 行 / 31.2 KB，超过 maintainability.md 的 30 KB
-    // 阈值）。拆分后主文件约 553 行 / ~28 KB，utils 本文件约 280 行 /
-    // ~14 KB——拆分后两个文件均低于 30 KB 阈值。
+    // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 port 作参数）。
+    // 从 68-first-message-jump.js 拆出（30 KB 阈值维护动作）。
+    // 所有函数共享一个工厂函数体（client-src/*.js 按文件名升序整段拼接进
+    // lib/client.js），jump* 函数名在主文件里可直接调用；共享常量由
+    // 20-constants.js 单点定义。
     //
-    // 与主文件的关系：所有函数共享一个工厂函数体（client-src/*.js 按
-    // 文件名升序整段拼接进 lib/client.js），所以 jump* 函数名在主文
-    // 件里仍可直接调用。共享常量 (JUMP_SCROLL_SEL / JUMP_USER_ROW_SEL /
-    // JUMP_DRAWER_ATTR) 由 20-constants.js 单点定义。
-    //
-    // 函数清单：
+    // 函数清单（v0.9.0 → v0.9.2 累积）：
     //   - jumpFindScrollport         滚动容器查询
-    //   - jumpAllUserRows            当前会话所有 user 行（DOM 顺序，
-    //                                 转静态数组避免 NodeList live 错位）
-    //   - jumpFindFirstUserRow       firstRow（DOM 顺序最早；v0.9.2 仍
-    //                                 保留作为内部锚点）
-    //   - jumpFindLastUserRow        lastRow
-    //   - jumpIsRowInCompaction      v0.9.2：判断 row 是否嵌在
-    //                                 compaction / context 容器里
-    //   - jumpFindFirstRealUserRow   v0.9.2：跳过 compact 块的"当前会话
-    //                                 第一条 user 行"——Shift+点击的终点
-    //   - jumpFindLastVisibleUserRow 视口内最底部可见 user 行（v0.9.0
-    //                                 锚点，保留作诊断对照）
-    //   - jumpFindTopVisibleUserRow  v0.9.1 起当前锚点：视口内最顶部可见
-    //                                 user 行——v0.9.0 的 lastVisible 在
-    //                                 短消息 + 滚到 rows[1] 时会卡死
-    //                                 （下方 rows[2..N] 仍可见 → 死循环）
-    //   - jumpFindPrevUserRow        我的按钮单击 target（v0.9.1 锚点
-    //                                 改为 topVisible 修复"上数第二条卡住"
-    //                                 bug）
-    //   - jumpFindNextUserRow        v0.9.1：原生「回到底部」按钮单击
-    //                                 target——几何与 prev 完全对称
-    //   - jumpIsDrawerOpen           右侧抽屉是否打开（attr 探测）
-    //   - jumpDrawerWidth            抽屉覆盖到视口右侧的宽度（px）——读
-    //                                 --active-drawer-width
-    // ====================================================================
+    //   - jumpAllUserRows            当前会话所有 user 行（DOM 顺序，转静态数组避免 NodeList live 错位）
+    //   - jumpFindFirstUserRow / jumpFindLastUserRow  firstRow / lastRow
+    //   - jumpIsRowInCompaction      判断 row 是否嵌在 compaction / context 容器里
+    //   - jumpFindFirstRealUserRow   跳过 compact 块的"当前会话第一条 user 行"——Shift+点击的终点
+    //   - jumpFindLastVisibleUserRow 视口内最底部可见 user 行（v0.9.0 锚点，保留作诊断对照）
+    //   - jumpFindTopVisibleUserRow  v0.9.1 起当前锚点：视口内最顶部可见 user 行
+    //   - jumpFindPrevUserRow / jumpFindNextUserRow  我的按钮 / 原生按钮单击 target
+    //   - jumpIsDrawerOpen / jumpDrawerWidth  右侧抽屉 attr + 宽度探测
 
     /** 当前会话滚动容器：取第一个可见（非零尺寸）的 [data-conversation-scroll]。 */
     function jumpFindScrollport() {

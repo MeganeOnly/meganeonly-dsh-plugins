@@ -1,49 +1,26 @@
     // ===== stats-line-position =====
-    // ====================================================================
-    // v0.10.0：统计行位置（stats-line-position tweak）
-    // --------------------------------------------------------------------
-    // DSH 对话底部那行统计（"3 轮 · 45 步 | LLM 12m13s · 工具调用 1m21s |
-    //   首 token 平均 2.9s · 71 tok/s | 缓存命中 96% | 输入 3.6M tok ·
-    //   输出 42.7K tok"）由 dsh-client-ui-conversation 的 StatsLine 组件渲染，
-    //   注册在 slot `conversation.composer.dock`（order 0，id "stats"）。
+    // v0.10.0 统计行位置 tweak——对话底部那行运行统计（轮次 / 步数 / LLM 耗时 / 工具耗时 /
+    // 首 token / 吞吐 / 缓存命中 / 输入输出 token）的位置三选一：
+    //   bottom（默认）：DSH 原样，本控制器不启动
+    //   top：底部整条隐藏，顶部标题行右侧渲染镜像元素（周期性从原生行克隆）
+    //   hidden：底部整条隐藏，不渲染镜像
     //
-    // 三种位置：
-    //   - bottom（默认）：DSH 原样，本控制器不启动，buildCSS 返回 null
-    //   - top：底部原生行整条隐藏，另在顶部标题行（"对话名 + 模式"那一簇）
-    //     右侧渲染一个**本插件独占的镜像元素**，内容周期性从原生行克隆
-    //   - hidden：底部原生行整条隐藏，不渲染镜像
+    // v0.10.1 关键：隐藏用 `visibility:hidden` 而非 `display:none`——统计行是 composer
+    // 卡片的 footer，composer seat 是 sticky bottom；display:none 卡片变矮 → 输入行整体
+    // 下移。visibility 保留盒子（照常参与布局、照常被 React 更新文本），高度分毫不差保留。
     //
-    // v0.10.1：隐藏用 `visibility:hidden` 而不是 `display:none`——统计行是
-    //   composer 卡片的 footer，而 composer seat 是 `position:sticky;bottom:0`
-    //   贴底的，卡片变矮 24px 就等于输入行整体下移 24px（用户实测"发消息的框
-    //   往下走了一点点"）。visibility 保留盒子（照常参与布局、照常被 React
-    //   更新文本），高度分毫不差地保留，输入框位置与"底部"完全一致。
-    //   详见 `25-tweaks.js` 的 stats-line-position buildCSS v0.10.1 段。
+    // 关键约束：镜像不搬 DSH 原生节点。原生节点留在原位（不可见——React 照常更新文本），
+    // 镜像是本插件 createElement 的额外子节点，React 不认识——避免 React 卸载原生节点时
+    // 对记录的原父节点调 removeChild → NotFoundError 崩树。StatsLine 在 groups 为空时
+    // return null，新会话开局必然触发这条路径。
     //
-    // 为什么"镜像"而不是"搬 DOM"：原生统计行与顶部标题行都是 DSH React
-    //   渲染的节点。把原生节点 appendChild 到别的容器里，React 在下次
-    //   卸载它（StatsLine 在 groups 为空时 return null，新会话开局必然发生）
-    //   时会对**它记录的原父节点**调 removeChild → NotFoundError 崩 React 树。
-    //   镜像方案里原生节点始终留在原位（只是不可见——React 照常更新
-    //   它的文本），我们只读它的内容；镜像是本插件 createElement 出来的、
-    //   React 不认识的额外尾部子节点（与 v0.9.6 disclosure-end-collapse
-    //   往 body 末尾 appendChild 按钮同一模式，已验证不干扰 React 协调）。
+    // 锚点全部走 DSH renderer 的 slot 出口属性 `[data-slot="<slot key>"]`（不含 hash，
+    // 跨版本稳定；与 v0.7.3 HoverCard `[class*="_hoverContent"]` 同源的 hash-independence
+    // 策略）。`display:contents` 是 inline style，所有针对出口层的规则一律带 !important。
     //
-    // 为什么锚点用 `[data-slot="..."]` 而不是 CSS module 类名：DSH renderer
-    //   （dsh-client-ui-renderer SlotOutlet）给**每个** slot 出口包一层
-    //   `<div data-slot="<slot key>" style="display:contents">`——不含 hash、
-    //   跨 DSH 版本稳定，比 `.FJxK0a_root` 这类每次构建都会变的 CSS module
-    //   hash 类名可靠得多。注意这层的 `display:contents` 是 inline style，
-    //   同规则组一律带 `!important` 以免被它或 DSH 后续规则翻盘。
-    //
-    // 隐藏粒度：直接隐藏整个 `conversation.composer.dock` 出口。DSH 自己的
-    //   slot 目录（dsh-cordis-client-runner 的 slot catalog）把该 slot 的
-    //   occupants 记为 `["client-ui-conversation StatsLine id 'stats'"]`——
-    //   唯一占位者就是统计行，所以隐藏整个出口 == 隐藏统计行，且不依赖任何
-    //   hash 类名。代价：若将来有第三方插件也往 composer.dock 注册条目，
-    //   本 tweak 开启（top / hidden）时会连带隐藏它——已在 tweak description
-    //   与 README 注明。
-    // ====================================================================
+    // 隐藏粒度：整个 `conversation.composer.dock` 出口——DSH slot 目录登记的唯一占位者
+    // 是 StatsLine，隐藏出口 == 隐藏统计行。代价：若将来第三方插件也往 composer.dock
+    // 注册条目，top/hidden 时会连带隐藏（已在 tweak description 注明）。
 
     /** 把任意持久化值归一到三个合法位置之一（脏数据 / 老版本布尔值都退回 bottom）。 */
     function statsNormalizePosition(value) {

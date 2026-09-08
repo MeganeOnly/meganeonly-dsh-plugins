@@ -6,46 +6,65 @@
 
 ## 一、本插件的 section 索引
 
-dsh-ui-tweaks 的 `lib/client-src/` 现行结构（v0.7.4 拆解，v0.10.0 起 21 个文件）：
+dsh-ui-tweaks 的 `lib/client-src/` 现行结构（v0.7.4 拆解，v0.10.6 起精简注释后 21 个文件；具体 section 职责见各文件头注释）：
 
 | 前缀                  | 角色                                                                       |
 | --------------------- | -------------------------------------------------------------------------- |
-| `00-banner.js`        | 顶部 JSDoc 注释块（version 历程 + 架构说明）                                |
+| `00-banner.js`        | 顶部 JSDoc 注释块（架构 + DOM 锚点约定 + 文件拆分 pointer）；v0.10.6 起移除版本历程（迁移到 `CHANGELOG.md`） |
 | `10-loader-open.js`   | `__ModuleLoader__.load({...})` 开头 + `var inject = ["slots"]`             |
-| `20-constants.js`     | 常量（`VERSION` / `MAIN_CSS_TAG_ID` / `STORAGE_KEY` / `SHIM_PANE_*` / `SHIFT_TARGET_*` / `SIMPLE_*` / `STATE_EVENT` / `DEBUG_API_KEY`） |
-| `25-tweaks.js`        | `TWEAKS` 数组：10 条 tweak（`conversation-shift` / `conversation-shift-debug` / `simple-mode` / `hide-sidebar-tooltip` / `hide-trajectory-tab` / `hide-chat-tab` / `first-message-jump` / `disclosure-end-collapse` / `sidebar-match-conversation-bg` / **`stats-line-position`**）的 `buildCSS`。v0.10.0 起条目可带 `choices`（`[{value,label}]`）表示"多选一"而非开关——目前仅 `stats-line-position` 使用 |
+| `20-constants.js`     | 常量（`VERSION` / `MAIN_CSS_TAG_ID` / `STORAGE_KEY` / `SHIM_PANE_*` / `SHIFT_TARGET_*` / `SIMPLE_*` / `DISCLOSURE_END_COLLAPSE_*` / `STATS_*` / `JUMP_*` / `STATE_EVENT` / `DEBUG_API_KEY`） |
+| `25-tweaks.js`        | `TWEAKS` 数组：10 条 tweak 的 `buildCSS`（v0.10.0 起条目可带 `choices` 表示"多选一"而非开关——目前仅 `stats-line-position` 使用） |
 | `30-storage.js`       | `localStorage` 持久化：`storage` 探测 + `defaultState` / `loadState` / `saveState` |
 | `35-styles.js`        | `buildCSS` / `buildDebugHighlightCSS` / `injectCSS` + `SECTION_CSS` 静态样式 + `injectSectionCSS` |
 | `40-shim.js`          | self-shim 4 层 selector：`discoverFrameTriptych` / `findConversationPane` / `stampIfMissing` / `applyShellShim` / `startShellShimObserver` |
-| `45-chatflow-marks.js` | v0.5.3 + v0.5.5 动态探测：`findChatflowTargets` / `applyChatflowShiftMarks`（幂等）+ `startChatflowMarksObserver` |
-| `50-debug.js`         | 调试高亮：`inspectMatch` / `applyDebugMode`（toggle `<html data-dsh-ui-tweaks-shift-debug>`） |
-| `55-simple-mode.js`   | 简洁模式状态行：`simpleActivityText` / `simpleActivityCategory` / `simplePickToolNameFromDom`（查 `[data-tool]`，v0.9.5 起）/ `simpleIsThinkingFromDom`（查 `[data-variant="think"][data-state="running"]`，v0.9.5 新增）/ `simplePickActivityName`（v0.9.5 新增统一入口：think 优先 → tool-call → fallback）/ `simpleIsRunningFromDom` / `createSimpleModeStatusController` |
-| `60-tab-hider.js`     | v0.7.0 + v0.7.2 通用 tab hider 工厂：`TRAJECTORY_TAB_LABELS` / `CHAT_TAB_LABELS` / `findTabButtonByLabels` / `createTabHider(opts)` |
-| `65-hover-card-hider.js` | v0.6.2 侧栏 HoverCard 隐藏：`HOVER_CARD_CLASS_HINTS` / `isHoverCardRoot` / `createSidebarHoverCardHider`（DSH 升级 hash 变了改 HINTS 即可） |
-| `67-disclosure-end-collapse.js` | v0.9.6 折叠块末尾收起按钮：`findRowForBody` / `injectCollapseButton` / `scanBodies` / `removeAllInjectedButtons` / `createDisclosureEndCollapseController`（MutationObserver 80ms throttle 巡检 body subtree，按需注入 wrapper + "收起 ▴" 按钮，点击调 row.click() 触发 DSH React onToggle 折叠）。覆盖三类 DisclosureRow：ReasoningRow (`[data-variant="think"] [class*="thinkBody"]`) / GenericCommandCard (`[data-variant="others"] [class*="_body"]`) / ContextInjectionRow (`[class*="_root"][data-open] [class*="_body"]`)——三 selector 由 `20-constants.js` 的 `DISCLOSURE_BODY_SELECTORS` 单点拼接。按钮 wrapper 强制 `display:block` 让按钮独占一行（不被 pre-wrap 文本内联吃掉）；inline 位置由各 body 自身的 padding-left/margin-left 决定（Think 22px / Command 16px / Context 22px），无需按变体分别处理 indent。按钮 click handler `e.preventDefault() + e.stopPropagation()` 后调 `findRowForBody(bodyEl).click()`——React 17+ 委托到 root container，row.click() 会冒泡触发 onToggle → setExpanded(false) → body 与按钮一起被卸载；stopPropagation 是保险（row 实际是 body 兄弟不在祖先链上，但 click 也会途经 DisclosureRow wrapper）。stop 时调 `removeAllInjectedButtons` 防御性清理（正常路径下 button 随 body unmount 自带走）。 |
-| `68-first-message-jump.js` | v0.8.0「回到最早消息」按钮 + v0.9.0 单向上导航 + v0.9.1 step-by-step 修复 + Shift+点击一键回到最早 + 原生「回到底部」按钮对称改造 + **v0.9.2 compaction 跳过 + 可见性放宽** + **v0.9.4 prev/next 跳过 hidden row**：`createFirstMessageJumpController` 工厂 + 控制器主文件——本文件只放依赖闭包状态的逻辑（定位 / 显隐 / 点击 / 生命周期 / 诊断）；12 个纯 finder/scanner 函数抽到 `68a-first-message-jump-utils.js`（30 KB 阈值维护动作，行为无变化）。按钮行为：单击跳到当前视口内**最顶部**可见 user 消息的上一条（DOM 顺序），连续单击可一路向上到第一个**可见** row；**v0.9.2 起可见性放宽为 `rows.length >= 2`**（短会话底部 TodoList / 进度卡片出现时也能看到按钮作为提示）；**v0.9.4 起 prev / next 跳过 hidden row**（`getBoundingClientRect().height <= 0` 的行——例如 simple-mode `display:none` 隐藏的 compaction 行），避免 step-by-step 滚到 DOM 里有但用户看不见的位置（按钮"卡死"现象）；Shift+单击 = 一键到 **v0.9.2 跳过 compaction / context 容器的第一条 user 行**（`jumpIsRowInCompaction` 沿父链检查，跳过 compact 摘要里的旧 user 行——v0.9.4 的 hidden-row 跳过与 v0.9.2 的 compaction-跳过是两个独立维度：前者用 DOM 渲染高度判断，后者用父链 data attribute 判断）；视口内无 user 行时跳到最后一条作为入口；按钮 DOM / 位置 / 样式 / ID 全部不变（探测 `[data-conversation-scroll]` / `[data-chat-flow-kind="user"]` / `[data-composer-seat]`）；同时挂 capture-phase document click listener 钩原生「回到底部」按钮（`aria-label="回到底部"` / `"Back to bottom"`），命中后按 `shiftKey` 分发——`shiftKey=true` 不 preventDefault 让 DSH 原生 handler 跑（一键到底），`shiftKey=false` preventDefault + stopImmediatePropagation 后调 `jumpToNext()`（下一条 user 行）。v0.9.1 锚点从 `lastVisible` 改为 `topVisible`（v0.9.0 在短消息 + 滚到 rows[1] 时会卡死，因为下方 rows[2..N] 仍可见 → lastVisible 始终是 rows[N]） |
-| `68a-first-message-jump-utils.js` | v0.9.2 拆分 + v0.9.4 hidden-row 跳过逻辑：12 个纯 finder/scanner 函数（不依赖闭包状态，全部以 `port` 作参数）——`jumpFindScrollport` / `jumpAllUserRows` / `jumpFindFirstUserRow` / `jumpFindLastUserRow` / `jumpIsRowInCompaction`（v0.9.2 父链 attribute 检查，用于 Shift+点击）/ `jumpFindFirstRealUserRow`（v0.9.2 Shift+点击 target）/ `jumpFindLastVisibleUserRow`（v0.9.0 锚点，保留诊断）/ `jumpFindTopVisibleUserRow`（v0.9.1 当前锚点，已正确跳过 height<=0 的 hidden row）/ `jumpFindPrevUserRow` / `jumpFindNextUserRow`（v0.9.4 起向前/向后找第一个 height>0 的 row，找不到返回 null）。所有函数共享工厂函数 scope（client-src/ 按文件名升序整段拼接进 bundle），无需 require/import。共享常量（`JUMP_SCROLL_SEL` / `JUMP_USER_ROW_SEL` / `JUMP_DRAWER_ATTR`）仍由 `20-constants.js` 单点定义。 |
-| `69-stats-line-position.js` | v0.10.0「统计行位置」（`stats-line-position` tweak）：`statsNormalizePosition`（脏值 / 老布尔值一律退回 `"bottom"`）/ `statsFindSource`（在 `[data-slot="conversation.composer.dock"]` 出口内取**最内层** `[class*="_root"]`，绕开可能带 `_root` 的 Tooltip 包装层）/ `statsFindTitleCluster`（主路径 `[data-slot="conversation.session.header.actions"]` → 父 → 父；兜底 `[class*="_titleCluster"]`）/ `statsRemoveMirror` / `statsEnsureMirror`（幂等，建之前先清孤儿镜像，保证全页面单一）/ `statsSyncMirror`（`cloneNode(true)` 后逐个搬**子节点**，保留 `_sep` 类名、甩掉克隆根上底部专用的居中 + `max-width` + padding；`title` 兼作"上次内容"缓存与悬停 tooltip，文本未变整段跳过）/ `createStatsLinePositionController`（`sync(position)` 内部判定启停：只有 `top` 启动 `STATS_POLL_MS`=400ms 轮询；`bottom` / `hidden` 都停机，隐藏完全由 `25-tweaks.js` 的 `buildCSS` 纯 CSS 承担（v0.10.1 起用 `visibility:hidden` 而非 `display:none`，见 § 二"贴底元素"条）。**关键约束**：绝不搬 DSH 渲染的原生统计行节点——React 卸载它时会对它记录的原父节点调 `removeChild`，节点被搬走 → `NotFoundError` 崩树；`StatsLine` 在 groups 为空时 `return null`，新会话开局必然触发这条路径。锚点一律优先 `data-slot`（DSH renderer 给每个 slot 出口包 `<div data-slot=... style="display:contents">`，不含构建 hash），`[class*="..."]` 只做兜底。 |
-| `70-debug-api.js`     | `createDebugAPI` —— 暴露 `window.__dshUiTweaks.{VERSION, getState, getInjectedCSS, getMatchedElements, debug, setState, reshim}`（`firstMessageJump` / `disclosureEndCollapse` / `statsLinePosition` 三个诊断在 `85-apply.js` 里后挂） |
-| `75-react-tweak-row.js` | `TweakRow` React 组件：单条 tweak 的 row（标题 + 描述 + 开关 + 可选数字输入）。v0.10.0 起：tweak 带 `choices` 时头部右侧渲染 `<select class="DTPD_select">` 取代开关（受控，value 为脏值时退回第一个选项）；数字输入行的判定不变（仍看 `configKeys.value !== configKeys.enabled`），开关型 tweak 走原路径 |
-| `80-react-section.js` | `UiTweaksSection` 顶级 React 组件：自包含 `useState(loadState)` + `useEffect` 持久化 + dispatch 状态事件 |
-| `85-apply.js`         | `apply(ctx)` 函数：launch 入口（self-shim → CSS 注入 → 诊断 API → settings slot → 调试模式 → 简洁模式 / tab hider / HoverCard hider / 折叠块收起 / 统计行位置 → 状态事件监听） |
+| `45-chatflow-marks.js` | 动态探测：`findChatflowTargets` / `applyChatflowShiftMarks`（幂等）+ `startChatflowMarksObserver`（首选 `[data-conversation-scroll]` 锚点 + 旧 overflow+chat-flow-kind 兜底） |
+| `50-debug.js`         | 调试高亮：`inspectMatch` / `inspectElement` / `applyDebugMode`（toggle `<html data-dsh-ui-tweaks-shift-debug>` + 写/清 `data-shift-px`） |
+| `55-simple-mode.js`   | 简洁模式状态行：`simpleActivityText` / `simpleActivityCategory` / `simplePickToolNameFromDom` / `simpleIsThinkingFromDom` / `simplePickActivityName` / `simpleIsRunningFromDom` / `createSimpleModeStatusController`（含 `purgeTurnStatus` JS 接管） |
+| `60-tab-hider.js`     | 通用 tab hider 工厂：`TRAJECTORY_TAB_LABELS` / `CHAT_TAB_LABELS` / `findTabButtonByLabels` / `createTabHider(opts)` |
+| `65-hover-card-hider.js` | 侧栏 HoverCard 隐藏：`HOVER_CARD_CLASS_HINTS`（DSH 升级 hash 变了改 HINTS 即可）/ `isHoverCardRoot` / `createSidebarHoverCardHider` |
+| `67-disclosure-end-collapse.js` | 折叠块末尾收起按钮：`findRowForBody` / `injectCollapseButton` / `scanBodies` / `removeAllInjectedButtons` / `createDisclosureEndCollapseController`（三 selector 由 `DISCLOSURE_BODY_SELECTORS` 单点拼接） |
+| `68-first-message-jump.js` | `createFirstMessageJumpController` 工厂 + 控制器主文件（定位 / 显隐 / 点击 / 生命周期 / 诊断） |
+| `68a-first-message-jump-utils.js` | 12 个纯 finder/scanner 函数（不依赖闭包状态，以 `port` 作参数） |
+| `69-stats-line-position.js` | 统计行位置 controller：`statsNormalizePosition` / `statsFindSource` / `statsFindTitleCluster` / `statsRemoveMirror` / `statsEnsureMirror` / `statsSyncMirror` / `createStatsLinePositionController` |
+| `70-debug-api.js`     | `createDebugAPI` —— 暴露 `window.__dshUiTweaks.{VERSION, getState, getInjectedCSS, getMatchedElements, debug, setState, reshim}` |
+| `75-react-tweak-row.js` | `TweakRow` React 组件：单条 tweak 的 row（标题 + 控件 + 可选数字输入；v0.10.0 起支持 `choices` 下拉） |
+| `80-react-section.js` | `UiTweaksSection` 顶级 React 组件：`useState(loadState)` + `useEffect` 持久化 + dispatch 状态事件 |
+| `85-apply.js`         | `apply(ctx)` 函数：launch 入口（self-shim → CSS 注入 → 诊断 API → settings slot → 调试模式 → 各 controller → 状态事件监听） |
 | `Z9-loader-close.js`  | `exports.apply` / `exports.inject` / `exports.name` + `return module.exports` + `});` 收尾 |
 
-## 二、本插件特殊项
+## 二、注释约定（v0.10.6 起的精简规范）
 
-- **bundle 大小**：v0.7.4 拆解完成 + preflight marker 后是 83103 字节。原 82590 字节（仅 1 处版本 banner），拆分 + 13 个 section header marker 引入 513 字节（§ 五 "DIFFERS 是预期"）。v0.9.6 加 `67-disclosure-end-collapse.js` 后约 +7.3 KB JS + 25-tweaks.js 的 buildCSS 多 ~1.0 KB CSS。v0.10.0 加 `69-stats-line-position.js` 后约 +9.7 KB JS + 25-tweaks.js 多 ~3.6 KB。v0.10.2 conversation-shift 修复（[data-conversation-scroll] 锚点升级 + 单 padding + min(Npx, 40%) CSS）净增 ~1 KB JS（45-chatflow-marks.js 策略重排注释 + findChatflowTargets 改写）+ ~100 字节 CSS（`min(Npx,40%)` 替代 `Npx`）。所有同类约束在通用 `maintainability.md` § 五
-- **行尾换行（v0.10.0 补齐）**：`68-first-message-jump.js` / `68a-first-message-jump-utils.js` / `75-react-tweak-row.js` 曾缺文件末尾 `\n`，导致拼接时下一个文件的 `    // ===== marker =====` 首行被接到上一个文件的 `}` 后面（bundle 里出现 `}    // ===== xxx =====`）。已各补 1 字节。**新增 section 前先确认相邻文件末尾有 `\n`**（通用规范 § 五 边界规则）——校验一行：构建后 `Select-String -Path lib/client.js -Pattern '\}\s*// ===== '` 应无输出
-- **DSH slot 出口锚点（v0.10.0 起的首选策略）**：DSH renderer（`dsh-client-ui-renderer` 的 `SlotOutlet`）给**每个** slot 出口包一层 `<div data-slot="<slot key>" style="display:contents">`。要定位某个 DSH 组件时，优先找它所在 slot 的出口再往内 / 往上走，而不是猜 CSS module hash 类名——`data-slot` 的值是 DSH 的公开 slot key（有 slot 目录背书），跨版本稳定。出口那层 `display:contents` 是 **inline style**，对它写规则一律带 `!important`。首个用例：`69-stats-line-position.js` 的两个锚点
-- **贴底元素不能用 `display:none` 隐藏（v0.10.1 教训）**：DSH composer seat 是 `position:sticky;bottom:0`（`.wSkVaW_composerSeat`），凡是隐藏 composer 卡片内部某一行（footer / dock / 状态行）都必须用 `visibility:hidden` 而不是 `display:none`——后者把盒子从布局里移除，卡片变矮，底边被钉住导致**输入行整体下移**。`visibility` 保留盒子高度且 React 照常更新其文本，也不用把 DSH 的字号 / 行高 / padding 数值抄进插件去补 padding。已核对 DSH 侧唯一的 visibility 规则是 `[data-phase=settling] .composerSeat{visibility:hidden}`，无后代 `visibility:visible` 重置
-- **共享常量**：`SHIM_PANE_*` / `SHIFT_TARGET_*` / `SIMPLE_*` / `HOVER_CARD_*` / `DISCLOSURE_END_COLLAPSE_*` / `DISCLOSURE_BODY_SELECTORS` / `STATS_*` 等"私有常量"放 `20-constants.js`（第一个数字 section），其它 section 全部通过 `factory body` 顶层引用——见通用规范 § 三三 "模块边界"
-- **React 依赖**：通过 `10-loader-open.js` 的 `require("react")` 和 `require("react/jsx-runtime")` 引入；`85-apply.js` 通过 `ctx.slots.inject("settings.section", ...)` 把 `UiTweaksSection` 注册到 DSH 设置页
-- **状态事件总线**：`STATE_EVENT = "dsh-ui-tweaks-state-change"` —— `UiTweaksSection` useEffect 触发 dispatch，`apply()` 注册 listener 统一协调 simple-mode / trajectory hider / chat hider / hover card hider / disclosure-end-collapse / stats-line-position 的启停
-- **DSH 升级 hash 兼容**：HoverCard section 维护 `HOVER_CARD_CLASS_HINTS` 数组（DSH workspace CSS module hash 类名），作为唯一需要跟进 DSH 升级的探测目标
+v0.10.6 之前，每个 source 文件的 header 都有 30–190 行版本历程 + 多段 inline 版本注释解释"为什么这条 CSS 这么写"。这些注释与 `CHANGELOG.md` 高度重复，加起来让 `lib/client.js` bundle 多出 ~110 KB 注释载荷。
 
-## 三、相关
+**v0.10.6 起的规则**：
+
+1. **版本历程只在 `CHANGELOG.md`**——任何"v0.X.Y 修了这个"的叙述都进 changelog；source 文件 header 只保留与当前实现直接相关的"是什么 / 为什么"，不带版本号。
+2. **保留的注释类型**：
+   - JSDoc 段（`/** ... */`）说明函数做什么、参数 / 返回含义
+   - 行内 `//` 说明非显然的设计决策（"为什么"不是"做了什么"）——例如 visibility vs display、为什么不搬 React 节点、锚点优先选哪种 selector
+   - CSS 注释说明 selector 意图（`/* === tweak-id : 简述 === */`）
+3. **移除的注释类型**：
+   - 段落级版本历程（v0.X.Y 起 + 修复 + 根因 + 修法 + 兼容性 + 改动文件列表）
+   - "本 tweak 的 N 条要点"长 enumerate
+   - 重复"compatibility: 不变类名 / ID / attribute / localStorage key"段落
+4. **CHANGELOG.md 是版本历程的唯一来源**——git log + CHANGELOG 段能完整还原任何版本的修复动机 + 文件影响，source 文件不再重复。
+5. **通用规范 `docs/maintainability.md` § 三三"注释规范"**继续适用——JSDoc 用单行 `/** ... */`，子模块用 `// ----- xxx -----` 隔开，inline `// why not what`。
+
+## 三、本插件特殊项
+
+- **bundle 大小**：v0.10.6 注释精简后 `lib/client.js` ≈ 162 KB（原 v0.10.5 277 KB，-41%）；各 source 文件均回落至 maintainability.md § 八"不要拆分过细"的下限附近。banner 从 50 KB → 2 KB，25-tweaks 从 56 KB → 28 KB，20-constants 从 23 KB → 4 KB 等。
+- **行尾换行**：与通用规范 § 五一致——非末尾 section 文件末尾 `}\n\n`，末尾 section `}\n`，`Z9-loader-close.js` 末行无 `\n`。v0.10.5 已补齐 67 / 68 / 68a / 75 的末尾换行。
+- **DSH slot 出口锚点（首选策略）**：DSH renderer 给每个 slot 出口包 `<div data-slot="<slot key>" style="display:contents">`，不含构建 hash。锚点优先用它。`!important` 必需：`display:contents` 是 inline style。
+- **贴底元素不能用 `display:none` 隐藏（v0.10.1 教训）**：composer seat 是 `position:sticky;bottom:0`，隐藏 footer 必须用 `visibility:hidden` 而非 `display:none`——后者把盒子从布局里移除、底边钉住导致**输入行整体下移**。`visibility` 保留盒子高度且 React 照常更新文本。已核对 DSH 侧唯一的 visibility 规则是 `[data-phase=settling] .composerSeat{visibility:hidden}`，无后代 `visibility:visible` 重置。
+- **共享常量**：放 `20-constants.js`（第一个数字 section），其它 section 全部通过 factory body 顶层引用——见通用规范 § 三三"模块边界"。
+- **React 依赖**：通过 `10-loader-open.js` 的 `require("react")` 和 `require("react/jsx-runtime")` 引入；`85-apply.js` 通过 `ctx.slots.inject("settings.section", ...)` 把 `UiTweaksSection` 注册到 DSH 设置页。
+- **状态事件总线**：`STATE_EVENT = "dsh-ui-tweaks-state-change"` —— `UiTweaksSection` useEffect 触发 dispatch，`apply()` 注册 listener 统一协调各 controller 的启停。
+- **DSH 升级 hash 兼容**：HoverCard section 维护 `HOVER_CARD_CLASS_HINTS` 数组（DSH workspace CSS module hash 类名），作为唯一需要跟进 DSH 升级的探测目标。
+
+## 四、相关
 
 - 通用规范：[`../../docs/maintainability.md`](../../docs/maintainability.md)
 - 构建脚本：`lib/build-client.cjs`
 - 字节校验：`lib/verify-client.cjs`
+- 版本历程（注释精简后唯一来源）：`CHANGELOG.md`
 - DSH 插件作者 skill：`dsh-persistent-plugin-authoring`（DSH skill 目录下）
