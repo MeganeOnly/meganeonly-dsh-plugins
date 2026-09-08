@@ -1,5 +1,5 @@
     // ===== controller-commit =====
-    /** v0.2.2：拉所有有改动的 git 仓库（branch + 文件名列表） */
+    /** 拉所有有改动的 git 仓库（branch + 文件名列表） */
     Controller.prototype.loadCommitStatus = function () {
       var self = this;
       return apiFetch("/api/git-hub/commit-status").then(function (data) {
@@ -11,7 +11,7 @@
         console.warn("[dsh-git-hub] loadCommitStatus failed:", e);
       });
     };
-    /** v0.2.2：手动 commit 指定仓库（git add -A + git commit -m <message>） */
+    /** 手动 commit 指定仓库（git add -A + git commit -m <message>） */
     Controller.prototype.commit = function (repoPath, message) {
       var self = this;
       var msg = (message || "").trim();

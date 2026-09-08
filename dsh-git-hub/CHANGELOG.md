@@ -4,6 +4,13 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.2] - 2026-09-06
+
+### 维护
+
+- **注释精简**：移除 19 个 client-src 文件中的冗余段头 / 版本历程注释（"v0.X.Y：xxx 修法 + 根因 + 兼容性 + 改动文件列表"类段头 + inline `v0.X.Y：`前缀），保留所有 section marker / JSDoc banner / WHY（attr 协议 / FAB 让位公式 / 智能轮询 / 抽屉 race condition）。`bundle` 大小由 104641 → 100200 字节（-4.2% / -4.4 KB）。对齐 `dsh-ui-tweaks` v0.10.6 注释精简规范：`CHANGELOG.md` 是版本历程唯一来源，source 文件只保留与当前实现直接相关的"是什么 / 为什么"。详细规则见 `docs/maintainability.md` § 二
+- **docs/maintainability.md 重排**：原 § 二"本插件特殊项"前插入新 § 二"注释约定"（与 `dsh-ui-tweaks` § 二 先例对齐），后续章节顺延为 § 三 / § 四；§ 一 section 索引新增 `Z9-loader-close.js` 一行 + 标注 v0.5.2 注释精简
+
 ## [0.5.0] - 2026-08-20
 
 ### 新增

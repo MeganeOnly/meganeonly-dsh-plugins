@@ -39,14 +39,15 @@ window.__ModuleLoader__.load({
     // ===== 常量 =====
     var STORAGE_KEY = "dsh.gitHub.v1";
     var DRAWER_ATTR = "data-dsh-github-drawer-open";
-    // 任何右侧抽屉打开时设的统一 attr；所有 FAB CSS 监听它→让位到屏幕左侧
-    // （侧边栏区域），而不是被自己的抽屉遮挡。互斥协议保证任意时刻只有一个抽屉打开。
-    // 与 dsh-task-pool / 其他面板共享此协议（v0.1.1+ 协议升级）。
+    // 任何右侧抽屉打开时设的统一 attr；所有 FAB CSS 监听它→让位到屏幕左侧（侧边栏区域），
+    // 而不是被自己的抽屉遮挡。互斥协议保证任意时刻只有一个抽屉打开；
+    // 与 dsh-task-pool / 其他面板共享此协议。
     var ANY_DRAWER_ATTR = "data-dsh-any-side-drawer-open";
     var DRAWER_WIDTH = 420;
     var PANEL_NAME = "github";
     var ACTIVATE_EVENT = "dsh-panel-activate";
-    var POLL_INTERVAL_MS = 4000; // v0.2.1 智能轮询：仅在有推送运行时才以这个间隔轮询 push-status
+    // 智能轮询：仅在有推送运行时才以这个间隔轮询 push-status，空闲时 0 网络请求。
+    var POLL_INTERVAL_MS = 4000;
 
     // ===== 工具函数 =====
     function beijingDate(ms) { return new Date(ms + 8 * 3600 * 1000); }
@@ -165,12 +166,9 @@ window.__ModuleLoader__.load({
 
     // ===== CSS =====
     var CSS = "" +
-      // 抽屉
       "[data-dsh-github-drawer]{position:fixed;top:0;right:0;bottom:0;width:" + DRAWER_WIDTH + "px;max-width:90vw;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:13px;border-left:1px solid var(--dsw-alias-border-l1);box-shadow:0 2px 12px rgba(0,0,0,.12);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s ease;box-sizing:border-box;}" +
       "html[" + DRAWER_ATTR + "] [data-dsh-github-drawer]{transform:translateX(0);}" +
-      // header（v0.5.0：加 position:relative 让 .DGH_optionsMenu 绝对定位 reference 到 header 下方——
-      // 之前误把 position:relative 加在 .DGH_commitToggle 上，但 menuEl 是 header 子元素不是按钮子元素，
-      // 导致菜单 reference 到 body 跑到屏幕外、点了按钮看似无反应）
+      // header 是 options 下拉菜单的定位参考父容器（菜单是其子元素，不是按钮子元素）。
       ".DGH_header{position:relative;display:flex;align-items:center;gap:6px;flex:none;padding:14px 14px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);}" +
       ".DGH_title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);padding:0 4px;flex:none;}" +
       ".DGH_iconBtn{font:inherit;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid transparent;border-radius:8px;padding:5px 7px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;flex:none;}" +
@@ -180,7 +178,6 @@ window.__ModuleLoader__.load({
       ".DGH_pushBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:500;transition:background .12s,border-color .12s;flex:none;}" +
       ".DGH_pushBtn:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_pushBtn:disabled{opacity:.45;cursor:not-allowed;}" +
-      // v0.2.2：commit 工具区
       ".DGH_commitSection{flex:none;padding:0;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);}" +
       ".DGH_commitSectionEmpty{padding:10px 14px;font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:center;font-style:italic;}" +
       ".DGH_commitRepo{padding:10px 14px;border-top:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:6px;}" +
@@ -199,7 +196,6 @@ window.__ModuleLoader__.load({
       ".DGH_commitSubmit{font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:6px;padding:5px 12px;flex:none;transition:background .12s;}" +
       ".DGH_commitSubmit:hover:not(:disabled){background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_commitSubmit:disabled{background:var(--dsw-alias-bg-component-disabled);color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l1);cursor:not-allowed;}" +
-      // v0.3.0：merge / pull 工具区
       ".DGH_mergeSection{flex:none;padding:0;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);}" +
       ".DGH_mergeSectionEmpty{padding:10px 14px;font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:center;font-style:italic;}" +
       ".DGH_mergeRepo{padding:10px 14px;border-top:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:6px;}" +
@@ -229,7 +225,6 @@ window.__ModuleLoader__.load({
       ".DGH_abortBtn:hover:not(:disabled){background:rgba(220,38,38,.18);border-color:rgba(220,38,38,.7);}" +
       ".DGH_mergeBtn:disabled,.DGH_pullBtn:disabled,.DGH_abortBtn:disabled{opacity:.45;cursor:not-allowed;}" +
       ".DGH_mergeHint{font-size:10.5px;color:var(--dsw-alias-label-tertiary);line-height:1.5;}" +
-      // 配置面板
       ".DGH_config{border-bottom:1px solid var(--dsw-alias-border-l1);padding:10px 14px;display:flex;flex-direction:column;gap:8px;background:var(--dsw-alias-bg-layer-2);}" +
       ".DGH_configLabel{font-size:11px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.04em;}" +
       ".DGH_configTextarea{font:inherit;font-size:12px;background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:6px 10px;width:100%;box-sizing:border-box;min-height:70px;outline:none;resize:vertical;font-family:inherit;}" +
@@ -239,7 +234,6 @@ window.__ModuleLoader__.load({
       ".DGH_saveBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:500;transition:background .12s;}" +
       ".DGH_saveBtn:hover{background:var(--dsw-alias-button-info-hover);}" +
       ".DGH_saveBtn:disabled{opacity:.5;cursor:not-allowed;}" +
-      // body / list
       ".DGH_body{flex:1;min-height:0;overflow-y:auto;padding:12px 14px 16px;}" +
       ".DGH_empty{padding:36px 12px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.6;}" +
       ".DGH_empty strong{display:block;font-size:14px;color:var(--dsw-alias-label-secondary);margin-bottom:6px;}" +
@@ -247,7 +241,6 @@ window.__ModuleLoader__.load({
       ".DGH_list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}" +
       ".DGH_errorBanner{padding:8px 10px;border-radius:6px;background:rgba(239,68,68,.1);color:var(--dsw-alias-state-error-primary);font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}" +
       ".DGH_errorBannerRetry{margin-left:auto;cursor:pointer;background:transparent;border:1px solid currentColor;border-radius:6px;padding:2px 8px;font-size:11px;color:inherit;}" +
-      // 仓库卡片
       ".DGH_repo{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;transition:border-color .12s,background .12s;overflow:hidden;}" +
       ".DGH_repo:hover{border-color:var(--dsw-alias-label-dimmed);}" +
       ".DGH_repo[data-pinned=\"true\"]{border-color:var(--dsw-alias-button-info-fill);}" +
@@ -266,57 +259,43 @@ window.__ModuleLoader__.load({
       ".DGH_badge[data-kind=\"warn\"]{background:rgba(234,88,12,.12);color:#9a3412;}" +
       ".DGH_lastCommit{font-size:10px;color:var(--dsw-alias-label-tertiary);display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;opacity:.85;}" +
       ".DGH_lastCommitSha{font-family:monospace;color:var(--dsw-alias-label-secondary);}" +
-      // v0.2.0：内嵌 push 按钮（titleRow 右侧；v0.1.8 独立 actions 行已去掉）
       ".DGH_pushInline{flex:none;margin-left:auto;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2);border-radius:5px;width:22px;height:22px;font:inherit;font-size:13px;line-height:1;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,border-color .12s,color .12s;}" +
       ".DGH_pushInline:hover:not(:disabled){background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
       ".DGH_pushInline:disabled{opacity:.35;cursor:not-allowed;}" +
-      // v0.1.7：隐藏选择模式 — 卡片可点 + 已隐藏卡视觉
+      // 隐藏选择模式：卡片可点 toggle hide，已隐藏卡视觉降级
       ".DGH_repo[data-selecting=\"true\"]{cursor:pointer;border-color:rgba(234,88,12,.4);}" +
       ".DGH_repo[data-selecting=\"true\"]:hover{border-color:#ea580c;background:var(--dsw-alias-bg-layer-3);}" +
       ".DGH_repo[data-hidden=\"true\"]{opacity:.6;}" +
       ".DGH_repo[data-hidden=\"true\"] .DGH_repoPath,.DGH_repo[data-hidden=\"true\"] .DGH_repoName{text-decoration:line-through;text-decoration-color:var(--dsw-alias-label-tertiary);}" +
       ".DGH_repoMark{margin-left:6px;font-size:11px;color:#9a3412;background:rgba(154,52,18,.1);padding:2px 6px;border-radius:4px;}" +
-      // 隐藏仓库小条（v0.1.7：仅 selectionMode 模式底部显示）
       ".DGH_hiddenBar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--dsw-alias-bg-layer-2);border-top:1px solid var(--dsw-alias-border-l2);font-size:12px;color:var(--dsw-alias-label-secondary);flex:none;}" +
       ".DGH_hiddenBarCount{flex:1;min-width:0;}" +
       ".DGH_hiddenBarToggle{cursor:pointer;background:transparent;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:3px 10px;font:inherit;font-size:11px;color:var(--dsw-alias-label-primary);}" +
       ".DGH_hiddenBarToggle:hover{background:var(--dsw-specific-sidebar-nav-item-hover);}" +
       ".DGH_hiddenBarExit{cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:6px;padding:3px 12px;font:inherit;font-size:12px;font-weight:500;}" +
       ".DGH_hiddenBarExit:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
-      // 选择模式 toggle 按钮激活态
       "[data-action=\"select-toggle\"][data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
-      // v0.4.0：commit 工具区可见性 toggle 按钮
-      // data-active=true → commit 区当前显示 → 按钮填色（与 select-toggle 一致的「激活」语义）
-      // data-active=false → commit 区当前隐藏 → 按钮淡灰（语义：这是 off 状态）
+      // commit-toggle / options-toggle 的 on/off 视觉态：data-active=true → 填色；false → 淡灰
       ".DGH_commitToggle[data-active=\"false\"]{opacity:.55;}" +
       ".DGH_commitToggle[data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);opacity:1;}" +
-      // v0.5.0：commit-toggle 升级为「显示选项」按钮（v0.5.1：去掉 position:relative——
-      // v0.5.0 误加在按钮上但 menuEl 是 .DGH_header 子元素不是按钮子元素，菜单 reference 不到按钮；
-      // fix 已把 position:relative 加到 .DGH_header）
-      // v0.5.0：选项下拉菜单（浮层，reference 到 .DGH_header）
       ".DGH_optionsMenu{position:absolute;top:calc(100% + 6px);right:0;min-width:224px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.22);padding:6px;z-index:200;display:flex;flex-direction:column;gap:2px;}" +
       ".DGH_optionsMenuItem{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;color:var(--dsw-alias-label-primary);border-radius:6px;cursor:pointer;user-select:none;transition:background .12s;}" +
       ".DGH_optionsMenuItem:hover{background:var(--dsw-specific-sidebar-nav-item-hover);}" +
       ".DGH_optionsMenuCheck{flex:none;width:14px;height:14px;border:1.5px solid var(--dsw-alias-border-l2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;line-height:1;color:transparent;}" +
       ".DGH_optionsMenuItem[data-on=\"true\"] .DGH_optionsMenuCheck{background:var(--dsw-alias-button-info-fill);border-color:var(--dsw-alias-button-info-fill);color:#fff;}" +
       ".DGH_optionsMenuLabel{flex:1;min-width:0;}" +
-      // FAB：top:130px = task-pool FAB(78~122)+ 8px 间距。两个 FAB 同时可见不重叠；
-      // drawer 打开互斥协议保证两个 FAB 不会同时进入让位动画
+      // FAB top:130px = task-pool FAB(78~122) + 8px 间距；两个 FAB 同时可见不重叠
+      // （互斥协议保证两个 FAB 不会同时进入让位动画）。
       ".DGH_fab{position:fixed;top:130px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
       ".DGH_fab:hover{transform:scale(1.06);}" +
       ".DGH_fab[data-state=\"open\"]{background:var(--dsw-alias-bg-layer-3);}" +
-      // drawer 打开时 FAB 让位到抽屉的左边外。
       // 让位公式 calc(var(--active-drawer-width) + 24px)：--active-drawer-width 由打开抽屉的
-      // panel 在 applyOpen(open) 时 setProperty 设定（task-pool = 380px, git-hub = 420px, ...），
-      // 所以 FAB 让位数值随实际打开抽屉宽度变化——避免不同宽度抽屉用固定值导致的位置错乱。
-      // 监听 ANY_DRAWER_ATTR（任意右侧抽屉打开）→ 不只是自己抽屉打开。
-      // 与 dsh-task-pool / 其他面板共享此协议，互斥协议保证任意时刻只有一个抽屉打开。
+      // panel 在 applyOpen(open) 时 setProperty 设定（task-pool=380 / git-hub=420），避免不同
+      // 宽度抽屉用固定值导致位置错乱。监听 ANY_DRAWER_ATTR（任意右侧抽屉打开）而非自己抽屉。
       "html[" + ANY_DRAWER_ATTR + "] .DGH_fab{right:calc(var(--active-drawer-width, 380px) + 24px);}" +
-      // toast
       ".DGH_toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:10px 16px;font:inherit;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:120;animation:DGH_toastIn .14s ease;}" +
       ".DGH_toast-error{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}" +
       "@keyframes DGH_toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}" +
-      // push 状态条
       ".DGH_pushStatus{padding:6px 12px;font-size:11px;color:var(--dsw-alias-label-tertiary);display:flex;align-items:center;gap:6px;background:var(--dsw-alias-bg-layer-2);border-bottom:1px solid var(--dsw-alias-border-l1);}" +
       ".DGH_pushStatusDot{width:6px;height:6px;border-radius:50%;background:#22c55e;flex:none;}" +
       ".DGH_pushStatusDot[data-running=\"true\"]{background:#eab308;animation:DGH_pulse 1s ease-in-out infinite;}" +
@@ -354,10 +333,10 @@ window.__ModuleLoader__.load({
         var parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== "object") return { pinnedPaths: [], hiddenPaths: [], sections: defaultSections() };
         var pinned = Array.isArray(parsed.pinnedPaths) ? parsed.pinnedPaths.filter(function (p) { return typeof p === "string"; }) : [];
-        // v1 → v2 隐式迁移：旧文档无 hiddenPaths，默认空数组
+        // 隐式迁移 v1 → v2：旧文档无 hiddenPaths，默认空数组
         var hidden = Array.isArray(parsed.hiddenPaths) ? parsed.hiddenPaths.filter(function (p) { return typeof p === "string"; }) : [];
-        // v2/v3 → v4 隐式迁移：旧文档无 sections 字段——v4 schema 是 sections 对象
-        // 兼容路径：v3 文档里 commitSectionVisible 映射到 sections.commit（保留 v0.4.0 默认隐藏语义）
+        // 隐式迁移 v3 → v4：v3 用 commitSectionVisible 单字段，v4 升级为 sections 对象；
+        // 把旧字段映射到 sections.commit（保留"默认隐藏"的用户偏好），其他三个保持默认 true
         var sections = defaultSections();
         if (parsed.sections && typeof parsed.sections === "object") {
           if (typeof parsed.sections.commit === "boolean") sections.commit = parsed.sections.commit;
@@ -365,7 +344,6 @@ window.__ModuleLoader__.load({
           if (typeof parsed.sections.pushStatus === "boolean") sections.pushStatus = parsed.sections.pushStatus;
           if (typeof parsed.sections.perCardPush === "boolean") sections.perCardPush = parsed.sections.perCardPush;
         } else if (typeof parsed.commitSectionVisible === "boolean") {
-          // v3 兼容：旧字段映射到 sections.commit，其他三个保持默认 true
           sections.commit = parsed.commitSectionVisible;
         }
         return { pinnedPaths: pinned, hiddenPaths: hidden, sections: sections };
@@ -377,8 +355,7 @@ window.__ModuleLoader__.load({
     LocalStorageStore.prototype.save = function (doc) {
       if (!this.storage) return;
       try {
-        // v0.5.0：sections 对象替代 v0.4.0 的 commitSectionVisible 字段
-        // 缺字段时每个开关取对应默认值（commit=false；其他三个=true）
+        // sections 缺字段时取对应默认值（commit=false；其他三个=true）
         var inSections = (doc.sections && typeof doc.sections === "object") ? doc.sections : {};
         var sections = {
           commit: typeof inSections.commit === "boolean" ? inSections.commit : false,
@@ -396,7 +373,7 @@ window.__ModuleLoader__.load({
       }
     };
 
-    /** v0.5.0：sections 默认状态。commit 沿用 v0.4.0 用户偏好（默认隐藏），其他三个默认显示。 */
+    /** sections 默认状态：commit 默认隐藏，其他三个默认显示。 */
     function defaultSections() {
       return { commit: false, merge: true, pushStatus: true, perCardPush: true };
     }
@@ -411,22 +388,21 @@ window.__ModuleLoader__.load({
       this.loading = false;
       this.error = null;
       this.configPanelOpen = false;
-      this.selectionMode = false;  // v0.1.7：隐藏选择模式（点卡片 = toggleHide）
-      this.showHidden = false;     // v0.1.7：仅 selectionMode 内有效（模式内展开被隐藏项查看）
+      this.selectionMode = false;  // 隐藏选择模式（点卡片 = toggleHide）
+      this.showHidden = false;     // 仅 selectionMode 内有效（模式内展开被隐藏项查看）
       this.lastPush = null;        // 最近推送状态
-      this.commitRepos = [];       // v0.2.2：所有 scanRoots 下有改动的 git 仓库 [{ path, name, branch, files, filesChanged, lastCommit }]
-      this.commitBusy = false;     // v0.2.2：commit 操作进行中（按钮 disabled + 文字改 "提交中…"）
-      this.mergeRepos = [];        // v0.3.0：可合并/拉取的仓库 [{ path, name, branches, current, upstream, mergeInProgress, rebaseInProgress }]
-      this.mergeBusy = null;       // v0.3.0：当前 merge/pull 操作的目标 repo path 或 null（按钮 disabled 用）
-      this.lastMergeResult = null; // v0.3.0：最近一次操作结果，{ repo, op, ok, status?, error?, conflicts? }
+      this.commitRepos = [];       // 所有 scanRoots 下有改动的 git 仓库
+      this.commitBusy = false;     // commit 操作进行中（按钮 disabled + 文字改 "提交中…"）
+      this.mergeRepos = [];        // 可合并/拉取的仓库
+      this.mergeBusy = null;       // 当前 merge/pull 操作的目标 repo path 或 null
+      this.lastMergeResult = null; // 最近一次 merge/pull/abort 结果
       this.listeners = new Set();
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
       this.hiddenPaths = new Set(doc.hiddenPaths);
-      // v0.5.0：sections 对象替代 v0.4.0 的 commitSectionVisible 字段
-      // defaultSections() 在 70-storage.js 定义（同 factory scope 可访问）
+      // sections（4 个功能区可见性开关）；defaultSections() 在 70-storage.js 定义（同 factory scope）
       this.sections = (doc.sections && typeof doc.sections === "object") ? doc.sections : defaultSections();
-      // v0.5.0：options 下拉菜单开关（不持久化——纯 UI 临时态，跟 selectionMode 一致）
+      // options 下拉菜单开关（不持久化——纯 UI 临时态，跟 selectionMode 一致）
       this.optionsOpen = false;
       this.drawerOpen = false;
     }
@@ -457,29 +433,29 @@ window.__ModuleLoader__.load({
         selectionMode: this.selectionMode,
         showHidden: this.showHidden,
         lastPush: this.lastPush,
-        commitRepos: this.commitRepos,      // v0.2.2
-        commitBusy: this.commitBusy,        // v0.2.2
-        mergeRepos: this.mergeRepos,        // v0.3.0
-        mergeBusy: this.mergeBusy,          // v0.3.0
-        lastMergeResult: this.lastMergeResult, // v0.3.0
-        sections: this.sections,                     // v0.5.0：统一管理 4 个功能区可见性
+        commitRepos: this.commitRepos,
+        commitBusy: this.commitBusy,
+        mergeRepos: this.mergeRepos,
+        mergeBusy: this.mergeBusy,
+        lastMergeResult: this.lastMergeResult,
+        sections: this.sections,
         pinnedPaths: this.pinnedPaths,       // [perf] 直接暴露 Set，省 Array.from 让 renderer 用 .has
         hiddenPaths: this.hiddenPaths,
-        optionsOpen: this.optionsOpen,               // v0.5.0：options 下拉菜单开关（不持久化）
+        optionsOpen: this.optionsOpen,
         drawerOpen: this.drawerOpen,
       };
     };
     Controller.prototype.toggleDrawer = function () {
       this.drawerOpen = !this.drawerOpen;
       if (this.drawerOpen) {
-        // 抽屉打开：拉数据 + 探测推送状态（v0.2.1 智能轮询：
-        // pollPushStatus 内部若发现 push 仍在跑，会自动 startPushPoll）
+        // 抽屉打开：拉数据 + 探测推送状态（智能轮询：pollPushStatus 内部若发现 push 仍在跑，
+        // 会自动 startPushPoll 持续轮询；推送结束自动停）
         this.refresh(false);
         this.pollPushStatus();
-        this.loadCommitStatus(); // v0.2.2：刷新 commit 工具行的 branch + 改动数
-        this.loadMergeStatus(); // v0.3.0：刷新 merge/pull/abort 工具区
+        this.loadCommitStatus(); // 刷新 commit 工具行的 branch + 改动数
+        this.loadMergeStatus();  // 刷新 merge/pull/abort 工具区
       } else {
-        // 抽屉关闭：v0.2.1 智能轮询，停掉所有 push 轮询 timer
+        // 抽屉关闭：停掉所有 push 轮询 timer（智能轮询在抽屉关闭时兜底停）
         this.stopPushPoll();
       }
       this.notify();
@@ -517,17 +493,17 @@ window.__ModuleLoader__.load({
       var next = !!v;
       if (this.selectionMode === next) return;
       this.selectionMode = next;
-      // 进入模式时默认收起（用户进入模式是为了隐藏，不是为了展开）
-      // 退出模式时也收起，避免下次进入时显示残留
+      // 进入模式默认收起（用户进入模式是为了隐藏，不是为了展开），
+      // 退出模式也收起，避免下次进入时显示残留
       this.showHidden = false;
       this.notify();
     };
-    /** v0.5.0：toggle options 下拉菜单（不持久化，纯 UI 临时态） */
+    /** toggle options 下拉菜单（不持久化，纯 UI 临时态） */
     Controller.prototype.toggleOptions = function () {
       this.optionsOpen = !this.optionsOpen;
       this.notify();
     };
-    /** v0.5.0：关闭 options 下拉菜单（用于 Esc / 点菜单外） */
+    /** 关闭 options 下拉菜单（用于 Esc / 点菜单外） */
     Controller.prototype.closeOptions = function () {
       if (!this.optionsOpen) return;
       this.optionsOpen = false;
@@ -537,12 +513,12 @@ window.__ModuleLoader__.load({
       this.error = msg;
       this.notify();
     };
-    /** v0.5.0：切换指定 section 的可见性（持久化）。key ∈ {commit, merge, pushStatus, perCardPush} */
+    /** 切换指定 section 的可见性（持久化）。key ∈ {commit, merge, pushStatus, perCardPush} */
     Controller.prototype.toggleSection = function (key) {
       var allowed = ["commit", "merge", "pushStatus", "perCardPush"];
       if (allowed.indexOf(key) < 0) return;
       // 严格 true/false 切换；defaultSections() 已保证 4 个 key 都是 boolean，
-      //   此处无需再 fallback 处理 undefined（storage.load 已显式迁移 v1→v4）。
+      // 此处无需 fallback 处理 undefined（storage.load 已显式迁移）。
       this.sections[key] = this.sections[key] !== true;
       this._persist();
       this.notify();
@@ -571,7 +547,7 @@ window.__ModuleLoader__.load({
         self.setError(e && e.message ? e.message : String(e));
       }).then(function () {
         self.setLoading(false);
-        // v0.2.2：刷新仓库列表时同步刷 commit 状态（commit / push 后 unpushed 变化）
+        // 刷新仓库列表时同步刷 commit 状态（commit / push 后 unpushed 变化）
         return self.loadCommitStatus();
       });
     };
@@ -595,7 +571,6 @@ window.__ModuleLoader__.load({
         body: { scanRoots: scanRootsArr },
       }).then(function (data) {
         if (!data || !data.ok) throw new Error((data && data.error) || "save failed");
-        // config 改了 → 重扫
         self.closeConfigPanel();
         return self.refresh(true);
       });
@@ -604,7 +579,7 @@ window.__ModuleLoader__.load({
     /** 推单个仓库 */
     Controller.prototype.pushRepo = function (repoPath) {
       var self = this;
-      // v0.1.7：hidden 仓库不让 push（用户语义："几乎等于不要碰"）
+      // hidden 仓库不让 push（用户语义："几乎等于不要碰"）
       if (this.hiddenPaths.has(repoPath)) {
         showToast("已隐藏,不允许推送。先取消隐藏再试。", "error");
         return Promise.resolve();
@@ -617,19 +592,17 @@ window.__ModuleLoader__.load({
         showToast("已启动推送 PID=" + (data.pid || "?") + "（去终端看完整输出）", "info");
         self.lastPush = { startedAt: data.startedAt, pid: data.pid, exitCode: null, scope: "repo", repo: repoPath, running: true };
         self.notify();
-        // v0.2.1 智能轮询：1.5s 后首次 pollPushStatus；pollPushStatus 见 running=true
-        // 会自动 startPushPoll；之后每 POLL_INTERVAL_MS 自动续跑直到 exitCode 出现。
+        // 智能轮询：1.5s 后首次 pollPushStatus；running=true 会自动 startPushPoll 续跑
         setTimeout(function () { self.pollPushStatus(); }, 1500);
       }).catch(function (e) {
         showToast("推送失败：" + (e && e.message ? e.message : e), "error");
       });
     };
     /**
-     * 全部推送：v0.1.7 重写为"循环调 pushRepo 跳过 hidden"
-     *  - 原因：host half 的 /api/git-hub/push-all 是调 daily-push.cjs --all，
-     *    会扫描本机多盘所有 .git 仓库（包括 hidden）；
-     *    但 hidden 用户语义是"几乎等于不要碰"，不能被 daily-push 扫到推送
-     *  - 实现：client 端过滤 hidden，只对 visible repos 逐个 spawn daily-push.cjs --repo
+     * 全部推送：循环调 pushRepo 跳过 hidden
+     *  - 原因：host half 的 /api/git-hub/push-all 调 daily-push.cjs --all，会扫本机多盘
+     *    所有 .git 仓库（包括 hidden）；但 hidden 用户语义是"几乎等于不要碰"，
+     *    不能被 daily-push 扫到推送 → client 端过滤 hidden，只对 visible repos 逐个 spawn
      *  - 状态条：依次启动，pollPushStatus 显示"全部推送运行中 X 个"
      */
     Controller.prototype.pushAll = function () {
@@ -658,7 +631,7 @@ window.__ModuleLoader__.load({
       next();
     };
     /**
-     * v0.2.1 智能轮询：单次拉 push-status，根据返回结果决定启/停轮询 timer
+     * 智能轮询 push-status：单次拉取，根据返回决定启/停轮询 timer
      *  - 仅在有推送运行时持续轮询（每 POLL_INTERVAL_MS 一次）
      *  - 推送结束（exitCode != null）或后端无 push 记录 → 停轮询
      *  - 抽屉关闭时由 toggleDrawer 调 stopPushPoll 兜底
@@ -702,7 +675,7 @@ window.__ModuleLoader__.load({
     };
 
     // ===== controller-commit =====
-    /** v0.2.2：拉所有有改动的 git 仓库（branch + 文件名列表） */
+    /** 拉所有有改动的 git 仓库（branch + 文件名列表） */
     Controller.prototype.loadCommitStatus = function () {
       var self = this;
       return apiFetch("/api/git-hub/commit-status").then(function (data) {
@@ -714,7 +687,7 @@ window.__ModuleLoader__.load({
         console.warn("[dsh-git-hub] loadCommitStatus failed:", e);
       });
     };
-    /** v0.2.2：手动 commit 指定仓库（git add -A + git commit -m <message>） */
+    /** 手动 commit 指定仓库（git add -A + git commit -m <message>） */
     Controller.prototype.commit = function (repoPath, message) {
       var self = this;
       var msg = (message || "").trim();
@@ -763,7 +736,6 @@ window.__ModuleLoader__.load({
     };
 
     // ===== controller-merge =====
-    /* ===== v0.3.0 merge / pull / abort ===== */
 
     /** 拉所有可合并/拉取的仓库（≥2 本地分支 / 有 upstream / 冲突中） */
     Controller.prototype.loadMergeStatus = function () {
@@ -998,15 +970,14 @@ window.__ModuleLoader__.load({
           document.documentElement.setAttribute(DRAWER_ATTR, "");
           // 设 CSS 变量 --active-drawer-width = 自己抽屉宽度（用于 FAB 让位公式）
           document.documentElement.style.setProperty("--active-drawer-width", DRAWER_WIDTH + "px");
-          // 检查是否还有别的 panel 抽屉打开 → 没有才设统一 attr
-          // （互斥协议下理论上此时不该有别的抽屉，但防御性检查避免重复设）
+          // 防御性检查：互斥协议下理论上不该有别的抽屉，但避免重复设
           if (!isOtherDrawerOpen(DRAWER_ATTR)) {
             document.documentElement.setAttribute(ANY_DRAWER_ATTR, "");
           }
           document.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { detail: PANEL_NAME }));
         } else {
           document.documentElement.removeAttribute(DRAWER_ATTR);
-          // 关键修复 v0.1.4：检查是否还有别的 panel 抽屉打开（互斥协议 race condition）。
+          // 关键修复：互斥协议 race condition 检查。
           // 场景：抽屉 A 打开 → 用户点 B → B applyOpen(open) 先设自己 attr + 移除 A attr，
           // dispatch event 触发 A applyOpen(close)。此时 B 抽屉仍开着，A 关闭分支必须
           // 不能移除统一 attr + CSS 变量——否则 FAB 让位状态会瞬间错乱。
@@ -1022,21 +993,20 @@ window.__ModuleLoader__.load({
         if (e && e.detail && e.detail !== PANEL_NAME) controller.closeDrawer();
       }
 
-      // [perf] 移除 document.body subtree MutationObserver——ensure() 已在下面
-      // 同步调用一次，apply() 在 DOM 就绪后跑，DSH 后续聊天 UI mutation 触发 observer
-      // 早 return 是纯调度开销。
+      // [perf] 不再挂 document.body subtree MutationObserver——ensure() 已同步调用一次，
+      // apply() 在 DOM 就绪后跑，DSH 后续聊天 UI mutation 触发 observer 早 return 是纯调度开销。
       document.addEventListener(ACTIVATE_EVENT, onOtherActivate);
       var unsub = controller.subscribe(applyOpen);
       applyOpen();
       ensure();
 
-      // v0.2.1 智能轮询：移除抽屉状态驱动的常驻 polling 订阅，
-      // 改为 pushRepo 触发 + pollPushStatus 自管理的 timer（详见 Controller.prototype.pollPushStatus）。
+      // 智能轮询：push-status 不再由抽屉开/关状态驱动，改由 pushRepo 触发 +
+      // pollPushStatus 自管理 timer（详见 Controller.prototype.pollPushStatus）。
 
       return function () {
         document.removeEventListener(ACTIVATE_EVENT, onOtherActivate);
         unsub();
-        // v0.2.1：dispose 时兜底停掉 push poll timer（避免悬挂 interval）
+        // dispose 时兜底停掉 push poll timer（避免悬挂 interval）
         controller.stopPushPoll();
         document.documentElement.removeAttribute(DRAWER_ATTR);
         if (viewHandle && viewHandle.dispose) viewHandle.dispose();
@@ -1047,8 +1017,8 @@ window.__ModuleLoader__.load({
     // ===== 抽屉视图 =====
     function renderDrawerView(container, controller) {
       var headerEl, bodyEl, pushStatusEl;
-      // [perf v0.5.x] diff-skip 缓存：renderHeader / renderPushStatus / renderBody
-      // 各自记一个 key，对应字段无变化就 early-return，避免每次 notify 全量重渲染。
+      // [perf] diff-skip 缓存：renderHeader / renderPushStatus / renderBody 各自记一个 key，
+      // 对应字段无变化就 early-return，避免每次 notify 全量重渲染。
       var lastHeaderKey = "";
       var lastPushKey = "";
       var lastBodyKey = "";
@@ -1075,7 +1045,7 @@ window.__ModuleLoader__.load({
       function renderHeader() {
         var snap = controller.getSnapshot();
         var toolAvail = snap.config && snap.config.toolAvailable;
-        // [perf v0.5.x] diff-skip：仅当影响 header 渲染的字段变化时才重 render
+        // [perf] diff-skip：仅当影响 header 渲染的字段变化时才重 render
         var headerKey =
           (snap.config && snap.config.toolAvailable ? "1" : "0") + "|" +
           (snap.selectionMode ? "1" : "0") + "|" +
@@ -1083,14 +1053,12 @@ window.__ModuleLoader__.load({
           (snap.optionsOpen ? "1" : "0");
         if (headerKey === lastHeaderKey) return;
         lastHeaderKey = headerKey;
-        // v0.5.0：commit-toggle 升级为「显示选项」按钮——commitVisible 改为 optionsOpen（菜单开/关态）
         var optionsOpen = !!snap.optionsOpen;
         var headerHtml =
           '<span class="DGH_title">Git/GitHub</span>' +
           '<button class="DGH_iconBtn" data-action="config" title="配置扫描根路径">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.2v2M8 12.8v2M14.8 8h-2M3.2 8h-2M12.95 3.05l-1.4 1.4M4.45 11.55l-1.4 1.4M12.95 12.95l-1.4-1.4M4.45 4.45l-1.4-1.4"/></svg>' +
           '</button>' +
-          // v0.1.7：隐藏选择模式 toggle 按钮（↻ 右侧）
           '<button class="DGH_iconBtn" data-action="select-toggle" title="' + (snap.selectionMode ? '退出隐藏选择模式（Esc）' : '进入隐藏选择模式：点击卡片可加入/移出隐藏') + '" data-active="' + (snap.selectionMode ? 'true' : 'false') + '">' +
             (snap.selectionMode
               ? '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>'
@@ -1099,10 +1067,7 @@ window.__ModuleLoader__.load({
           '<button class="DGH_iconBtn" data-action="refresh" title="刷新仓库状态">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>' +
           '</button>' +
-          // v0.5.0：原 commit-toggle（v0.4.0）升级为「显示选项」按钮
-          // - icon 沿用 git commit dot on line（中性图标代表「选项」）
-          // - data-active 反映 options 菜单打开态（true = 菜单开，false = 菜单关）
-          // - 点击 toggle 浮层菜单（4 个 section 开关）
+          // 「显示选项」按钮（icon 沿用 git commit dot on line 作中性图标）；data-active 反映 options 菜单打开态
           '<button class="DGH_iconBtn DGH_commitToggle" data-action="options-toggle" title="显示选项（管理哪些功能区可见）" data-active="' + (optionsOpen ? 'true' : 'false') + '">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/><path d="M5 8h6"/></svg>' +
           '</button>' +
@@ -1111,7 +1076,7 @@ window.__ModuleLoader__.load({
           '<button class="DGH_iconBtn" data-action="close" title="关闭（Esc）">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>' +
           '</button>' +
-          // v0.5.0：options 下拉菜单容器（永远在 DOM 里，display 受 optionsOpen 控制；详见 renderOptionsMenu）
+          // options 下拉菜单容器（永远在 DOM 里，display 受 optionsOpen 控制；详见 renderOptionsMenu）
           '<div class="DGH_optionsMenu" data-role="options-menu"></div>';
         headerEl.innerHTML = headerHtml;
         var configBtn = headerEl.querySelector('[data-action="config"]');
@@ -1120,14 +1085,13 @@ window.__ModuleLoader__.load({
           if (controller.configPanelOpen) controller.closeConfigPanel();
           else controller.openConfigPanel();
         });
-        // v0.1.7：隐藏选择模式 toggle
         headerEl.querySelector('[data-action="select-toggle"]').addEventListener("click", function () {
           controller.setSelectionMode(!controller.getSnapshot().selectionMode);
         });
         headerEl.querySelector('[data-action="refresh"]').addEventListener("click", function () {
           controller.refresh(true);
         });
-        // v0.5.0：options 按钮 toggle 菜单（stopPropagation 避免触发 document click 关闭逻辑）
+        // options 按钮 toggle 菜单（stopPropagation 避免触发 document click 关闭逻辑）
         headerEl.querySelector('[data-action="options-toggle"]').addEventListener("click", function (e) {
           e.stopPropagation();
           controller.toggleOptions();
@@ -1138,11 +1102,10 @@ window.__ModuleLoader__.load({
         headerEl.querySelector('[data-action="close"]').addEventListener("click", function () {
           controller.closeDrawer();
         });
-        // v0.5.0：渲染 options 菜单内容（仅在打开时；关闭时清空 + display:none）
         renderOptionsMenu();
       }
 
-      /** v0.5.0：渲染 options 下拉菜单。菜单打开 = 列出 4 个 section 开关；关闭 = display:none。 */
+      /** 渲染 options 下拉菜单。菜单打开 = 列出 4 个 section 开关；关闭 = display:none。 */
       function renderOptionsMenu() {
         var menuEl = headerEl.querySelector('[data-role="options-menu"]');
         if (!menuEl) return;
@@ -1186,12 +1149,12 @@ window.__ModuleLoader__.load({
 
       function renderPushStatus() {
         var snap = controller.getSnapshot();
-        // [perf v0.5.x] diff-skip：lastPush + sections.pushStatus 字段未变则跳过
+        // [perf] diff-skip：lastPush + sections.pushStatus 字段未变则跳过
         var pushKey = (snap.sections && snap.sections.pushStatus === true ? "1" : "0") + "|" +
           JSON.stringify(snap.lastPush || null);
         if (pushKey === lastPushKey) return;
         lastPushKey = pushKey;
-        // v0.5.0：pushStatus 受 sections.pushStatus 控制——关闭时彻底隐藏（不留空容器）
+        // pushStatus 受 sections.pushStatus 控制——关闭时彻底隐藏（不留空容器）
         if (!(snap.sections && snap.sections.pushStatus === true)) {
           pushStatusEl.style.display = "none";
           pushStatusEl.innerHTML = "";
@@ -1213,7 +1176,7 @@ window.__ModuleLoader__.load({
 
       function renderBody() {
         var snap = controller.getSnapshot();
-        // [perf v0.5.x] diff-skip：body 整体 key 包含影响 list / pinned / hidden / sections / loading 的字段
+        // [perf] diff-skip：body key 包含影响 list / pinned / hidden / sections / loading 的字段
         // 注意：commitRepos / mergeRepos / loading 也参与——这些变化必须重 render
         var bodyKey =
           (snap.repos ? snap.repos.length : 0) + "|" +
@@ -1233,8 +1196,8 @@ window.__ModuleLoader__.load({
         if (bodyKey === lastBodyKey) return;
         lastBodyKey = bodyKey;
 
-        // v0.2.2：commit 工具区（持久显示，紧贴 header 下；多仓库）
-        // v0.5.0：受 sections.commit 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
+        // commit 工具区（持久显示，紧贴 header 下；多仓库）
+        // 受 sections.commit 控制：关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
         var existingCommit = bodyEl.querySelector(".DGH_commitSection");
         if (snap.sections && snap.sections.commit === true) {
           if (!existingCommit) {
@@ -1248,8 +1211,8 @@ window.__ModuleLoader__.load({
           existingCommit = null;
         }
 
-        // v0.3.0：merge / pull 工具区（紧贴 commit 区下）
-        // v0.5.0：受 sections.merge 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderMergeSection）
+        // merge / pull 工具区（紧贴 commit 区下）
+        // 受 sections.merge 控制：关闭时彻底从 DOM 移除（不留空节点 + 不调 renderMergeSection）
         // commit 区关闭时，merge 区直接挂在 body 顶部（保持原有顺序语义：commit → merge → 列表）
         var existingMerge = bodyEl.querySelector(".DGH_mergeSection");
         if (snap.sections && snap.sections.merge === true) {
@@ -1297,13 +1260,13 @@ window.__ModuleLoader__.load({
           oldBanner.remove();
         }
 
-        // v0.1.7："已隐藏 N 个" 小条只在 selectionMode 激活时显示在 body 底部
+        // "已隐藏 N 个" 小条只在 selectionMode 激活时显示在 body 底部
         var hiddenCount = snap.repos.filter(function (r) { return snap.hiddenPaths.has(r.path); }).length;
 
         // 仓库列表
         var oldList = bodyEl.querySelector(".DGH_list, .DGH_empty, .DGH_loading");
         var newList;
-        // v0.1.7 过滤逻辑：默认隐藏所有 hidden；selectionMode 激活时如 showHidden=true 则展开
+        // 过滤逻辑：默认隐藏所有 hidden；selectionMode 激活时如 showHidden=true 则展开
         var visibleRepos = snap.repos.filter(function (r) {
           var isHidden = snap.hiddenPaths.has(r.path);
           // selectionMode=true + showHidden=true：展开；其他情况隐藏
@@ -1348,7 +1311,7 @@ window.__ModuleLoader__.load({
           bodyEl.appendChild(newList);
         }
 
-        // v0.1.7：selectionMode 激活时，在 body 底部插入 hiddenBar
+        // selectionMode 激活时，在 body 底部插入 hiddenBar
         var bottomBar = bodyEl.querySelector(".DGH_hiddenBar");
         if (snap.selectionMode) {
           if (!bottomBar) {
@@ -1415,18 +1378,14 @@ window.__ModuleLoader__.load({
       var keyHandler = function (e) {
         if (!controller.getSnapshot().drawerOpen) return;
         if (e.key !== "Escape") return;
-        // Esc 优先级：
-        //   1) 关闭配置面板
-        //   2) 退出 selectionMode（隐藏选择模式）
-        //   3) v0.5.0：关闭 options 下拉菜单（菜单打开时）
-        //   4) 关闭抽屉
+        // Esc 优先级：1) 关闭配置面板  2) 退出 selectionMode  3) 关闭 options 下拉菜单  4) 关闭抽屉
         if (controller.configPanelOpen) { controller.closeConfigPanel(); return; }
         if (controller.selectionMode) { controller.setSelectionMode(false); return; }
         if (controller.optionsOpen) { controller.closeOptions(); return; }
         controller.closeDrawer();
       };
 
-      // v0.5.0：点菜单外关闭 options 下拉菜单。toggleBtn 自身 click handler 已 stopPropagation，
+      // 点菜单外关闭 options 下拉菜单。toggleBtn 自身 click handler 已 stopPropagation，
       // 所以 document click 拿不到它；其他位置点击 → 关闭。
       var docClickHandler = function () {
         if (controller.optionsOpen) controller.closeOptions();
@@ -1445,7 +1404,6 @@ window.__ModuleLoader__.load({
         dispose: function () {
           unsubRender();
           document.removeEventListener("keydown", keyHandler);
-          // v0.5.0：清理 options 菜单的 document click 监听
           document.removeEventListener("click", docClickHandler);
           if (container) container.innerHTML = "";
         },
@@ -1460,9 +1418,7 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * v0.1.7+：构造单张仓库卡片 DOM 元素。
-     *
-     * 职责：表单（hidden / pinned / selectionMode）+ 状态徽章 + 紧凑布局。
+     * 构造单张仓库卡片 DOM 元素。
      * 外部依赖：escapeHtml（30-utils.js）、truncate（本地）、showToast（50-toast.js）——全部同 factory body 顶层。
      *
      * @param {Object} repo 单仓库条目 { path, name, branch, status, error, unpushedCount, todayCommitCount, lastCommit }
@@ -1477,14 +1433,13 @@ window.__ModuleLoader__.load({
       if (snap.pinnedPaths.has(repo.path)) li.dataset.pinned = "true";
       var isHidden = snap.hiddenPaths.has(repo.path);
       if (isHidden) li.dataset.hidden = "true";
-      // v0.1.7：selectionMode 模式下整张卡片可点切换 hide
+      // selectionMode 模式下整张卡片可点切换 hide
       if (snap.selectionMode) li.dataset.selecting = "true";
 
       var head = document.createElement("div");
       head.className = "DGH_repoHead";
 
-      // v0.2.0 紧凑布局：titleRow 内嵌 push 按钮（右上角）
-      // v0.5.0：受 sections.perCardPush 开关控制——关闭时不创建 pushBtn（整张卡片不带推送入口）
+      // titleRow 内嵌 push 按钮（紧凑布局）；受 sections.perCardPush 控制：关闭时不创建 pushBtn
       var perCardPushOn = snap.sections && snap.sections.perCardPush === true;
       var toolAvail = snap.config && snap.config.toolAvailable;
       var pushBtn = null;
@@ -1509,10 +1464,9 @@ window.__ModuleLoader__.load({
       titleRow.innerHTML =
         '<span class="DGH_repoName">' + escapeHtml(repo.name) + '</span>' +
         (repo.branch ? '<span class="DGH_repoBranch">' + escapeHtml(repo.branch) + '</span>' : '') +
-        // v0.1.7：选择模式 + 已隐藏：显示 "已隐藏" 标记
         (snap.selectionMode && isHidden ? '<span class="DGH_repoMark">已隐藏 ✓</span>' : '');
       head.appendChild(titleRow);
-      // push 按钮挂在 titleRow 末尾（与 name + branch 同行右）；v0.5.0：受 sections.perCardPush 控制
+      // push 按钮挂在 titleRow 末尾（与 name + branch 同行右）
       if (pushBtn) titleRow.appendChild(pushBtn);
 
       var pathEl = document.createElement("div");
@@ -1520,8 +1474,7 @@ window.__ModuleLoader__.load({
       pathEl.textContent = repo.path;
       head.appendChild(pathEl);
 
-      // 状态徽章 + 人类语言 tooltip (v0.1.9：徽章悬停说明，零技术语言)
-      // v0.2.0：branch 徽章 + 状态徽章合并到一行（更紧凑）
+      // 状态徽章 + 人类语言 tooltip（hover 说明零技术语言）；branch + status 徽章合并到一行更紧凑
       var badges = document.createElement("div");
       badges.className = "DGH_repoBadges";
       if (repo.error) {
@@ -1575,7 +1528,7 @@ window.__ModuleLoader__.load({
       if (repo.lastCommit) {
         var lc = document.createElement("div");
         lc.className = "DGH_lastCommit";
-        // v0.1.9：完整 message 作为 tooltip（默认显示截断到 50 字）
+        // 完整 message 作为 tooltip（默认显示截断到 50 字）
         var fullMessage = repo.lastCommit.message || "";
         var displayMessage = truncate(fullMessage, 50);
         lc.innerHTML =
@@ -1587,8 +1540,7 @@ window.__ModuleLoader__.load({
 
       li.appendChild(head);
 
-      // v0.1.7：selectionMode 模式下，整张卡片可点 = toggleHide
-      // 注意：push 按钮的 click handler 已经 stopPropagation，不会冒泡到这里
+      // selectionMode 模式下，整张卡片可点 = toggleHide（push 按钮已 stopPropagation 不冒泡）
       if (snap.selectionMode) {
         li.addEventListener("click", function (e) {
           if (e.target.closest && e.target.closest(".DGH_pushInline")) return;
@@ -1596,16 +1548,12 @@ window.__ModuleLoader__.load({
         });
       }
 
-      // v0.2.0：去掉单独的操作行 div（push 按钮已内嵌到 titleRow）
-      // v0.1.8 简化：卡片操作行只留 ⬆ 推送（之前这里有 actions div）
-      // v0.1.7：selectionMode 模式下隐藏操作按钮（避免点击冲突；点卡片本体就够）
       return li;
     }
 
     // ===== 工具区 =====
     /**
-     * v0.2.2：渲染 commit 工具区（每个有改动的仓库一行：仓库名 + branch + 文件列表 + 输入框 + 提交按钮）。
-     *
+     * 渲染 commit 工具区（每个有改动的仓库一行：仓库名 + branch + 文件列表 + 输入框 + 提交按钮）。
      * 外部依赖：escapeHtml（30-utils.js）、showToast（50-toast.js）——同 factory body 顶层。
      *
      * @param {HTMLElement} row 已经创建好的 .DGH_commitSection 容器
@@ -1658,7 +1606,6 @@ window.__ModuleLoader__.load({
       }
       row.innerHTML = html;
 
-      // 给每行挂事件
       var repoRows = row.querySelectorAll(".DGH_commitRepo");
       for (var k = 0; k < repoRows.length; k++) {
         (function (repoEl) {
@@ -1687,12 +1634,11 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * v0.3.0：渲染 merge / pull 工具区。每个可合并仓库一行：
+     * 渲染 merge / pull 工具区。每个可合并仓库一行：
      *   - 仓库名 + path + current branch + 分支数 + upstream 徽章 + 冲突/变基徽章
      *   - 冲突横幅（mergeInProgress / rebaseInProgress）：冲突文件列表 + abort 按钮
      *   - 操作行：源分支下拉 + merge 按钮 + pull 按钮（upstream 存在时）+ rebase 按钮
      *   - 忙态：mergeBusy === repo.path 时所有按钮 disabled
-     *
      * 外部依赖：escapeHtml（30-utils.js）——同 factory body 顶层。
      *
      * @param {HTMLElement} row 已经创建好的 .DGH_mergeSection 容器
@@ -1742,7 +1688,6 @@ window.__ModuleLoader__.load({
                 : '') +
             '</div>' +
             (function () {
-              // 冲突横幅：展示冲突文件列表 + abort 按钮
               if (!inConflict && !inRebase) return "";
               var kind = inRebase ? "rebase" : "merge";
               var list = (lastResult && lastResult.repo === r.path && Array.isArray(lastResult.conflicts) && lastResult.conflicts.length > 0)
@@ -1779,7 +1724,6 @@ window.__ModuleLoader__.load({
       }
       row.innerHTML = html;
 
-      // 挂事件：每行内 buttons / select
       var repoRows = row.querySelectorAll(".DGH_mergeRepo");
       for (var k = 0; k < repoRows.length; k++) {
         (function (repoEl) {

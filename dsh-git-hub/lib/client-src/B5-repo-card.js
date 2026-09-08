@@ -6,9 +6,7 @@
     }
 
     /**
-     * v0.1.7+：构造单张仓库卡片 DOM 元素。
-     *
-     * 职责：表单（hidden / pinned / selectionMode）+ 状态徽章 + 紧凑布局。
+     * 构造单张仓库卡片 DOM 元素。
      * 外部依赖：escapeHtml（30-utils.js）、truncate（本地）、showToast（50-toast.js）——全部同 factory body 顶层。
      *
      * @param {Object} repo 单仓库条目 { path, name, branch, status, error, unpushedCount, todayCommitCount, lastCommit }
@@ -23,14 +21,13 @@
       if (snap.pinnedPaths.has(repo.path)) li.dataset.pinned = "true";
       var isHidden = snap.hiddenPaths.has(repo.path);
       if (isHidden) li.dataset.hidden = "true";
-      // v0.1.7：selectionMode 模式下整张卡片可点切换 hide
+      // selectionMode 模式下整张卡片可点切换 hide
       if (snap.selectionMode) li.dataset.selecting = "true";
 
       var head = document.createElement("div");
       head.className = "DGH_repoHead";
 
-      // v0.2.0 紧凑布局：titleRow 内嵌 push 按钮（右上角）
-      // v0.5.0：受 sections.perCardPush 开关控制——关闭时不创建 pushBtn（整张卡片不带推送入口）
+      // titleRow 内嵌 push 按钮（紧凑布局）；受 sections.perCardPush 控制：关闭时不创建 pushBtn
       var perCardPushOn = snap.sections && snap.sections.perCardPush === true;
       var toolAvail = snap.config && snap.config.toolAvailable;
       var pushBtn = null;
@@ -55,10 +52,9 @@
       titleRow.innerHTML =
         '<span class="DGH_repoName">' + escapeHtml(repo.name) + '</span>' +
         (repo.branch ? '<span class="DGH_repoBranch">' + escapeHtml(repo.branch) + '</span>' : '') +
-        // v0.1.7：选择模式 + 已隐藏：显示 "已隐藏" 标记
         (snap.selectionMode && isHidden ? '<span class="DGH_repoMark">已隐藏 ✓</span>' : '');
       head.appendChild(titleRow);
-      // push 按钮挂在 titleRow 末尾（与 name + branch 同行右）；v0.5.0：受 sections.perCardPush 控制
+      // push 按钮挂在 titleRow 末尾（与 name + branch 同行右）
       if (pushBtn) titleRow.appendChild(pushBtn);
 
       var pathEl = document.createElement("div");
@@ -66,8 +62,7 @@
       pathEl.textContent = repo.path;
       head.appendChild(pathEl);
 
-      // 状态徽章 + 人类语言 tooltip (v0.1.9：徽章悬停说明，零技术语言)
-      // v0.2.0：branch 徽章 + 状态徽章合并到一行（更紧凑）
+      // 状态徽章 + 人类语言 tooltip（hover 说明零技术语言）；branch + status 徽章合并到一行更紧凑
       var badges = document.createElement("div");
       badges.className = "DGH_repoBadges";
       if (repo.error) {
@@ -121,7 +116,7 @@
       if (repo.lastCommit) {
         var lc = document.createElement("div");
         lc.className = "DGH_lastCommit";
-        // v0.1.9：完整 message 作为 tooltip（默认显示截断到 50 字）
+        // 完整 message 作为 tooltip（默认显示截断到 50 字）
         var fullMessage = repo.lastCommit.message || "";
         var displayMessage = truncate(fullMessage, 50);
         lc.innerHTML =
@@ -133,8 +128,7 @@
 
       li.appendChild(head);
 
-      // v0.1.7：selectionMode 模式下，整张卡片可点 = toggleHide
-      // 注意：push 按钮的 click handler 已经 stopPropagation，不会冒泡到这里
+      // selectionMode 模式下，整张卡片可点 = toggleHide（push 按钮已 stopPropagation 不冒泡）
       if (snap.selectionMode) {
         li.addEventListener("click", function (e) {
           if (e.target.closest && e.target.closest(".DGH_pushInline")) return;
@@ -142,9 +136,6 @@
         });
       }
 
-      // v0.2.0：去掉单独的操作行 div（push 按钮已内嵌到 titleRow）
-      // v0.1.8 简化：卡片操作行只留 ⬆ 推送（之前这里有 actions div）
-      // v0.1.7：selectionMode 模式下隐藏操作按钮（避免点击冲突；点卡片本体就够）
       return li;
     }
 

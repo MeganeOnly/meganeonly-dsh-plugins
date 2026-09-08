@@ -8,22 +8,21 @@
       this.loading = false;
       this.error = null;
       this.configPanelOpen = false;
-      this.selectionMode = false;  // v0.1.7：隐藏选择模式（点卡片 = toggleHide）
-      this.showHidden = false;     // v0.1.7：仅 selectionMode 内有效（模式内展开被隐藏项查看）
+      this.selectionMode = false;  // 隐藏选择模式（点卡片 = toggleHide）
+      this.showHidden = false;     // 仅 selectionMode 内有效（模式内展开被隐藏项查看）
       this.lastPush = null;        // 最近推送状态
-      this.commitRepos = [];       // v0.2.2：所有 scanRoots 下有改动的 git 仓库 [{ path, name, branch, files, filesChanged, lastCommit }]
-      this.commitBusy = false;     // v0.2.2：commit 操作进行中（按钮 disabled + 文字改 "提交中…"）
-      this.mergeRepos = [];        // v0.3.0：可合并/拉取的仓库 [{ path, name, branches, current, upstream, mergeInProgress, rebaseInProgress }]
-      this.mergeBusy = null;       // v0.3.0：当前 merge/pull 操作的目标 repo path 或 null（按钮 disabled 用）
-      this.lastMergeResult = null; // v0.3.0：最近一次操作结果，{ repo, op, ok, status?, error?, conflicts? }
+      this.commitRepos = [];       // 所有 scanRoots 下有改动的 git 仓库
+      this.commitBusy = false;     // commit 操作进行中（按钮 disabled + 文字改 "提交中…"）
+      this.mergeRepos = [];        // 可合并/拉取的仓库
+      this.mergeBusy = null;       // 当前 merge/pull 操作的目标 repo path 或 null
+      this.lastMergeResult = null; // 最近一次 merge/pull/abort 结果
       this.listeners = new Set();
       var doc = this.store.load();
       this.pinnedPaths = new Set(doc.pinnedPaths);
       this.hiddenPaths = new Set(doc.hiddenPaths);
-      // v0.5.0：sections 对象替代 v0.4.0 的 commitSectionVisible 字段
-      // defaultSections() 在 70-storage.js 定义（同 factory scope 可访问）
+      // sections（4 个功能区可见性开关）；defaultSections() 在 70-storage.js 定义（同 factory scope）
       this.sections = (doc.sections && typeof doc.sections === "object") ? doc.sections : defaultSections();
-      // v0.5.0：options 下拉菜单开关（不持久化——纯 UI 临时态，跟 selectionMode 一致）
+      // options 下拉菜单开关（不持久化——纯 UI 临时态，跟 selectionMode 一致）
       this.optionsOpen = false;
       this.drawerOpen = false;
     }
@@ -54,29 +53,29 @@
         selectionMode: this.selectionMode,
         showHidden: this.showHidden,
         lastPush: this.lastPush,
-        commitRepos: this.commitRepos,      // v0.2.2
-        commitBusy: this.commitBusy,        // v0.2.2
-        mergeRepos: this.mergeRepos,        // v0.3.0
-        mergeBusy: this.mergeBusy,          // v0.3.0
-        lastMergeResult: this.lastMergeResult, // v0.3.0
-        sections: this.sections,                     // v0.5.0：统一管理 4 个功能区可见性
+        commitRepos: this.commitRepos,
+        commitBusy: this.commitBusy,
+        mergeRepos: this.mergeRepos,
+        mergeBusy: this.mergeBusy,
+        lastMergeResult: this.lastMergeResult,
+        sections: this.sections,
         pinnedPaths: this.pinnedPaths,       // [perf] 直接暴露 Set，省 Array.from 让 renderer 用 .has
         hiddenPaths: this.hiddenPaths,
-        optionsOpen: this.optionsOpen,               // v0.5.0：options 下拉菜单开关（不持久化）
+        optionsOpen: this.optionsOpen,
         drawerOpen: this.drawerOpen,
       };
     };
     Controller.prototype.toggleDrawer = function () {
       this.drawerOpen = !this.drawerOpen;
       if (this.drawerOpen) {
-        // 抽屉打开：拉数据 + 探测推送状态（v0.2.1 智能轮询：
-        // pollPushStatus 内部若发现 push 仍在跑，会自动 startPushPoll）
+        // 抽屉打开：拉数据 + 探测推送状态（智能轮询：pollPushStatus 内部若发现 push 仍在跑，
+        // 会自动 startPushPoll 持续轮询；推送结束自动停）
         this.refresh(false);
         this.pollPushStatus();
-        this.loadCommitStatus(); // v0.2.2：刷新 commit 工具行的 branch + 改动数
-        this.loadMergeStatus(); // v0.3.0：刷新 merge/pull/abort 工具区
+        this.loadCommitStatus(); // 刷新 commit 工具行的 branch + 改动数
+        this.loadMergeStatus();  // 刷新 merge/pull/abort 工具区
       } else {
-        // 抽屉关闭：v0.2.1 智能轮询，停掉所有 push 轮询 timer
+        // 抽屉关闭：停掉所有 push 轮询 timer（智能轮询在抽屉关闭时兜底停）
         this.stopPushPoll();
       }
       this.notify();
@@ -114,17 +113,17 @@
       var next = !!v;
       if (this.selectionMode === next) return;
       this.selectionMode = next;
-      // 进入模式时默认收起（用户进入模式是为了隐藏，不是为了展开）
-      // 退出模式时也收起，避免下次进入时显示残留
+      // 进入模式默认收起（用户进入模式是为了隐藏，不是为了展开），
+      // 退出模式也收起，避免下次进入时显示残留
       this.showHidden = false;
       this.notify();
     };
-    /** v0.5.0：toggle options 下拉菜单（不持久化，纯 UI 临时态） */
+    /** toggle options 下拉菜单（不持久化，纯 UI 临时态） */
     Controller.prototype.toggleOptions = function () {
       this.optionsOpen = !this.optionsOpen;
       this.notify();
     };
-    /** v0.5.0：关闭 options 下拉菜单（用于 Esc / 点菜单外） */
+    /** 关闭 options 下拉菜单（用于 Esc / 点菜单外） */
     Controller.prototype.closeOptions = function () {
       if (!this.optionsOpen) return;
       this.optionsOpen = false;
@@ -134,12 +133,12 @@
       this.error = msg;
       this.notify();
     };
-    /** v0.5.0：切换指定 section 的可见性（持久化）。key ∈ {commit, merge, pushStatus, perCardPush} */
+    /** 切换指定 section 的可见性（持久化）。key ∈ {commit, merge, pushStatus, perCardPush} */
     Controller.prototype.toggleSection = function (key) {
       var allowed = ["commit", "merge", "pushStatus", "perCardPush"];
       if (allowed.indexOf(key) < 0) return;
       // 严格 true/false 切换；defaultSections() 已保证 4 个 key 都是 boolean，
-      //   此处无需再 fallback 处理 undefined（storage.load 已显式迁移 v1→v4）。
+      // 此处无需 fallback 处理 undefined（storage.load 已显式迁移）。
       this.sections[key] = this.sections[key] !== true;
       this._persist();
       this.notify();
@@ -168,7 +167,7 @@
         self.setError(e && e.message ? e.message : String(e));
       }).then(function () {
         self.setLoading(false);
-        // v0.2.2：刷新仓库列表时同步刷 commit 状态（commit / push 后 unpushed 变化）
+        // 刷新仓库列表时同步刷 commit 状态（commit / push 后 unpushed 变化）
         return self.loadCommitStatus();
       });
     };
@@ -192,7 +191,6 @@
         body: { scanRoots: scanRootsArr },
       }).then(function (data) {
         if (!data || !data.ok) throw new Error((data && data.error) || "save failed");
-        // config 改了 → 重扫
         self.closeConfigPanel();
         return self.refresh(true);
       });

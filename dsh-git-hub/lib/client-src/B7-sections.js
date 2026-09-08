@@ -1,7 +1,6 @@
     // ===== 工具区 =====
     /**
-     * v0.2.2：渲染 commit 工具区（每个有改动的仓库一行：仓库名 + branch + 文件列表 + 输入框 + 提交按钮）。
-     *
+     * 渲染 commit 工具区（每个有改动的仓库一行：仓库名 + branch + 文件列表 + 输入框 + 提交按钮）。
      * 外部依赖：escapeHtml（30-utils.js）、showToast（50-toast.js）——同 factory body 顶层。
      *
      * @param {HTMLElement} row 已经创建好的 .DGH_commitSection 容器
@@ -54,7 +53,6 @@
       }
       row.innerHTML = html;
 
-      // 给每行挂事件
       var repoRows = row.querySelectorAll(".DGH_commitRepo");
       for (var k = 0; k < repoRows.length; k++) {
         (function (repoEl) {
@@ -83,12 +81,11 @@
     }
 
     /**
-     * v0.3.0：渲染 merge / pull 工具区。每个可合并仓库一行：
+     * 渲染 merge / pull 工具区。每个可合并仓库一行：
      *   - 仓库名 + path + current branch + 分支数 + upstream 徽章 + 冲突/变基徽章
      *   - 冲突横幅（mergeInProgress / rebaseInProgress）：冲突文件列表 + abort 按钮
      *   - 操作行：源分支下拉 + merge 按钮 + pull 按钮（upstream 存在时）+ rebase 按钮
      *   - 忙态：mergeBusy === repo.path 时所有按钮 disabled
-     *
      * 外部依赖：escapeHtml（30-utils.js）——同 factory body 顶层。
      *
      * @param {HTMLElement} row 已经创建好的 .DGH_mergeSection 容器
@@ -138,7 +135,6 @@
                 : '') +
             '</div>' +
             (function () {
-              // 冲突横幅：展示冲突文件列表 + abort 按钮
               if (!inConflict && !inRebase) return "";
               var kind = inRebase ? "rebase" : "merge";
               var list = (lastResult && lastResult.repo === r.path && Array.isArray(lastResult.conflicts) && lastResult.conflicts.length > 0)
@@ -175,7 +171,6 @@
       }
       row.innerHTML = html;
 
-      // 挂事件：每行内 buttons / select
       var repoRows = row.querySelectorAll(".DGH_mergeRepo");
       for (var k = 0; k < repoRows.length; k++) {
         (function (repoEl) {

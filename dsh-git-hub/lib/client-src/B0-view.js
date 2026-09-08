@@ -1,8 +1,8 @@
     // ===== 抽屉视图 =====
     function renderDrawerView(container, controller) {
       var headerEl, bodyEl, pushStatusEl;
-      // [perf v0.5.x] diff-skip 缓存：renderHeader / renderPushStatus / renderBody
-      // 各自记一个 key，对应字段无变化就 early-return，避免每次 notify 全量重渲染。
+      // [perf] diff-skip 缓存：renderHeader / renderPushStatus / renderBody 各自记一个 key，
+      // 对应字段无变化就 early-return，避免每次 notify 全量重渲染。
       var lastHeaderKey = "";
       var lastPushKey = "";
       var lastBodyKey = "";
@@ -29,7 +29,7 @@
       function renderHeader() {
         var snap = controller.getSnapshot();
         var toolAvail = snap.config && snap.config.toolAvailable;
-        // [perf v0.5.x] diff-skip：仅当影响 header 渲染的字段变化时才重 render
+        // [perf] diff-skip：仅当影响 header 渲染的字段变化时才重 render
         var headerKey =
           (snap.config && snap.config.toolAvailable ? "1" : "0") + "|" +
           (snap.selectionMode ? "1" : "0") + "|" +
@@ -37,14 +37,12 @@
           (snap.optionsOpen ? "1" : "0");
         if (headerKey === lastHeaderKey) return;
         lastHeaderKey = headerKey;
-        // v0.5.0：commit-toggle 升级为「显示选项」按钮——commitVisible 改为 optionsOpen（菜单开/关态）
         var optionsOpen = !!snap.optionsOpen;
         var headerHtml =
           '<span class="DGH_title">Git/GitHub</span>' +
           '<button class="DGH_iconBtn" data-action="config" title="配置扫描根路径">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.2v2M8 12.8v2M14.8 8h-2M3.2 8h-2M12.95 3.05l-1.4 1.4M4.45 11.55l-1.4 1.4M12.95 12.95l-1.4-1.4M4.45 4.45l-1.4-1.4"/></svg>' +
           '</button>' +
-          // v0.1.7：隐藏选择模式 toggle 按钮（↻ 右侧）
           '<button class="DGH_iconBtn" data-action="select-toggle" title="' + (snap.selectionMode ? '退出隐藏选择模式（Esc）' : '进入隐藏选择模式：点击卡片可加入/移出隐藏') + '" data-active="' + (snap.selectionMode ? 'true' : 'false') + '">' +
             (snap.selectionMode
               ? '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>'
@@ -53,10 +51,7 @@
           '<button class="DGH_iconBtn" data-action="refresh" title="刷新仓库状态">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>' +
           '</button>' +
-          // v0.5.0：原 commit-toggle（v0.4.0）升级为「显示选项」按钮
-          // - icon 沿用 git commit dot on line（中性图标代表「选项」）
-          // - data-active 反映 options 菜单打开态（true = 菜单开，false = 菜单关）
-          // - 点击 toggle 浮层菜单（4 个 section 开关）
+          // 「显示选项」按钮（icon 沿用 git commit dot on line 作中性图标）；data-active 反映 options 菜单打开态
           '<button class="DGH_iconBtn DGH_commitToggle" data-action="options-toggle" title="显示选项（管理哪些功能区可见）" data-active="' + (optionsOpen ? 'true' : 'false') + '">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/><path d="M5 8h6"/></svg>' +
           '</button>' +
@@ -65,7 +60,7 @@
           '<button class="DGH_iconBtn" data-action="close" title="关闭（Esc）">' +
             '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>' +
           '</button>' +
-          // v0.5.0：options 下拉菜单容器（永远在 DOM 里，display 受 optionsOpen 控制；详见 renderOptionsMenu）
+          // options 下拉菜单容器（永远在 DOM 里，display 受 optionsOpen 控制；详见 renderOptionsMenu）
           '<div class="DGH_optionsMenu" data-role="options-menu"></div>';
         headerEl.innerHTML = headerHtml;
         var configBtn = headerEl.querySelector('[data-action="config"]');
@@ -74,14 +69,13 @@
           if (controller.configPanelOpen) controller.closeConfigPanel();
           else controller.openConfigPanel();
         });
-        // v0.1.7：隐藏选择模式 toggle
         headerEl.querySelector('[data-action="select-toggle"]').addEventListener("click", function () {
           controller.setSelectionMode(!controller.getSnapshot().selectionMode);
         });
         headerEl.querySelector('[data-action="refresh"]').addEventListener("click", function () {
           controller.refresh(true);
         });
-        // v0.5.0：options 按钮 toggle 菜单（stopPropagation 避免触发 document click 关闭逻辑）
+        // options 按钮 toggle 菜单（stopPropagation 避免触发 document click 关闭逻辑）
         headerEl.querySelector('[data-action="options-toggle"]').addEventListener("click", function (e) {
           e.stopPropagation();
           controller.toggleOptions();
@@ -92,11 +86,10 @@
         headerEl.querySelector('[data-action="close"]').addEventListener("click", function () {
           controller.closeDrawer();
         });
-        // v0.5.0：渲染 options 菜单内容（仅在打开时；关闭时清空 + display:none）
         renderOptionsMenu();
       }
 
-      /** v0.5.0：渲染 options 下拉菜单。菜单打开 = 列出 4 个 section 开关；关闭 = display:none。 */
+      /** 渲染 options 下拉菜单。菜单打开 = 列出 4 个 section 开关；关闭 = display:none。 */
       function renderOptionsMenu() {
         var menuEl = headerEl.querySelector('[data-role="options-menu"]');
         if (!menuEl) return;
@@ -140,12 +133,12 @@
 
       function renderPushStatus() {
         var snap = controller.getSnapshot();
-        // [perf v0.5.x] diff-skip：lastPush + sections.pushStatus 字段未变则跳过
+        // [perf] diff-skip：lastPush + sections.pushStatus 字段未变则跳过
         var pushKey = (snap.sections && snap.sections.pushStatus === true ? "1" : "0") + "|" +
           JSON.stringify(snap.lastPush || null);
         if (pushKey === lastPushKey) return;
         lastPushKey = pushKey;
-        // v0.5.0：pushStatus 受 sections.pushStatus 控制——关闭时彻底隐藏（不留空容器）
+        // pushStatus 受 sections.pushStatus 控制——关闭时彻底隐藏（不留空容器）
         if (!(snap.sections && snap.sections.pushStatus === true)) {
           pushStatusEl.style.display = "none";
           pushStatusEl.innerHTML = "";
@@ -167,7 +160,7 @@
 
       function renderBody() {
         var snap = controller.getSnapshot();
-        // [perf v0.5.x] diff-skip：body 整体 key 包含影响 list / pinned / hidden / sections / loading 的字段
+        // [perf] diff-skip：body key 包含影响 list / pinned / hidden / sections / loading 的字段
         // 注意：commitRepos / mergeRepos / loading 也参与——这些变化必须重 render
         var bodyKey =
           (snap.repos ? snap.repos.length : 0) + "|" +
@@ -187,8 +180,8 @@
         if (bodyKey === lastBodyKey) return;
         lastBodyKey = bodyKey;
 
-        // v0.2.2：commit 工具区（持久显示，紧贴 header 下；多仓库）
-        // v0.5.0：受 sections.commit 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
+        // commit 工具区（持久显示，紧贴 header 下；多仓库）
+        // 受 sections.commit 控制：关闭时彻底从 DOM 移除（不留空节点 + 不调 renderCommitSection，省一次 network）
         var existingCommit = bodyEl.querySelector(".DGH_commitSection");
         if (snap.sections && snap.sections.commit === true) {
           if (!existingCommit) {
@@ -202,8 +195,8 @@
           existingCommit = null;
         }
 
-        // v0.3.0：merge / pull 工具区（紧贴 commit 区下）
-        // v0.5.0：受 sections.merge 开关控制——关闭时彻底从 DOM 移除（不留空节点 + 不调 renderMergeSection）
+        // merge / pull 工具区（紧贴 commit 区下）
+        // 受 sections.merge 控制：关闭时彻底从 DOM 移除（不留空节点 + 不调 renderMergeSection）
         // commit 区关闭时，merge 区直接挂在 body 顶部（保持原有顺序语义：commit → merge → 列表）
         var existingMerge = bodyEl.querySelector(".DGH_mergeSection");
         if (snap.sections && snap.sections.merge === true) {
@@ -251,13 +244,13 @@
           oldBanner.remove();
         }
 
-        // v0.1.7："已隐藏 N 个" 小条只在 selectionMode 激活时显示在 body 底部
+        // "已隐藏 N 个" 小条只在 selectionMode 激活时显示在 body 底部
         var hiddenCount = snap.repos.filter(function (r) { return snap.hiddenPaths.has(r.path); }).length;
 
         // 仓库列表
         var oldList = bodyEl.querySelector(".DGH_list, .DGH_empty, .DGH_loading");
         var newList;
-        // v0.1.7 过滤逻辑：默认隐藏所有 hidden；selectionMode 激活时如 showHidden=true 则展开
+        // 过滤逻辑：默认隐藏所有 hidden；selectionMode 激活时如 showHidden=true 则展开
         var visibleRepos = snap.repos.filter(function (r) {
           var isHidden = snap.hiddenPaths.has(r.path);
           // selectionMode=true + showHidden=true：展开；其他情况隐藏
@@ -302,7 +295,7 @@
           bodyEl.appendChild(newList);
         }
 
-        // v0.1.7：selectionMode 激活时，在 body 底部插入 hiddenBar
+        // selectionMode 激活时，在 body 底部插入 hiddenBar
         var bottomBar = bodyEl.querySelector(".DGH_hiddenBar");
         if (snap.selectionMode) {
           if (!bottomBar) {
@@ -369,18 +362,14 @@
       var keyHandler = function (e) {
         if (!controller.getSnapshot().drawerOpen) return;
         if (e.key !== "Escape") return;
-        // Esc 优先级：
-        //   1) 关闭配置面板
-        //   2) 退出 selectionMode（隐藏选择模式）
-        //   3) v0.5.0：关闭 options 下拉菜单（菜单打开时）
-        //   4) 关闭抽屉
+        // Esc 优先级：1) 关闭配置面板  2) 退出 selectionMode  3) 关闭 options 下拉菜单  4) 关闭抽屉
         if (controller.configPanelOpen) { controller.closeConfigPanel(); return; }
         if (controller.selectionMode) { controller.setSelectionMode(false); return; }
         if (controller.optionsOpen) { controller.closeOptions(); return; }
         controller.closeDrawer();
       };
 
-      // v0.5.0：点菜单外关闭 options 下拉菜单。toggleBtn 自身 click handler 已 stopPropagation，
+      // 点菜单外关闭 options 下拉菜单。toggleBtn 自身 click handler 已 stopPropagation，
       // 所以 document click 拿不到它；其他位置点击 → 关闭。
       var docClickHandler = function () {
         if (controller.optionsOpen) controller.closeOptions();
@@ -399,7 +388,6 @@
         dispose: function () {
           unsubRender();
           document.removeEventListener("keydown", keyHandler);
-          // v0.5.0：清理 options 菜单的 document click 监听
           document.removeEventListener("click", docClickHandler);
           if (container) container.innerHTML = "";
         },

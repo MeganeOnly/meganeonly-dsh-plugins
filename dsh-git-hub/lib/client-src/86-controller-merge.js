@@ -1,5 +1,4 @@
     // ===== controller-merge =====
-    /* ===== v0.3.0 merge / pull / abort ===== */
 
     /** 拉所有可合并/拉取的仓库（≥2 本地分支 / 有 upstream / 冲突中） */
     Controller.prototype.loadMergeStatus = function () {

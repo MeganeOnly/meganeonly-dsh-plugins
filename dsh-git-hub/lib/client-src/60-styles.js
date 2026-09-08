@@ -1,11 +1,8 @@
     // ===== CSS =====
     var CSS = "" +
-      // 抽屉
       "[data-dsh-github-drawer]{position:fixed;top:0;right:0;bottom:0;width:" + DRAWER_WIDTH + "px;max-width:90vw;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:13px;border-left:1px solid var(--dsw-alias-border-l1);box-shadow:0 2px 12px rgba(0,0,0,.12);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s ease;box-sizing:border-box;}" +
       "html[" + DRAWER_ATTR + "] [data-dsh-github-drawer]{transform:translateX(0);}" +
-      // header（v0.5.0：加 position:relative 让 .DGH_optionsMenu 绝对定位 reference 到 header 下方——
-      // 之前误把 position:relative 加在 .DGH_commitToggle 上，但 menuEl 是 header 子元素不是按钮子元素，
-      // 导致菜单 reference 到 body 跑到屏幕外、点了按钮看似无反应）
+      // header 是 options 下拉菜单的定位参考父容器（菜单是其子元素，不是按钮子元素）。
       ".DGH_header{position:relative;display:flex;align-items:center;gap:6px;flex:none;padding:14px 14px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);}" +
       ".DGH_title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);padding:0 4px;flex:none;}" +
       ".DGH_iconBtn{font:inherit;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid transparent;border-radius:8px;padding:5px 7px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;flex:none;}" +
@@ -15,7 +12,6 @@
       ".DGH_pushBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:500;transition:background .12s,border-color .12s;flex:none;}" +
       ".DGH_pushBtn:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_pushBtn:disabled{opacity:.45;cursor:not-allowed;}" +
-      // v0.2.2：commit 工具区
       ".DGH_commitSection{flex:none;padding:0;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);}" +
       ".DGH_commitSectionEmpty{padding:10px 14px;font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:center;font-style:italic;}" +
       ".DGH_commitRepo{padding:10px 14px;border-top:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:6px;}" +
@@ -34,7 +30,6 @@
       ".DGH_commitSubmit{font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:6px;padding:5px 12px;flex:none;transition:background .12s;}" +
       ".DGH_commitSubmit:hover:not(:disabled){background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
       ".DGH_commitSubmit:disabled{background:var(--dsw-alias-bg-component-disabled);color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l1);cursor:not-allowed;}" +
-      // v0.3.0：merge / pull 工具区
       ".DGH_mergeSection{flex:none;padding:0;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);}" +
       ".DGH_mergeSectionEmpty{padding:10px 14px;font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:center;font-style:italic;}" +
       ".DGH_mergeRepo{padding:10px 14px;border-top:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:6px;}" +
@@ -64,7 +59,6 @@
       ".DGH_abortBtn:hover:not(:disabled){background:rgba(220,38,38,.18);border-color:rgba(220,38,38,.7);}" +
       ".DGH_mergeBtn:disabled,.DGH_pullBtn:disabled,.DGH_abortBtn:disabled{opacity:.45;cursor:not-allowed;}" +
       ".DGH_mergeHint{font-size:10.5px;color:var(--dsw-alias-label-tertiary);line-height:1.5;}" +
-      // 配置面板
       ".DGH_config{border-bottom:1px solid var(--dsw-alias-border-l1);padding:10px 14px;display:flex;flex-direction:column;gap:8px;background:var(--dsw-alias-bg-layer-2);}" +
       ".DGH_configLabel{font-size:11px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.04em;}" +
       ".DGH_configTextarea{font:inherit;font-size:12px;background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:6px 10px;width:100%;box-sizing:border-box;min-height:70px;outline:none;resize:vertical;font-family:inherit;}" +
@@ -74,7 +68,6 @@
       ".DGH_saveBtn{font:inherit;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:500;transition:background .12s;}" +
       ".DGH_saveBtn:hover{background:var(--dsw-alias-button-info-hover);}" +
       ".DGH_saveBtn:disabled{opacity:.5;cursor:not-allowed;}" +
-      // body / list
       ".DGH_body{flex:1;min-height:0;overflow-y:auto;padding:12px 14px 16px;}" +
       ".DGH_empty{padding:36px 12px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.6;}" +
       ".DGH_empty strong{display:block;font-size:14px;color:var(--dsw-alias-label-secondary);margin-bottom:6px;}" +
@@ -82,7 +75,6 @@
       ".DGH_list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}" +
       ".DGH_errorBanner{padding:8px 10px;border-radius:6px;background:rgba(239,68,68,.1);color:var(--dsw-alias-state-error-primary);font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}" +
       ".DGH_errorBannerRetry{margin-left:auto;cursor:pointer;background:transparent;border:1px solid currentColor;border-radius:6px;padding:2px 8px;font-size:11px;color:inherit;}" +
-      // 仓库卡片
       ".DGH_repo{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;transition:border-color .12s,background .12s;overflow:hidden;}" +
       ".DGH_repo:hover{border-color:var(--dsw-alias-label-dimmed);}" +
       ".DGH_repo[data-pinned=\"true\"]{border-color:var(--dsw-alias-button-info-fill);}" +
@@ -101,57 +93,43 @@
       ".DGH_badge[data-kind=\"warn\"]{background:rgba(234,88,12,.12);color:#9a3412;}" +
       ".DGH_lastCommit{font-size:10px;color:var(--dsw-alias-label-tertiary);display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;opacity:.85;}" +
       ".DGH_lastCommitSha{font-family:monospace;color:var(--dsw-alias-label-secondary);}" +
-      // v0.2.0：内嵌 push 按钮（titleRow 右侧；v0.1.8 独立 actions 行已去掉）
       ".DGH_pushInline{flex:none;margin-left:auto;background:transparent;color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2);border-radius:5px;width:22px;height:22px;font:inherit;font-size:13px;line-height:1;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,border-color .12s,color .12s;}" +
       ".DGH_pushInline:hover:not(:disabled){background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
       ".DGH_pushInline:disabled{opacity:.35;cursor:not-allowed;}" +
-      // v0.1.7：隐藏选择模式 — 卡片可点 + 已隐藏卡视觉
+      // 隐藏选择模式：卡片可点 toggle hide，已隐藏卡视觉降级
       ".DGH_repo[data-selecting=\"true\"]{cursor:pointer;border-color:rgba(234,88,12,.4);}" +
       ".DGH_repo[data-selecting=\"true\"]:hover{border-color:#ea580c;background:var(--dsw-alias-bg-layer-3);}" +
       ".DGH_repo[data-hidden=\"true\"]{opacity:.6;}" +
       ".DGH_repo[data-hidden=\"true\"] .DGH_repoPath,.DGH_repo[data-hidden=\"true\"] .DGH_repoName{text-decoration:line-through;text-decoration-color:var(--dsw-alias-label-tertiary);}" +
       ".DGH_repoMark{margin-left:6px;font-size:11px;color:#9a3412;background:rgba(154,52,18,.1);padding:2px 6px;border-radius:4px;}" +
-      // 隐藏仓库小条（v0.1.7：仅 selectionMode 模式底部显示）
       ".DGH_hiddenBar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--dsw-alias-bg-layer-2);border-top:1px solid var(--dsw-alias-border-l2);font-size:12px;color:var(--dsw-alias-label-secondary);flex:none;}" +
       ".DGH_hiddenBarCount{flex:1;min-width:0;}" +
       ".DGH_hiddenBarToggle{cursor:pointer;background:transparent;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:3px 10px;font:inherit;font-size:11px;color:var(--dsw-alias-label-primary);}" +
       ".DGH_hiddenBarToggle:hover{background:var(--dsw-specific-sidebar-nav-item-hover);}" +
       ".DGH_hiddenBarExit{cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border:1px solid var(--dsw-alias-button-info-fill);border-radius:6px;padding:3px 12px;font:inherit;font-size:12px;font-weight:500;}" +
       ".DGH_hiddenBarExit:hover{background:var(--dsw-alias-button-info-hover);border-color:var(--dsw-alias-button-info-hover);}" +
-      // 选择模式 toggle 按钮激活态
       "[data-action=\"select-toggle\"][data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);}" +
-      // v0.4.0：commit 工具区可见性 toggle 按钮
-      // data-active=true → commit 区当前显示 → 按钮填色（与 select-toggle 一致的「激活」语义）
-      // data-active=false → commit 区当前隐藏 → 按钮淡灰（语义：这是 off 状态）
+      // commit-toggle / options-toggle 的 on/off 视觉态：data-active=true → 填色；false → 淡灰
       ".DGH_commitToggle[data-active=\"false\"]{opacity:.55;}" +
       ".DGH_commitToggle[data-active=\"true\"]{background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);border-color:var(--dsw-alias-button-info-fill);opacity:1;}" +
-      // v0.5.0：commit-toggle 升级为「显示选项」按钮（v0.5.1：去掉 position:relative——
-      // v0.5.0 误加在按钮上但 menuEl 是 .DGH_header 子元素不是按钮子元素，菜单 reference 不到按钮；
-      // fix 已把 position:relative 加到 .DGH_header）
-      // v0.5.0：选项下拉菜单（浮层，reference 到 .DGH_header）
       ".DGH_optionsMenu{position:absolute;top:calc(100% + 6px);right:0;min-width:224px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.22);padding:6px;z-index:200;display:flex;flex-direction:column;gap:2px;}" +
       ".DGH_optionsMenuItem{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;color:var(--dsw-alias-label-primary);border-radius:6px;cursor:pointer;user-select:none;transition:background .12s;}" +
       ".DGH_optionsMenuItem:hover{background:var(--dsw-specific-sidebar-nav-item-hover);}" +
       ".DGH_optionsMenuCheck{flex:none;width:14px;height:14px;border:1.5px solid var(--dsw-alias-border-l2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;line-height:1;color:transparent;}" +
       ".DGH_optionsMenuItem[data-on=\"true\"] .DGH_optionsMenuCheck{background:var(--dsw-alias-button-info-fill);border-color:var(--dsw-alias-button-info-fill);color:#fff;}" +
       ".DGH_optionsMenuLabel{flex:1;min-width:0;}" +
-      // FAB：top:130px = task-pool FAB(78~122)+ 8px 间距。两个 FAB 同时可见不重叠；
-      // drawer 打开互斥协议保证两个 FAB 不会同时进入让位动画
+      // FAB top:130px = task-pool FAB(78~122) + 8px 间距；两个 FAB 同时可见不重叠
+      // （互斥协议保证两个 FAB 不会同时进入让位动画）。
       ".DGH_fab{position:fixed;top:130px;right:24px;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:110;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:transform .12s,right .22s ease,background .12s;padding:0;}" +
       ".DGH_fab:hover{transform:scale(1.06);}" +
       ".DGH_fab[data-state=\"open\"]{background:var(--dsw-alias-bg-layer-3);}" +
-      // drawer 打开时 FAB 让位到抽屉的左边外。
       // 让位公式 calc(var(--active-drawer-width) + 24px)：--active-drawer-width 由打开抽屉的
-      // panel 在 applyOpen(open) 时 setProperty 设定（task-pool = 380px, git-hub = 420px, ...），
-      // 所以 FAB 让位数值随实际打开抽屉宽度变化——避免不同宽度抽屉用固定值导致的位置错乱。
-      // 监听 ANY_DRAWER_ATTR（任意右侧抽屉打开）→ 不只是自己抽屉打开。
-      // 与 dsh-task-pool / 其他面板共享此协议，互斥协议保证任意时刻只有一个抽屉打开。
+      // panel 在 applyOpen(open) 时 setProperty 设定（task-pool=380 / git-hub=420），避免不同
+      // 宽度抽屉用固定值导致位置错乱。监听 ANY_DRAWER_ATTR（任意右侧抽屉打开）而非自己抽屉。
       "html[" + ANY_DRAWER_ATTR + "] .DGH_fab{right:calc(var(--active-drawer-width, 380px) + 24px);}" +
-      // toast
       ".DGH_toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:10px 16px;font:inherit;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:120;animation:DGH_toastIn .14s ease;}" +
       ".DGH_toast-error{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}" +
       "@keyframes DGH_toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}" +
-      // push 状态条
       ".DGH_pushStatus{padding:6px 12px;font-size:11px;color:var(--dsw-alias-label-tertiary);display:flex;align-items:center;gap:6px;background:var(--dsw-alias-bg-layer-2);border-bottom:1px solid var(--dsw-alias-border-l1);}" +
       ".DGH_pushStatusDot{width:6px;height:6px;border-radius:50%;background:#22c55e;flex:none;}" +
       ".DGH_pushStatusDot[data-running=\"true\"]{background:#eab308;animation:DGH_pulse 1s ease-in-out infinite;}" +
