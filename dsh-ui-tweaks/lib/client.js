@@ -2323,11 +2323,11 @@ window.__ModuleLoader__.load({
 
     /**
      * 切调试高亮 + 把当前 px 值写到命中元素上（让 ::before label 显出来）。
+     * 调试模式独立于 conversation-shift 开关——README 已说明"对话右缩关闭时也能开"。
      * @param enabled 调试模式开关
-     * @param shiftEnabled 对话右缩开关（label 文案区分两种状态）
      * @param shiftPx 当前右缩像素值
      */
-    function applyDebugMode(enabled, shiftEnabled, shiftPx) {
+    function applyDebugMode(enabled, shiftPx) {
       if (typeof document === "undefined") return;
       if (enabled) {
         document.documentElement.setAttribute(DEBUG_HTML_ATTR, "");
@@ -2343,6 +2343,11 @@ window.__ModuleLoader__.load({
         } catch (e) { /* 静默 */ }
       } else {
         document.documentElement.removeAttribute(DEBUG_HTML_ATTR);
+        // 防御性：清理上次留下的 data-shift-px 属性，避免在 DOM 上残留
+        var stale = document.querySelectorAll('[' + SHIFT_TARGET_ATTR + '][data-shift-px]');
+        for (var j = 0; j < stale.length; j++) {
+          stale[j].removeAttribute("data-shift-px");
+        }
       }
     }
 
@@ -4463,7 +4468,7 @@ window.__ModuleLoader__.load({
       var px = Number(initialState.conversationShiftPx);
       if (!isFinite(px) || px < 0) px = 380;
       if (px > 800) px = 800; // safety cap（与 25-tweaks.js / 35-styles.js 对齐）
-      applyDebugMode(!!initialState.conversationShiftDebug, !!initialState.conversationShift, px);
+      applyDebugMode(!!initialState.conversationShiftDebug, px);
 
       // 6) 简洁模式状态行 controller
       var simpleController = createSimpleModeStatusController();
@@ -4546,7 +4551,7 @@ window.__ModuleLoader__.load({
         var newPx = Number(detail.conversationShiftPx);
         if (!isFinite(newPx) || newPx < 0) newPx = 380;
         if (newPx > 800) newPx = 800; // safety cap（与 25-tweaks.js / 35-styles.js 对齐）
-        applyDebugMode(!!detail.conversationShiftDebug, !!detail.conversationShift, newPx);
+        applyDebugMode(!!detail.conversationShiftDebug, newPx);
         if (detail.simpleModeEnabled) {
           if (!simpleController.running) {
             simpleController.start();

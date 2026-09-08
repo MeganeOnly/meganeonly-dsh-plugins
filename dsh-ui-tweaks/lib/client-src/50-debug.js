@@ -26,11 +26,11 @@
 
     /**
      * 切调试高亮 + 把当前 px 值写到命中元素上（让 ::before label 显出来）。
+     * 调试模式独立于 conversation-shift 开关——README 已说明"对话右缩关闭时也能开"。
      * @param enabled 调试模式开关
-     * @param shiftEnabled 对话右缩开关（label 文案区分两种状态）
      * @param shiftPx 当前右缩像素值
      */
-    function applyDebugMode(enabled, shiftEnabled, shiftPx) {
+    function applyDebugMode(enabled, shiftPx) {
       if (typeof document === "undefined") return;
       if (enabled) {
         document.documentElement.setAttribute(DEBUG_HTML_ATTR, "");
@@ -46,6 +46,11 @@
         } catch (e) { /* 静默 */ }
       } else {
         document.documentElement.removeAttribute(DEBUG_HTML_ATTR);
+        // 防御性：清理上次留下的 data-shift-px 属性，避免在 DOM 上残留
+        var stale = document.querySelectorAll('[' + SHIFT_TARGET_ATTR + '][data-shift-px]');
+        for (var j = 0; j < stale.length; j++) {
+          stale[j].removeAttribute("data-shift-px");
+        }
       }
     }
 
