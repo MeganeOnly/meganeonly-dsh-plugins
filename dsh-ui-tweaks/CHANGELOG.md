@@ -4,6 +4,48 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.5] - 2026-09-08
+
+### 修复
+
+- **`conversationShiftPx` 上界 0-800 校验统一**：三个 normalize 站点把 `conversationShiftPx` 规整到 0-800（下界都有，上界只在 CSS 输出 / debug label 上体现）——25-tweaks.js buildCSS 行 22-23 与 35-styles.js buildDebugHighlightCSS 行 22-23 都有完整 `if (!isFinite || n < 0) → 380; if (n > 800) → 800;` 上下界；85-apply.js 的两处（initial-state 路径行 39-43、onStateChange listener 行 121-125）只补了下界，缺上界——意味着用户把 localStorage 里 `conversationShiftPx` 设为 999 时，CSS 输出会被 cap 到 800 但 debug label 显示 `当前右缩 999px`，UI 数值与实际渲染不一致。修法：两处都加 `if (px > 800) px = 800;`，与 25-tweaks.js / 35-styles.js 对齐。
+
+- **数字输入上界校验**：75-react-tweak-row.js `TweakRow.onNumberChange` 只检查 `n < 0`，没检查 `n > 800` 上界。`<input>` HTML `max="800"` 仅在 form submit 时生效，用户键入 `999` 然后 tab 出去会直接把 999 写进 localStorage，被下游 CSS cap 到 800——用户看到 input 显示 999、视觉渲染 800，跟 debug label bug 同根因。修法：`onNumberChange` 内 `if (n > 800) n = 800;` 在 setState 前 clamp，受控 input 在下次 render 反映保存值。
+
+### 重构（行为零变化）
+
+- **删除 `applyDebugMode` 死参数 `shiftEnabled`**：50-debug.js 第 33 行函数签名 `applyDebugMode(enabled, shiftEnabled, shiftPx)` 第二个参数 `shiftEnabled` 从未被函数体引用——JSDoc 曾说"label 文案区分两种状态"但实际 label 固定、未按该参数分支。按 README（25-tweaks.js tweak description）的"对话右缩关闭时也能开"，debug overlay 与 conversation-shift 是独立开关。修法：删除参数，JSDoc 同步去掉误导描述；85-apply.js 两处调用方也对应去掉 `!!initialState.conversationShift` / `!!detail.conversationShift` 实参。
+
+- **`applyDebugMode` 关闭时清理 `data-shift-px` 残留**：旧实现 `applyDebugMode(false)` 只 `removeAttribute(DEBUG_HTML_ATTR)`，不动节点的 `data-shift-px`。后果是上次开启时写入节点上的 `data-shift-px` 在 debug 关闭后继续残留于 DOM，直到下次开启覆盖。修法：关闭分支增加 `document.querySelectorAll('[' + SHIFT_TARGET_ATTR + '][data-shift-px]')` 遍历并 `removeAttribute("data-shift-px")`，与开启分支对称。
+
+- **70-debug-api.js `setState` 派发事件加 try/catch + 守卫改为 `typeof === 'function'`**：与 80-react-section.js useEffect 派发同一 STATE_EVENT，React 路径已 try/catch + typeof 守卫；debug API 路径只是裸 `dispatchEvent`。统一：70-debug-api.js setState 也走 `if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") { try { dispatchEvent } catch (e) {} }`，避免下游 listener 抛错打断诊断入口。
+
+- **50-debug.js 提取 `inspectElement(el)` 让 `applyDebugMode` 记录所有匹配元素**：旧实现用 `inspectMatch(selector)`（基于 `document.querySelector` 单数），构造 `[result]` 一元素数组传给 `console.info`——当 chatflow 探测命中 chatflow + fallback column 两个元素时，日志只显示第一个。修法：提取 `inspectElement(el)` 函数（接受 DOM 节点、走 `getComputedStyle` + `getBoundingClientRect`），`applyDebugMode` 内对 querySelectorAll 返回的 nodes 数组逐个 inspectElement 收集 diagnostics，console.info 一次性打印所有匹配元素。inspectMatch 保留——其唯一外部调用方（`window.__dshUiTweaks.getMatchedElements`）的 API 不变。
+
+### 维护
+
+- **section marker 缩进修正（2 个文件）**：68-first-message-jump.js 与 68a-first-message-jump-utils.js（v0.9.2 拆分）首行 `// ===== first-message-jump =====` / `// ===== first-message-jump utils =====` 漏了 4 空格缩进，违反 `docs/maintainability.md` § 三半 硬约束（"每个 section 文件首行必须是 `    // ===== X =====`"）。补 4 空格，与其它 16 个 section 文件对齐。
+
+- **非末尾 section 文件末尾换行补齐（4 个文件）**：67-disclosure-end-collapse.js / 68-first-message-jump.js / 68a-first-message-jump-utils.js / 75-react-tweak-row.js 末尾是 `  }\n`，违反 § 五"非末尾 section 必须 `}\n\n`"约定。后果是拼接时下一个 section 的 `    // ===== marker =====` 首行被接到上一个文件的 `}` 后面（bundle 里出现 `}    // ===== stats-line-position =====` 这样的行）——语法合法但破坏"bundle 里每个 section marker 独立成行"的可读性约定。各补 1 字节（共 +4 字节）。
+
+- **重命名 `TRAJECTORY_TAB_HIDDEN_ATTR` → `HIDDEN_TAB_ATTR`**：60-tab-hider.js 中的常量 `TRAJECTORY_TAB_HIDDEN_ATTR` 名字带 "TRAJECTORY" 但属性 `data-dsh-ui-tweaks-hidden-tab` 实际被 `hide-trajectory-tab` 与 `hide-chat-tab` 共享——只有 attribute value 不同（`trajectory` vs `chat`）。旧名误导读者以为是 trajectory 专用。5 处引用全部更新。
+
+- **更新 68 / 68a 文件头注释中过时的拆分后行数 / 字节数**：v0.9.2 拆分时注释里写"主文件 ~430 行 / ~21 KB, utils ~220 行 / ~9 KB"，实际当前主文件 ~553 行 / ~28 KB, utils ~280 行 / ~14 KB（`npm run build:client` 输出验证）。注释改为拆分前 645 行 / 31.2 KB + 当前 553 行 / ~28 KB (utils 280 行 / ~14 KB)。
+
+- **bundle 字节变化汇总**：lib/client.js 270783 → 272722 bytes（+1939 bytes）：
+  - marker 缩进补 4 空格 × 2 文件 = +8 字节
+  - 末尾换行 × 4 文件 = +4 字节
+  - applyDebugMode 重构（新增 stale cleanup + 删 shiftEnabled 参数）= +18 字节
+  - conversationShiftPx 上界 × 3 处（每处 1 行）= ~+300 字节（含注释）
+  - try/catch 对齐 = +126 字节
+  - inspectElement 提取 = +1223 字节（含 JSDoc 注释）
+  - 68/68a 注释更新 = ~+50 字节
+  - 其它少量
+
+- **`.git/COMMIT_EDITMSG_*` 临时文件清理**：每次 commit 用 PowerShell `-F` 文件传 commit message，写完即删，不留仓库残留。
+
+- **行为兼容性**：上述所有改动对用户可见行为零变化——bundle 重新生成后所有 tweak / React 组件 / 调试 API / 状态事件总线 / localStorage key 行为完全保持。
+
 ## [0.10.4] - 2026-09-06
 
 ### 修复

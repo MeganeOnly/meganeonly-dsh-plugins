@@ -147,6 +147,39 @@
         //   的），v0.10.3 只删 border、忘了改尺寸；本次完整回退到 v0.5.1
         //   之前的紧凑 pill。translateX 保持 `14px`（数值上 34px 宽与
         //   36px 宽都能让 knob 右边距保持 2-3px）。详见 `35-styles.js`
+        // v0.10.5：客户端代码审计 + 修复批次——`conversationShiftPx` 上界
+        //   统一 + `applyDebugMode` 死参数 / 残留清理 + section marker /
+        //   末尾换行规范修正 + 通用常量重命名。本节仅列本插件本版本的 5 个
+        //   commit 摘要，详情见各 `client-src/*.js` 文件的具体改动 + CHANGELOG [0.10.5]：
+        //     1) refactor(dsh-ui-tweaks): fix section marker indent +
+        //        trailing newlines（68 / 68a marker 加 4 空格缩进，67 / 68
+        //        / 68a / 75 末尾补 `\n`）
+        //     2) fix(dsh-ui-tweaks): clamp conversationShiftPx upper bound
+        //        （85-apply.js 2 处 + 75-react-tweak-row.js onNumberChange
+        //        都加 `if (... > 800) ... = 800;`）
+        //     3) refactor(dsh-ui-tweaks): drop dead shiftEnabled param from
+        //        applyDebugMode（删除未使用的 2nd 参数；关闭分支新增清理
+        //        `data-shift-px` 残留的遍历；85-apply.js 调用方同步去参）
+        //     4) refactor(dsh-ui-tweaks): misc naming + comment cleanups
+        //        （60-tab-hider.js 的 `TRAJECTORY_TAB_HIDDEN_ATTR` 重命名为
+        //        `HIDDEN_TAB_ATTR`；68 / 68a 文件头过时注释更新到当前 553
+        //        / ~28 KB + 280 / ~14 KB）
+        //     5) refactor(dsh-ui-tweaks): try/catch on debug API dispatch
+        //        + log every matched element in debug overlay（70-debug-api.js
+        //        setState 与 80-react-section.js useEffect 对齐 try/catch +
+        //        typeof 守卫；50-debug.js 提取 inspectElement 让 applyDebugMode
+        //        一次性打印所有匹配元素，不再只 inspect 第 1 个）
+        //   行为兼容性：所有改动对用户可见行为零变化——bundle 重新生成后所有
+        //   tweak / React 组件 / 调试 API / 状态事件总线 / localStorage key
+        //   行为完全保持。
+        // v0.10.4：把 `.DTPD_switch` 尺寸从 v0.6.0 起放大的 `36×22` /
+        //   thumb `18×18` 回退到 v0.5.1 之前的 `34×20` / thumb `16×16`——
+        //   用户实测反馈 v0.10.3 修了 border 但「开关看起来还是方方的」，
+        //   真正的「圆圆的」需要在更紧凑的尺寸下两端圆形轮廓才能显现。
+        //   v0.6.0 合并 simple-mode 时一并把尺寸调大（border 也是那时加
+        //   的），v0.10.3 只删 border、忘了改尺寸；本次完整回退到 v0.5.1
+        //   之前的紧凑 pill。translateX 保持 `14px`（数值上 34px 宽与
+        //   36px 宽都能让 knob 右边距保持 2-3px）。详见 `35-styles.js`
         //   的 v0.10.4 注释段 + CHANGELOG [0.10.4]。
         // v0.10.3：去掉设置页开关的 1px solid border（v0.6.0 起加的）——
         //   用户反馈边框让 pill 看起来「有点方圆」不够圆润，去掉后跟
@@ -155,7 +188,7 @@
         //   尺寸仍为 v0.6.0 放大的 36×22 / thumb 18×18，用户实测「去掉
         //   边框后还是方方的」→ v0.10.4 继续把尺寸回退到 v0.5.1 之前的
         //   34×20 / thumb 16×16。详见 `35-styles.js` 的 v0.10.4 注释段。
-        var VERSION = "0.10.4";
+        var VERSION = "0.10.5";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

@@ -1,6 +1,24 @@
 /**
  * dsh-ui-tweaks — 浏览器端（web client bundle，作者：MeganeOnly）
  *
+ * v0.10.5：客户端代码审计 + 修复批次——`conversationShiftPx` 上界统一 + `applyDebugMode`
+ *   死参数 / 残留清理 + section marker / 末尾换行规范修正 + 通用常量重命名。
+ *
+ *   本次以 5 个独立 refactor / fix commit 完成，按顺序：
+ *     1) refactor: 修复 section marker 缩进（68 / 68a）+ 非末尾 section 文件末尾换行（67 / 68 / 68a / 75）
+ *     2) fix: conversationShiftPx 0-800 上界在 85-apply.js（2 处）+ 75-react-tweak-row.js 统一校验
+ *     3) refactor: 删除 applyDebugMode 死参数 shiftEnabled + 关闭时清理 data-shift-px 残留
+ *     4) refactor: TRAJECTORY_TAB_HIDDEN_ATTR → HIDDEN_TAB_ATTR + 68/68a 文件头过时注释更新
+ *     5) refactor: 70-debug-api.js setState try/catch 对齐 + 50-debug.js 提取 inspectElement 让
+ *        applyDebugMode 一次性打印所有匹配元素
+ *
+ *   行为兼容性：所有改动对用户可见行为零变化——bundle 重新生成后所有 tweak / React 组件 /
+ *   调试 API / 状态事件总线 / localStorage key 行为完全保持。
+ *
+ *   修复动机：客户端代码审计（subagent 全 22 文件扫描 + 字节级末尾检查）发现一批 maintainability.md
+ *   硬约束违反（section marker 缩进、文件末尾换行）+ 几处实现意图与代码不完全对齐（死参数、
+ *   上界校验缺失、防御性清理缺失）。一次性清理，避免未来 AI 重构时跨文件混淆。
+ *
  * v0.10.4：设置页开关尺寸回退到 v0.5.1 之前的紧凑 pill——真的「圆圆的」需要更紧凑的尺寸
  *
  *   用户反馈：v0.10.3 修了 border 之后开关「看起来还是方方的」。
