@@ -2744,7 +2744,7 @@ window.__ModuleLoader__.load({
     // 多语言匹配集合。DSH 用 zh / en 两种 UI 语言；其它 locale 暂不支持。
     var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];
     var CHAT_TAB_LABELS = ["对话", "Chat"];
-    var TRAJECTORY_TAB_HIDDEN_ATTR = "data-dsh-ui-tweaks-hidden-tab";
+    var HIDDEN_TAB_ATTR = "data-dsh-ui-tweaks-hidden-tab";
 
     function findTabButtonByLabels(labels) {
       if (typeof document === "undefined") return null;
@@ -2794,8 +2794,8 @@ window.__ModuleLoader__.load({
 
         // 1) 标记目标 tab 隐藏
         var target = findTabButtonByLabels(opts.targetLabels);
-        if (target && target.getAttribute(TRAJECTORY_TAB_HIDDEN_ATTR) !== opts.hiddenValue) {
-          target.setAttribute(TRAJECTORY_TAB_HIDDEN_ATTR, opts.hiddenValue);
+        if (target && target.getAttribute(HIDDEN_TAB_ATTR) !== opts.hiddenValue) {
+          target.setAttribute(HIDDEN_TAB_ATTR, opts.hiddenValue);
         }
 
         // 2) 确保安全 tab 始终是当前选中（即使其按钮被 CSS display:none，
@@ -2837,10 +2837,10 @@ window.__ModuleLoader__.load({
         // 移除已打的标记（CSS 注入也会被移除，状态自洽）
         if (typeof document !== "undefined") {
           var marked = document.querySelectorAll(
-            '[' + TRAJECTORY_TAB_HIDDEN_ATTR + '="' + opts.hiddenValue + '"]'
+            '[' + HIDDEN_TAB_ATTR + '="' + opts.hiddenValue + '"]'
           );
           for (var i = 0; i < marked.length; i++) {
-            marked[i].removeAttribute(TRAJECTORY_TAB_HIDDEN_ATTR);
+            marked[i].removeAttribute(HIDDEN_TAB_ATTR);
           }
         }
       }
@@ -3190,10 +3190,11 @@ window.__ModuleLoader__.load({
     //
     // 文件拆分（v0.9.x → v0.9.2）：纯 finder / scanner 函数（不依赖
     // 闭包状态，全部以 port 作参数）抽到 68a-first-message-jump-utils.js
-    // ——主文件从 645 行 / 31.2 KB 降到 ~430 行 / ~21 KB，回到
-    // maintainability.md 30 KB 阈值下。函数名共享工厂函数 scope（client-src/
-    // 按文件名升序整段拼接），不需要 require/import。共享常量 (JUMP_*_SEL
-    // / JUMP_DRAWER_ATTR) 仍由 20-constants.js 单点定义。
+    // ——主文件从拆分前的 645 行 / 31.2 KB 降到拆分后约 553 行 / ~28 KB
+    // （utils 约 280 行 / ~14 KB），回到 maintainability.md 30 KB 阈值下。
+    // 函数名共享工厂函数 scope（client-src/ 按文件名升序整段拼接），
+    // 不需要 require/import。共享常量 (JUMP_*_SEL / JUMP_DRAWER_ATTR) 仍
+    // 由 20-constants.js 单点定义。
     // ====================================================================
 
     function createFirstMessageJumpController() {
@@ -3703,8 +3704,8 @@ window.__ModuleLoader__.load({
     // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 `port` 作参
     // 数）。从 68-first-message-jump.js 拆出（v0.9.0 → v0.9.2 三轮迭
     // 代累积后主文件 645 行 / 31.2 KB，超过 maintainability.md 的 30 KB
-    // 阈值）。拆分后主文件回到 ~430 行 / ~21 KB 阈值下，utils 本文件
-    // ~220 行 / ~9 KB。
+    // 阈值）。拆分后主文件约 553 行 / ~28 KB，utils 本文件约 280 行 /
+    // ~14 KB——拆分后两个文件均低于 30 KB 阈值。
     //
     // 与主文件的关系：所有函数共享一个工厂函数体（client-src/*.js 按
     // 文件名升序整段拼接进 lib/client.js），所以 jump* 函数名在主文

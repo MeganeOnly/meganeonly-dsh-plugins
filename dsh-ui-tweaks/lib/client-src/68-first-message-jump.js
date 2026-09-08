@@ -43,10 +43,11 @@
     //
     // 文件拆分（v0.9.x → v0.9.2）：纯 finder / scanner 函数（不依赖
     // 闭包状态，全部以 port 作参数）抽到 68a-first-message-jump-utils.js
-    // ——主文件从 645 行 / 31.2 KB 降到 ~430 行 / ~21 KB，回到
-    // maintainability.md 30 KB 阈值下。函数名共享工厂函数 scope（client-src/
-    // 按文件名升序整段拼接），不需要 require/import。共享常量 (JUMP_*_SEL
-    // / JUMP_DRAWER_ATTR) 仍由 20-constants.js 单点定义。
+    // ——主文件从拆分前的 645 行 / 31.2 KB 降到拆分后约 553 行 / ~28 KB
+    // （utils 约 280 行 / ~14 KB），回到 maintainability.md 30 KB 阈值下。
+    // 函数名共享工厂函数 scope（client-src/ 按文件名升序整段拼接），
+    // 不需要 require/import。共享常量 (JUMP_*_SEL / JUMP_DRAWER_ATTR) 仍
+    // 由 20-constants.js 单点定义。
     // ====================================================================
 
     function createFirstMessageJumpController() {

@@ -23,7 +23,7 @@
     // 多语言匹配集合。DSH 用 zh / en 两种 UI 语言；其它 locale 暂不支持。
     var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];
     var CHAT_TAB_LABELS = ["对话", "Chat"];
-    var TRAJECTORY_TAB_HIDDEN_ATTR = "data-dsh-ui-tweaks-hidden-tab";
+    var HIDDEN_TAB_ATTR = "data-dsh-ui-tweaks-hidden-tab";
 
     function findTabButtonByLabels(labels) {
       if (typeof document === "undefined") return null;
@@ -73,8 +73,8 @@
 
         // 1) 标记目标 tab 隐藏
         var target = findTabButtonByLabels(opts.targetLabels);
-        if (target && target.getAttribute(TRAJECTORY_TAB_HIDDEN_ATTR) !== opts.hiddenValue) {
-          target.setAttribute(TRAJECTORY_TAB_HIDDEN_ATTR, opts.hiddenValue);
+        if (target && target.getAttribute(HIDDEN_TAB_ATTR) !== opts.hiddenValue) {
+          target.setAttribute(HIDDEN_TAB_ATTR, opts.hiddenValue);
         }
 
         // 2) 确保安全 tab 始终是当前选中（即使其按钮被 CSS display:none，
@@ -116,10 +116,10 @@
         // 移除已打的标记（CSS 注入也会被移除，状态自洽）
         if (typeof document !== "undefined") {
           var marked = document.querySelectorAll(
-            '[' + TRAJECTORY_TAB_HIDDEN_ATTR + '="' + opts.hiddenValue + '"]'
+            '[' + HIDDEN_TAB_ATTR + '="' + opts.hiddenValue + '"]'
           );
           for (var i = 0; i < marked.length; i++) {
-            marked[i].removeAttribute(TRAJECTORY_TAB_HIDDEN_ATTR);
+            marked[i].removeAttribute(HIDDEN_TAB_ATTR);
           }
         }
       }

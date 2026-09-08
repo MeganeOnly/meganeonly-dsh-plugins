@@ -3,8 +3,8 @@
     // 纯 finder / scanner 函数（不依赖 closure 状态，全部以 `port` 作参
     // 数）。从 68-first-message-jump.js 拆出（v0.9.0 → v0.9.2 三轮迭
     // 代累积后主文件 645 行 / 31.2 KB，超过 maintainability.md 的 30 KB
-    // 阈值）。拆分后主文件回到 ~430 行 / ~21 KB 阈值下，utils 本文件
-    // ~220 行 / ~9 KB。
+    // 阈值）。拆分后主文件约 553 行 / ~28 KB，utils 本文件约 280 行 /
+    // ~14 KB——拆分后两个文件均低于 30 KB 阈值。
     //
     // 与主文件的关系：所有函数共享一个工厂函数体（client-src/*.js 按
     // 文件名升序整段拼接进 lib/client.js），所以 jump* 函数名在主文
