@@ -4231,8 +4231,10 @@ window.__ModuleLoader__.load({
           for (var k2 in patch) next[k2] = patch[k2];
           saveState(next);
           injectCSS(next);
-          if (typeof window !== "undefined" && window.dispatchEvent) {
-            window.dispatchEvent(new CustomEvent(STATE_EVENT, { detail: next }));
+          if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+            try {
+              window.dispatchEvent(new CustomEvent(STATE_EVENT, { detail: next }));
+            } catch (e) { /* 静默：与 80-react-section.js useEffect 对齐 */ }
           }
           return next;
         },
