@@ -35,8 +35,6 @@ window.__ModuleLoader__.load({
     var API_MCP = "/api/mcp-manager";
     var MINE_AUTHOR = "MeganeOnly";
 
-    // 每个 tab 对应一个独立管理插件；tab 是否显示由该插件 API 是否可用决定
-    // （插件停用 → API 404 → tab 隐藏；启用 → API 正常 → tab 显示）。
     var TABS = [
       { id: "plugin", label: "插件", api: API_PLUGIN },
       { id: "skill", label: "Skill", api: API_SKILL },
@@ -704,7 +702,7 @@ window.__ModuleLoader__.load({
       var setActive = active[1];
       var setAvail = avail[1];
 
-      // [perf v0.x] 挂载时只探测默认 tab（"plugin"）；其他 tab 切到时再按需探测，
+      // [perf] 挂载时只探测默认 tab（"plugin"）；其他 tab 切到时再按需探测，
       // 避免首屏 3 个全量 /list GET——默认 tab 自身 useEffect 已经在拉数据。
       // 兜底：用户切到某个 tab 时若该 tab 没探测过，再探一次确认是否可用。
       React.useEffect(function () {
@@ -712,10 +710,9 @@ window.__ModuleLoader__.load({
         fetch(defaultTab.api + "/list")
           .then(function (res) { setAvail(function (a) { var n = Object.assign({}, a || {}); n[defaultTab.id] = res.status !== 404; return n; }); })
           .catch(function () { setAvail(function (a) { var n = Object.assign({}, a || {}); n[defaultTab.id] = true; return n; }); });
-        // 其余 tab 标记为"未探测"——visibleTabs 暂时只显示默认 tab；用户切到
-        // 对应 tab 时由子组件 useEffect 拉数据（失败的话返回 "service unavailable"）
+        // 其余 tab 乐观显示为可用：用户切到时由子组件 useEffect 拉数据（失败则显示错误）
         var others = {};
-        for (var i = 1; i < TABS.length; i++) others[TABS[i].id] = true; // 乐观显示
+        for (var i = 1; i < TABS.length; i++) others[TABS[i].id] = true;
         setAvail(function (a) { return Object.assign({}, a || {}, others); });
       }, []);
 

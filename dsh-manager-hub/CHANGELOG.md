@@ -4,6 +4,19 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.2] - 2026-09-06
+
+### 维护
+
+- 注释精简：移除少量冗余注释（3 行），保留 `[perf]` / WHY / section marker——按 `dsh-ui-tweaks` v0.10.6 的同套规则。具体：
+  - `20-constants.js`：`TABS` 上方 2 行 tab 可用性解释（已在 `00-banner.js` 中讲过）。
+  - `70-hub-page.js`：`[perf v0.x]` 改回 `[perf]`（去掉版本号），并合并 2 行乐观显示注释 + 删掉尾部单字 `// 乐观显示` label。
+- `docs/maintainability.md` 新增 § 二「注释约定」，把本插件的注释精简规则落到文档里。
+
+### 兼容性
+
+- 行为零变化；纯注释 / 文档调整。
+
 ## [0.1.1] - 2026-09-04
 
 ### 修复
