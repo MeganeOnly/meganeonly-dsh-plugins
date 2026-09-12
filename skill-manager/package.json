@@ -1,6 +1,6 @@
 {
   "name": "dsh-skill-manager",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "MeganeOnly",
   "description": "Skill 管理器：在设置页列出用户级 skill（含作者署名），一键启用/停用。停用 = 注册高优先级影子条目遮蔽原 skill（不改 SKILL.md 文件），即时生效无需重启。",
   "license": "MIT",
