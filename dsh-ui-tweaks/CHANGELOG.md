@@ -4,7 +4,21 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.10.8] - 2026-09-12
+
+### 修复
+
+- **chat hider 不再误把 view 闪回对话**：hide-chat-tab 启用而 hide-trajectory-tab 未启用时（即仅"轨迹"可见），用户点"轨迹"标签会被立刻闪回对话——`createTabHider.tick()` 检测到 safe tab（被 `CHAT_TAB_LABELS` 误配为 chat 本身）`aria-selected≠"true"` 就强制 `.click()`，把用户从轨迹 view 拽回对话 view。根因：`85-apply.js` 第 52–56 行 `chatHider` 把 `safeLabels` 误配成 `CHAT_TAB_LABELS`（target 与 safe 同按钮）；设计本意（看 `trajectoryHider`）是「hider 强制另一 tab selected」（轨迹被隐藏时强制对话），chat hider 的 safe 应该是 `TRAJECTORY_TAB_LABELS` 才对称。修法：`chatHider.safeLabels` 改为 `TRAJECTORY_TAB_LABELS`，并对侧 `60-tab-hider.js` `tick()` 加防御：safe tab 若自身已被另一 hider 标 `data-dsh-ui-tweaks-hidden-tab` 则跳过强制——防止两 tab 都隐藏时 trajectoryHider 强制对话 / chatHider 强制轨迹 互相 ping-pong。副作用：`hide-chat-tab` 启用时若用户当前停在对话 view，会自动切到轨迹 view（让唯一可见 tab 与当前 view 对应；与修复前反方向），`hide-chat-tab` description 同步更新。
+
+### 改动文件
+
+- `lib/client-src/60-tab-hider.js`（顶部用法注释 + `tick()` 加 `!safe.hasAttribute(HIDDEN_TAB_ATTR)` 防御 + JSDoc 同步）
+- `lib/client-src/85-apply.js`（`chatHider.safeLabels`：`CHAT_TAB_LABELS` → `TRAJECTORY_TAB_LABELS` + 顶部注释）
+- `lib/client.js`（重新生成，162331 → 163013 bytes，+682 bytes；含 tick() 防御 +566 bytes / safeLabels 单 token 替换 +116 bytes）
+- `package.json`（version 0.10.7 → 0.10.8）
+- `CHANGELOG.md`（本段）
+
+## [0.10.7] - 2026-09-08
 
 ### 兼容性
 

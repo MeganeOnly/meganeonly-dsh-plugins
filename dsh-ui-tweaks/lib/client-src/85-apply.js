@@ -40,8 +40,9 @@
       var simpleController = createSimpleModeStatusController();
       if (initialState.simpleModeEnabled) simpleController.start();
 
-      // tab hider（通用 createTabHider 工厂；safe tab 都是 "对话" 兜底——避免两 tab
-      // 都隐藏后用户卡在轨迹视图出不来）
+      // tab hider（通用 createTabHider 工厂；每个 hider 强制另一 tab selected——
+      // 轨迹被隐藏时强制对话，对话被隐藏时强制轨迹，对称设计；两 tab 都隐藏时
+      // tick() 防御性跳过强制避免互相 ping-pong）
       var trajectoryHider = createTabHider({
         targetLabels: TRAJECTORY_TAB_LABELS,
         hiddenValue: "trajectory",
@@ -51,7 +52,7 @@
       var chatHider = createTabHider({
         targetLabels: CHAT_TAB_LABELS,
         hiddenValue: "chat",
-        safeLabels: CHAT_TAB_LABELS
+        safeLabels: TRAJECTORY_TAB_LABELS
       });
       if (initialState.hideChatTab) chatHider.start();
 

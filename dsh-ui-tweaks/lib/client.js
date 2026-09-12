@@ -1495,11 +1495,16 @@ window.__ModuleLoader__.load({
 
     // ===== tab-hider =====
     // 通用 tab hider 工厂——给 DSH 对话顶部 [role="tablist"] 里某个 tab 按钮打标记隐藏，
-    // 并确保"安全 tab"始终是当前选中（避免两个 tab 都隐藏时用户卡在轨迹视图出不来）。
+    // 并确保另一 tab 始终是当前选中（hider 强制对方 selected，避免单 tab 被隐藏时
+    // 用户卡在那个 view 出不来）。
     //
     // 用法：
-    //   hide-trajectory-tab：target="轨迹" 标签 + safe="对话" 兜底
-    //   hide-chat-tab：      target="对话" 标签 + safe="对话"（chat 是 DSH 默认 view）
+    //   hide-trajectory-tab：target="轨迹" + safe="对话"（轨迹被隐藏时强制对话）
+    //   hide-chat-tab：      target="对话" + safe="轨迹"（对话被隐藏时强制轨迹）
+    //
+    // 两 tab 同时被 hide 时双方 safe 都被另一方标了 hidden-tab——
+    // tick() 防御性跳过强制（双方互不 ping-pong），保留最后手动点的状态；
+    // 视觉上 tablist 已折叠（见 hide-trajectory-tab / hide-chat-tab buildCSS）。
 
     // 多语言匹配集合（DSH zh / en；其它 locale 暂不支持）
     var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];
@@ -1521,8 +1526,9 @@ window.__ModuleLoader__.load({
     /**
      * 通用 tab hider。两件事：
      *   1) 给 target 按钮打 data-dsh-ui-tweaks-hidden-tab=<hiddenValue> 标记，CSS 命中隐藏
-     *   2) 确保 safe 按钮始终 aria-selected="true"（即使按钮被 display:none，
-     *      程序 click 仍能触发 React 的 setView），避免两 tab 都关后卡在非默认 view
+     *   2) 若 safe 自身没被另一 hider 隐藏，确保它始终 aria-selected="true"（即使按钮
+     *      被 CSS display:none，程序 click 仍能触发 React 的 setView）。两 tab 都隐藏时
+     *      跳过——双方 safe 都已被对方标 hidden-tab，强制会互相 ping-pong。
      */
     function createTabHider(opts) {
       var observer = null;
@@ -1537,10 +1543,12 @@ window.__ModuleLoader__.load({
           target.setAttribute(HIDDEN_TAB_ATTR, opts.hiddenValue);
         }
 
-        // 2) 确保安全 tab 始终是当前选中（即使其按钮被 CSS display:none，
-        //    程序 click 仍能触发 React 的 setView，切 view）
+        // 2) safe 自身没被另一 hider 隐藏时，确保它始终是当前选中
+        //    （两 tab 都隐藏场景跳过，避免 trajectoryHider 强制对话 / chatHider
+        //    强制轨迹 互相 ping-pong）
         var safe = findTabButtonByLabels(opts.safeLabels);
-        if (safe && safe.getAttribute("aria-selected") !== "true") {
+        if (safe && !safe.hasAttribute(HIDDEN_TAB_ATTR) &&
+            safe.getAttribute("aria-selected") !== "true") {
           if (typeof safe.click === "function") safe.click();
         }
       }
@@ -3087,8 +3095,9 @@ window.__ModuleLoader__.load({
       var simpleController = createSimpleModeStatusController();
       if (initialState.simpleModeEnabled) simpleController.start();
 
-      // tab hider（通用 createTabHider 工厂；safe tab 都是 "对话" 兜底——避免两 tab
-      // 都隐藏后用户卡在轨迹视图出不来）
+      // tab hider（通用 createTabHider 工厂；每个 hider 强制另一 tab selected——
+      // 轨迹被隐藏时强制对话，对话被隐藏时强制轨迹，对称设计；两 tab 都隐藏时
+      // tick() 防御性跳过强制避免互相 ping-pong）
       var trajectoryHider = createTabHider({
         targetLabels: TRAJECTORY_TAB_LABELS,
         hiddenValue: "trajectory",
@@ -3098,7 +3107,7 @@ window.__ModuleLoader__.load({
       var chatHider = createTabHider({
         targetLabels: CHAT_TAB_LABELS,
         hiddenValue: "chat",
-        safeLabels: CHAT_TAB_LABELS
+        safeLabels: TRAJECTORY_TAB_LABELS
       });
       if (initialState.hideChatTab) chatHider.start();
 
