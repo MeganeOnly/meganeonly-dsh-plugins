@@ -4,6 +4,21 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 兼容性
+
+- 已对照 DSH v0.1.5-rc.1 源码（`deepseek-ai/deepseek-harness@dsh-v0.1.5-rc.1`，SHA `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`）的破坏性变更清单做兼容性核对，本插件无代码变更：
+  - 本插件不依赖 DSH `subprocess` handle（`lib/index.js` 使用裸 `child_process.execFile(...).pid` 在 Node 进程内调用 git），§ 三-8（subprocess 不再暴露 `pid`）不命中。
+  - 客户端 toast `PID=...` 文案为客户端字符串拼接，与 DSH 内核 API 解耦——v0.1.5-rc.1 字符串渲染逻辑不变，文本继续显示。
+  - 客户端 bundle（`client-src/`）不涉及 `ctx.agents` / `ctx.slots` 字段访问，无破坏性变更命中点。
+- 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.5.2 → 0.5.3）
+
 ## [0.5.2] - 2026-09-06
 
 ### 维护
