@@ -4,6 +4,22 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 兼容性
+
+- 已对照 DSH v0.1.5-rc.1 源码（`deepseek-ai/deepseek-harness@dsh-v0.1.5-rc.1`，SHA `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`）的破坏性变更清单做兼容性核对，本插件无代码变更：
+  - 38 处 `data-slot` / `data-pane` / `data-conversation-scroll` 选择器全部命中 DSH 稳定属性，其中 3 个 DSH slot key（`conversation.composer.dock` / `conversation.session.header.actions` / slot 类型声明中的 `conversation.input.dock`）在 v0.1.5-rc.1 源码中**未重命名**（注册位置 `packages/client/ui-conversation/src/client/apply.ts` + 类型声明 `packages/client/ui-conversation/src/client/contract/slots.ts`），原有 `STATS_DOCK_SEL` / `STATS_HEADER_ACTIONS_SEL` 常量继续有效。
+  - `data-conversation-scroll` 仍是 DSH `ConversationRoot.scrollBody` 自己 `setAttribute` 的稳定锚点（`packages/client/ui-conversation/src/client/conversation-root.tsx`），v0.10.2 起的 `Strategy 1 → Strategy 2 → Strategy 3` 探测链无需调整。
+  - self-shim 4 层 fallback 选择器（`[data-pane="conversation"]` / `class*=centerCol` / 等等）仍按 v0.5.5 起的设计自种 `data-pane` 属性，不依赖 DSH 原生标记——v0.1.5-rc.1 移除了右侧 Detail 面板（sidebar / center / details 三列结构可能仍存在但右侧 details 列内容已替换），self-shim 自管 column 标记的设计不依赖 DSH 原生结构。
+- 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
+- v0.1.5-rc.1 详细 release notes：https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.5-rc.1
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.10.6 → 0.10.7）
+
 ## [0.10.6] - 2026-09-08
 
 ### 重构
