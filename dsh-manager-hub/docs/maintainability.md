@@ -15,7 +15,7 @@
 | `40-plugin-view.js`  | `PluginManagerPage`：插件管理视图（调 `/api/plugin-manager/*`，来自 dsh-plugin-manager） |
 | `50-skill-view.js`   | `SkillManagerPage`：Skill 管理视图（调 `/api/skill-manager/*`，来自 dsh-skill-manager） |
 | `60-mcp-view.js`     | `McpManagerPage`：MCP 管理视图（调 `/api/mcp-manager/*`，来自 dsh-mcp-manager） |
-| `70-hub-page.js`     | `ManagerHubPage`：挂载时探测三个 API（404=对应插件停用→隐藏该 tab）+ 顶部 tab 栏（插件默认 / Skill / MCP）+ 切换渲染可用视图 + 聚合署名 |
+| `70-hub-page.js`     | `ManagerHubPage`：挂载时调 `/api/plugin-manager/list`，按返回 `entries` 里 `id === 'skill-manager'` / `id === 'mcp-manager'` 的 `enabled` 字段决定 tab 是否显示；plugin-manager 自身 404 视为 hub 失去支点，三个 tab 全不可用 + 顶部 tab 栏（插件默认 / Skill / MCP）+ 切换渲染可用视图 + 聚合署名 |
 | `Z0-apply.js`        | `apply(ctx)`：注册 `settings.section`（id=`manager-hub`, order=30, label="管理"）+ exports |
 | `Z9-loader-close.js` | 闭合 `load()` + `return module.exports` |
 
@@ -39,7 +39,7 @@
 ## 三、本插件特殊项
 
 - **三个视图是复制**：`40/50/60-*.js` 是 plugin-manager / skill-manager / mcp-manager 三个插件客户端视图的适配副本（改共享样式引用、加 `res.ok` 守卫、去掉各自的 h3 标题）。数据源仍是三个老插件的宿主 API，**不要在 hub 里改业务逻辑**——业务改动应回到对应老插件，再同步到这里。
-- **三个老插件的关系**：老插件的设置页条目在本插件（id=`manager-hub`）存在时自动隐藏、缺席时恢复（由那三个插件客户端实现）。本插件被停用时，三个老插件页面作为兜底重新出现。tab 按 API 可用性条件显示（停用→404→隐藏），所以某个老插件停用不会导致聚合页出现报错 tab。
+- **三个老插件的关系**：老插件的设置页条目在本插件（id=`manager-hub`）存在时自动隐藏、缺席时恢复（由那三个插件客户端实现）。本插件被停用时，三个老插件页面作为兜底重新出现。tab 可用性以 plugin-manager /list 的 `enabled` 字段为单一真源——`skill-manager` / `mcp-manager` 被用户在 plugin-manager 里暂停（patch `disabled: true`）时，对应 tab 立即隐藏；恢复启用需**重启 DSH**才重新可见，与子插件启停的"重启后生效"约定一致。
 - **渲染冒烟**：改动后跑 `npm run build:client` + `node --check lib/client.js` + mock 冒烟（`__ModuleLoader__.load` + fake `require("react")` + mock `ctx.slots`）。
 
 ## 四、相关

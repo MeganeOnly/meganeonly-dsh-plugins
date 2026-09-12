@@ -696,24 +696,43 @@ window.__ModuleLoader__.load({
     }
 
     // ===== Hub 页面 =====
+    // 三个子 tab 由 plugin-manager /list 的 enabled 字段统一判定：
+    // - plugin tab 自身依赖 plugin-manager（404 视为 hub 失去支点）
+    // - skill / mcp tab 对应条目 plugin-manager 报告 enabled=false 时隐藏
+    //   （用户可在 plugin-manager 页暂停它们，恢复需重启 DSH——manager-hub
+    //    只显示当前可用入口，行为与子插件反向隐藏 manager-hub 的设置页条目一致）
     function ManagerHubPage() {
       var active = React.useState("plugin");
       var avail = React.useState(null);
       var setActive = active[1];
       var setAvail = avail[1];
 
-      // [perf] 挂载时只探测默认 tab（"plugin"）；其他 tab 切到时再按需探测，
-      // 避免首屏 3 个全量 /list GET——默认 tab 自身 useEffect 已经在拉数据。
-      // 兜底：用户切到某个 tab 时若该 tab 没探测过，再探一次确认是否可用。
       React.useEffect(function () {
-        var defaultTab = TABS[0];
-        fetch(defaultTab.api + "/list")
-          .then(function (res) { setAvail(function (a) { var n = Object.assign({}, a || {}); n[defaultTab.id] = res.status !== 404; return n; }); })
-          .catch(function () { setAvail(function (a) { var n = Object.assign({}, a || {}); n[defaultTab.id] = true; return n; }); });
-        // 其余 tab 乐观显示为可用：用户切到时由子组件 useEffect 拉数据（失败则显示错误）
-        var others = {};
-        for (var i = 1; i < TABS.length; i++) others[TABS[i].id] = true;
-        setAvail(function (a) { return Object.assign({}, a || {}, others); });
+        fetch(API_PLUGIN + "/list")
+          .then(function (res) {
+            // plugin-manager 自身不在（404 / 网络失败）：所有 tab 不可用
+            if (res.status === 404) {
+              setAvail({ plugin: false, skill: false, mcp: false });
+              throw new Error("plugin-manager not available");
+            }
+            return res.json();
+          })
+          .then(function (data) {
+            if (!data || !data.ok || !Array.isArray(data.entries)) throw new Error("invalid list payload");
+            // 把 plugin-manager 列表里三个 id 的 enabled 映射到 avail
+            var next = { plugin: true }; // plugin-manager 存在即 plugin tab 可用
+            for (var i = 0; i < data.entries.length; i++) {
+              var e = data.entries[i];
+              if (!e || typeof e.id !== "string") continue;
+              if (e.id === "skill-manager") next.skill = e.enabled === true;
+              if (e.id === "mcp-manager") next.mcp = e.enabled === true;
+            }
+            setAvail(next);
+          })
+          .catch(function () {
+            // 已设置过的不覆盖（避免被 catch 路径二次重置）
+            setAvail(function (a) { return a !== null ? a : { plugin: false, skill: false, mcp: false }; });
+          });
       }, []);
 
       var views = {
