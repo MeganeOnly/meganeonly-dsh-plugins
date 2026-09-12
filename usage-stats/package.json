@@ -1,6 +1,6 @@
 {
   "name": "dsh-usage-stats",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "author": "MeganeOnly",
   "description": "使用统计：跨会话汇总 token 用量（输入/输出/缓存/推理，模型侧精确值）、多粒度趋势（分钟/小时/日/周）、历史全量日序列 byDayAll（解决超过 30 天空白问题）、按模型分解、会话与工具排行、GitHub 风格 53 周贡献热力图、子代理消耗归并到 root main session。**v0.4.2 修复**：recordsCache 30s TTL 失效——v0.4.0.3 后 DSH 启动后新 session 永远进不了 recordsCache 导致汇总失明；TTL 30s 内复用 listSessions 结果（v0.4.0.3 优化保留），超过 30s 后下一次 summary 自动重新 listSessions 发现新 session。**v0.4.1 客户端**：柱状图每根柱 5 段堆叠（cacheWrite → cacheRead → 未命中 → 输出 → 推理，色温从冷到暖），热力图方格 9×9 + gap 1（密度 +20%）。数据源走 DSH 官方 sessionQuery（zstd 解码 / replay validation 由框架负责，plugin 只在事件流上做业务聚合），增量缓存按 SessionId + createdAt 失效，设置页查看。需要 DSH 0.1.2-rc.1+（含 sessionQuery 服务）。",
   "license": "MIT",
