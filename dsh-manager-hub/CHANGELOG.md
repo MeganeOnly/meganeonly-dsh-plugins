@@ -4,6 +4,20 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 兼容性
+
+- 已对照 DSH v0.1.5-rc.1 源码（`deepseek-ai/deepseek-harness@dsh-v0.1.5-rc.1`，SHA `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`）的破坏性变更清单做兼容性核对，本插件无代码变更：
+  - 仅使用 `ctx.slots.inject("settings.section", ...)` 注册设置页入口（Z0-apply.js + client.js 两处都使用同一 slot），该 slot key 在 v0.1.5-rc.1 源码中**未重命名**（§ 三-5 重命名清单仅涉及 `conversation.*` 系列）。
+  - 本插件仅做 UI 聚合（顶部 tab 切换 + 插件存在性探测），数据源全部下沉到 plugin-manager / skill-manager / mcp-manager 三个子插件，自身不调用 `ctx.agents` / `ctx.session` / `ctx.inbox`。
+- 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.1.2 → 0.1.3）
+
 ## [0.1.2] - 2026-09-06
 
 ### 维护
