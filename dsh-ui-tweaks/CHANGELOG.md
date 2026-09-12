@@ -4,6 +4,32 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.9] - 2026-09-12
+
+### 修复
+
+- **hide-trajectory-tab + hide-chat-tab 全开时空行残留**：v0.10.6 之前 DSH React 自动折叠全部子 tab 被 `display:none` 的 `[role="tablist"]` 容器；DSH v0.1.5-rc.1 移除了这个自动折叠行为，开启两个微调后 tablist 容器留下两个不可见 button 子节点 + 父 `<header>` 的 `min-height: 76px`（DSH `ConversationRoot.module.css` 按"10px top + 30px titleRow + 10px tabstrip margin + 16px tab line + 9px bottom inset = 75px"算的），结果聊天顶部出现一条 76px 高的空白长条。修法（与 v0.10.6 之前的 `:has()` 纯 CSS 方案不同，这次选 JS 主动探测）：
+
+  1. `60-tab-hider.js` `tick()` 末尾新增 `syncTablistCollapseMark()`：扫所有 `[role="tablist"]`，只要其下所有 `[role="tab"]` 都带 `data-dsh-ui-tweaks-hidden-tab`，就给该 tablist 打 `data-dsh-ui-tweaks-collapsed=""`；任一 tab 未标则清除。同时在 `stop()` 末尾也调一次——避免用户同时关掉两个 hider 时残留折叠标记。
+  2. `25-tweaks.js` `hide-trajectory-tab` 与 `hide-chat-tab` 两个 buildCSS 各加两条规则（任一微调开启都让规则进入 CSS，重复无副作用）：
+
+     ```css
+     [data-dsh-ui-tweaks-collapsed]{display:none!important}
+     header:has(> [data-dsh-ui-tweaks-collapsed]){min-height:auto!important}
+     ```
+
+     ——前者 `display:none` 隐藏空 tablist 容器；后者 `:has()` 找到 tablist 的父 `<header>`（DOM 中 `[role="tablist"]` 是 `<header>` 的直接子，见 DSH `ConversationSession.tsx` 的 `{tabs.length > 1 && <div ... role="tablist">...</div>}`）并把它的 `min-height: 76px` 改 `auto`，让 header 缩成只剩 titleRow 的高度（10px top + 30px titleRow = 40px）。Chromium 105+ 原生 `:has()`（DSH Electron 现代版支持，hide-sidebar-tooltip 已用 `body > div:has(...)`）。`:has()` 在这里作用于 `<header>` 自身，不嵌套，更稳。
+
+  选 JS 探测而非纯 CSS `:has()` 嵌套的原因：纯 CSS 方案需要 `header:has(> [role="tablist"]:has([data-dsh-ui-tweaks-hidden-tab]):not(:has([role="tab"]:not([data-dsh-ui-tweaks-hidden-tab]))))`，嵌套 `:has()` + `:not()` 难读；JS 标 `data-dsh-ui-tweaks-collapsed` 后 CSS 只需一行属性 selector + 一行 `:has()` 直接子选择器，可读性 + 选择器复杂度都更优。
+
+### 改动文件
+
+- `lib/client-src/60-tab-hider.js`（新增 `COLLAPSED_TABLIST_ATTR` 常量 + `syncTablistCollapseMark()` 函数 + `tick()` 末尾调一次 + `stop()` 末尾也调一次 + JSDoc 同步到三件事）
+- `lib/client-src/25-tweaks.js`（`hide-trajectory-tab` buildCSS +2 行折叠规则 + `hide-chat-tab` buildCSS +2 行折叠规则 + 顶部注释同步）
+- `lib/client.js`（重新生成，163013 → 165961 bytes，+2948 bytes；含 `syncTablistCollapseMark` 函数 ~1900 bytes + buildCSS 两条新规则 ×2 ~1020 bytes + 其它注释更新）
+- `package.json`（version 0.10.8 → 0.10.9）
+- `CHANGELOG.md`（本段）
+
 ## [0.10.8] - 2026-09-12
 
 ### 修复

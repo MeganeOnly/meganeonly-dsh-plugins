@@ -248,11 +248,19 @@
         //      CSS attribute selector 命中隐藏；如当前停在轨迹（aria-selected="true"）切回对话页。
         //   2) 每个工具调用 row 内的"Inspect"按钮——DSH 渲染 `<button class="*_inspectButton">`，substring
         //      匹配不依赖 hash，DSH 升级换 hash 仍命中。
+        // 3) 两 tab 全隐藏时整行折叠：JS tick() 检测到 tablist 下所有 tab 都标了
+        //    hidden-tab 时给 tablist 打 data-dsh-ui-tweaks-collapsed；CSS 据此
+        //    display:none 隐藏空 tablist 行 + 父 header 的 min-height 改 auto
+        //    （DSH header 默认 76px 是按 titleRow + tablist 算的，tablist 没了
+        //    该缩成只剩 titleRow）。两边 buildCSS 各加一条，任一微调开启都让规则
+        //    进入 CSS；同规则重复无副作用。
         buildCSS: function (state) {
           if (!state.hideTrajectoryTab) return null;
-          return "/* === hide-trajectory-tab : 顶部 tablist 的 \"轨迹\"/\"Trajectory\" 按钮 + 每个工具行的 \"Inspect\" 按钮 === */\n" +
+          return "/* === hide-trajectory-tab : 顶部 tablist 的 \"轨迹\"/\"Trajectory\" 按钮 + 每个工具行的 \"Inspect\" 按钮 + 两 tab 全隐藏时整行折叠 === */\n" +
             "[data-dsh-ui-tweaks-hidden-tab=\"trajectory\"]{display:none!important}\n" +
-            "[class*=\"_inspectButton\"]{display:none!important}";
+            "[class*=\"_inspectButton\"]{display:none!important}\n" +
+            "[data-dsh-ui-tweaks-collapsed]{display:none!important}\n" +
+            "header:has(> [data-dsh-ui-tweaks-collapsed]){min-height:auto!important}";
         }
       },
       {
@@ -261,11 +269,14 @@
         description: "对话顶部\"对话\"标签——开启后和 hide-trajectory-tab 一起把两个标签都关掉，整个 tablist 视觉消失。\"对话\"是默认 view，标签显示它毫无信息量，纯噪音。如果当前正停在轨迹视图会自动切回对话页。",
         configKeys: { enabled: "hideChatTab", value: "hideChatTab" },
         defaults: { enabled: true, value: true },
-        // 和 hide-trajectory-tab 同模式——JS observer 通用 createTabHider 工厂标记 + CSS 命中。
+        // 和 hide-trajectory-tab 同模式——JS observer 通用 createTabHider 工厂标记 + CSS 命中；
+        // 同样挂 tablist 整行折叠规则（任一微调开启都让规则进入 CSS）。
         buildCSS: function (state) {
           if (!state.hideChatTab) return null;
-          return "/* === hide-chat-tab : JS-side MutationObserver 给 \"对话\"/\"Chat\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"chat\"，CSS 命中隐藏 === */\n" +
-            "[data-dsh-ui-tweaks-hidden-tab=\"chat\"]{display:none!important}";
+          return "/* === hide-chat-tab : JS-side MutationObserver 给 \"对话\"/\"Chat\" 按钮打 data-dsh-ui-tweaks-hidden-tab=\"chat\"，CSS 命中隐藏；两 tab 全隐藏时整行折叠 === */\n" +
+            "[data-dsh-ui-tweaks-hidden-tab=\"chat\"]{display:none!important}\n" +
+            "[data-dsh-ui-tweaks-collapsed]{display:none!important}\n" +
+            "header:has(> [data-dsh-ui-tweaks-collapsed]){min-height:auto!important}";
         }
       },
       {

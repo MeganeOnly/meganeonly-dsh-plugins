@@ -15,6 +15,7 @@
     var TRAJECTORY_TAB_LABELS = ["轨迹", "Trajectory"];
     var CHAT_TAB_LABELS = ["对话", "Chat"];
     var HIDDEN_TAB_ATTR = "data-dsh-ui-tweaks-hidden-tab";
+    var COLLAPSED_TABLIST_ATTR = "data-dsh-ui-tweaks-collapsed";
 
     function findTabButtonByLabels(labels) {
       if (typeof document === "undefined") return null;
@@ -29,11 +30,43 @@
     }
 
     /**
-     * 通用 tab hider。两件事：
+     * 同步 tablist 折叠标记——所有 tab 都被打上 HIDDEN_TAB_ATTR 时给 tablist 也打
+     * COLLAPSED_TABLIST_ATTR=""; 否则清除该标记。CSS 据此 display:none 隐藏空 tablist
+     * 并把父 <header> 的 min-height 缩到 auto（DSH header 默认 76px 是按
+     * titleRow + tablist 算的，tablist 没了该缩成只剩 titleRow）。
+     *
+     * tick() 每跑一次都同步一次：DSH React 重渲可能重建 tablist 节点（mutation observer
+     * 也会触发另一个 hider 的 tick），不带 incremental 状态、单次扫全部 tablists 即可。
+     */
+    function syncTablistCollapseMark() {
+      if (typeof document === "undefined") return;
+      var tablists = document.querySelectorAll('[role="tablist"]');
+      for (var i = 0; i < tablists.length; i++) {
+        var tablist = tablists[i];
+        var tabs = tablist.querySelectorAll('[role="tab"]');
+        var allMarked = tabs.length > 0;
+        for (var j = 0; j < tabs.length; j++) {
+          if (!tabs[j].hasAttribute(HIDDEN_TAB_ATTR)) {
+            allMarked = false;
+            break;
+          }
+        }
+        if (allMarked) {
+          tablist.setAttribute(COLLAPSED_TABLIST_ATTR, "");
+        } else {
+          tablist.removeAttribute(COLLAPSED_TABLIST_ATTR);
+        }
+      }
+    }
+
+    /**
+     * 通用 tab hider。三件事：
      *   1) 给 target 按钮打 data-dsh-ui-tweaks-hidden-tab=<hiddenValue> 标记，CSS 命中隐藏
      *   2) 若 safe 自身没被另一 hider 隐藏，确保它始终 aria-selected="true"（即使按钮
      *      被 CSS display:none，程序 click 仍能触发 React 的 setView）。两 tab 都隐藏时
      *      跳过——双方 safe 都已被对方标 hidden-tab，强制会互相 ping-pong。
+     *   3) 同步 tablist 折叠标记：所有 tab 都标 hidden 时给 tablist 打 data-dsh-ui-tweaks-
+     *      collapsed，CSS 据此折叠空 tablist 行 + 缩父 header 的 min-height。
      */
     function createTabHider(opts) {
       var observer = null;
@@ -56,6 +89,9 @@
             safe.getAttribute("aria-selected") !== "true") {
           if (typeof safe.click === "function") safe.click();
         }
+
+        // 3) 同步 tablist 折叠标记
+        syncTablistCollapseMark();
       }
 
       function start() {
@@ -94,6 +130,9 @@
           for (var i = 0; i < marked.length; i++) {
             marked[i].removeAttribute(HIDDEN_TAB_ATTR);
           }
+          // 同步 tablist 折叠标记（用户关掉当前 hider 后剩下另一个 hider 可能还在跑
+          // 也会触发 tick，但 stop 触发时这是更直接的兜底——避免两边都停时残留折叠标记）
+          syncTablistCollapseMark();
         }
       }
 
