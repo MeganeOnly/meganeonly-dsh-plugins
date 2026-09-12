@@ -4,6 +4,21 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 兼容性
+
+- 已对照 DSH v0.1.5-rc.1 源码（`deepseek-ai/deepseek-harness@dsh-v0.1.5-rc.1`，SHA `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`）的破坏性变更清单做兼容性核对，本插件无代码变更：
+  - 客户端 FAB / 抽屉 slot `conversation.input.dock` 在 v0.1.5-rc.1 源码中**未重命名**（§ 三-5 重命名清单仅是 release notes 提示，源码实际保留原 key），FAB / 抽屉注册照旧。
+  - 数据持久化走 `localStorage`（key `dsh.taskPool.v1`）+ 自管 UI 状态，不依赖 DSH agent / session / inbox 运行时 API。
+  - 不涉及 `ctx.agents` / `ctx.session` / `ctx.subprocess` 字段访问，`§ 三` 全部 14 项清单均不命中。
+- 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.6.2 → 0.6.3）
+
 ## [0.6.2] - 2026-09-04
 
 ### 注释精简
