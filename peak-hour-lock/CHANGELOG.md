@@ -4,6 +4,22 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 兼容性
+
+- 已对照 DSH v0.1.5-rc.1 源码（`deepseek-ai/deepseek-harness@dsh-v0.1.5-rc.1`，SHA `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`）的破坏性变更清单做兼容性核对，本插件无代码变更：
+  - `ctx.agents.resume({ resumeSessionId })` 返回值仍为 `AgentHandle`，`AgentHandle.agent` 公共字段保留（L268 `handle.agent` 不受影响）。
+  - `ctx.agents.get(sessionId)` 返回 `Agent | undefined`，裸 `Agent` 对象的 `.followup(message)` 公共方法保留（L280 `agent.followup(entry.message)` 不受影响）。
+  - `agent/pre-step` payload 顶层仍含 `agent: Agent`、`messages`、`turn`、`step`、`signal`，`payload.agent.id` / `payload.agent?.options` 仍可访问（L292 / L293 / L296 不受影响）。
+  - slot key `conversation.input.dock` 未重命名（注册位置 `packages/client/ui-conversation/src/client/apply.ts`），客户端 status line slot 注册不受影响。
+- 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.3.4 → 0.3.5）
+
 ## [0.3.4] - 2026-09-08
 
 ### 维护
