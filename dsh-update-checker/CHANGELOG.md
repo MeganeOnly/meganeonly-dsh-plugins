@@ -4,6 +4,21 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 兼容性
+
+- 已对照 DSH v0.1.5-rc.1 源码（`deepseek-ai/deepseek-harness@dsh-v0.1.5-rc.1`，SHA `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`）的破坏性变更清单做兼容性核对，本插件无代码变更：
+  - 仅使用 `ctx.slots.inject("settings.section", ...)` 注册设置页入口，该 slot key 在 v0.1.5-rc.1 源码中**未重命名**（§ 三-5 重命名清单仅涉及 `conversation.*` 系列）。
+  - npm registry 接口 + `npm install -g @deepseek-ai/dsh@latest` 升级流程与 DSH 内核 API 解耦——`§ 三` 全部 14 项清单均不命中。
+- 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
+- 注：v0.1.5-rc.1 是 release candidate，发布到正式版前本插件可能再发一版跟踪版本切换。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.1.4 → 0.1.5）
+
 ## [0.1.4] - 2026-09-05
 
 ### 变更
