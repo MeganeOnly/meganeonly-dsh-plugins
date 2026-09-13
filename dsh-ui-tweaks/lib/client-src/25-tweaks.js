@@ -388,7 +388,7 @@
       {
         id: "stats-line-position",
         name: "统计行位置",
-        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文；顶部镜像里的按钮可点击，转发到底部打开详情对话框——与底部同源同数据）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
+        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文；v0.10.11 起两个 pill 之间恢复 12px gap，视觉与底部原生行对齐；顶部镜像里的按钮可点击，详情对话框从镜像按钮下方弹出——与底部同源同数据，但位置跟随顶部镜像而非底部隐藏的原生按钮，滚动时对话框跟随镜像 button 一起移动）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
         choices: [
           { value: STATS_POS_BOTTOM, label: "底部（DSH 默认）" },
           { value: STATS_POS_TOP, label: "顶部标题右侧" },
@@ -412,6 +412,13 @@
           // 宽度稳定。`<span class="..._sep">` 是从原生行克隆来的——DSH 自己的 _sep 规则继续生效。
           return css + "\n" +
             "[" + STATS_MIRROR_ATTR + "]{" +
+              // v0.10.11：镜像自己也声明 display:inline-flex + gap:12px——原 DSH
+              // `bOPqQW_root` 的 gap 在底部隐藏的 source 节点上，cloneNode 只搬子节点
+              // 不会把它带过来；没有这条规则时两个 pill 的 anchor span 作为默认 inline 元素
+              // 紧贴在一起。align-items:center 让两个 pill 垂直居中对齐。
+              "display:inline-flex;" +
+              "align-items:center;" +
+              "gap:12px;" +
               "flex:0 1 auto;" +
               "min-width:0;" +
               "overflow:hidden;" +

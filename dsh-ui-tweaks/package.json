@@ -1,8 +1,8 @@
 {
   "name": "dsh-ui-tweaks",
-  "version": "0.10.10",
+  "version": "0.10.11",
   "author": "MeganeOnly",
-  "description": "DSH 外观设计微调合集：对话右缩 / 简洁模式（隐藏思考与工具调用，状态行代替）/ 侧栏背景与对话一致 / 隐藏侧栏悬浮提示 / 隐藏轨迹 / 对话标签 / 折叠块末尾收起按钮 / 上一条我发的消息按钮（Shift+点击 = 回到最早）/ 统计行位置（底部 / 顶部标题右侧——镜像可点击转发底部详情 / 隐藏）。所有 tweak 持久化到 localStorage，零 DSH 内部依赖，行为完全可热切。版本历程见 CHANGELOG.md。",
+  "description": "DSH 外观设计微调合集：对话右缩 / 简洁模式（隐藏思考与工具调用，状态行代替）/ 侧栏背景与对话一致 / 隐藏侧栏悬浮提示 / 隐藏轨迹 / 对话标签 / 折叠块末尾收起按钮 / 上一条我发的消息按钮（Shift+点击 = 回到最早）/ 统计行位置（底部 / 顶部标题右侧——镜像两个 pill 之间 12px gap，详情对话框从镜像按钮下方弹出、跟随滚动 / 隐藏）。所有 tweak 持久化到 localStorage，零 DSH 内部依赖，行为完全可热切。版本历程见 CHANGELOG.md。",
   "license": "MIT",
   "repository": {
     "type": "git",

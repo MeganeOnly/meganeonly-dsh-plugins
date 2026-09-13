@@ -4,6 +4,39 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.11] - 2026-09-12
+
+### 修复
+
+- **`stats-line-position` 顶部镜像两点修复**：
+  - **（1）两个 pill 之间补 12px gap**：用户反馈"将统计行位置设为顶部标题右侧时，两个部分靠得太近"——DSH `StatsPills` 的 `<div class="bOPqQW_root">` 用 `display:flex; gap:12px` 包 TimePill + UsagePill 两个 `<span class="bOPqQW_anchor">`；`statsSyncMirror` 用 `cloneNode(true)` 克隆 source 但**只搬子节点到镜像**，原 `gap:12px` 留在底部隐藏的 source 节点上没搬过来；镜像 CSS 之前只有 `flex:0 1 auto`，没有 `display:flex/gap`，所以两个 anchor span 作为默认 inline 元素紧贴在一起、0 间距。修法：镜像 CSS 声明 `display:inline-flex; align-items:center; gap:12px`（与底部 `.bOPqQW_root` 对齐）。`display:inline-flex` 不影响镜像在 titleCluster（外层 flex）里的 flex item 角色——titleCluster 自身的 `gap:10px` 控制它自己子项间距，镜像的 `gap:12px` 控制镜像内部子项间距，互不干扰。
+  - **（2）详情对话框从顶部镜像按钮下方弹出，而非底部**：用户反馈"点击后出现的信息的位置，是在底部时候出现的位置，而不是一个更恰当的位置"——v0.10.10 的 click 转发器把镜像 button 的点击转发到底部隐藏 button，触发 React `setOpenPill` → `createPortal` 把详情对话框渲染到 body，但 DSH `useAnchoredPosition` 把 dialog 锚定到底部隐藏 button 的 `.anchor` span → 用户明明点的是顶部镜像，dialog 却弹在底部。重写 DSH StatsPills React 组件超出本插件触及范围，后置拦截（70 行新代码，分三个文件改动）：
+    1. **`statsSyncMirror` click 转发器**（`69-stats-line-position.js`）：转发前记下镜像 button 的 rect 闭包到模块级 `statsPendingMirrorAnchor = { getRect: () => btn.getBoundingClientRect() }`，同时调 `statsEnsureDialogObserver()` 懒初始化 body MutationObserver。
+    2. **`statsEnsureDialogObserver`**（`69-stats-line-position.js`）：body 级 `MutationObserver`，watch `childList: true, subtree: false`（不递归，避免被 DSH 其它对话 list 触发）。回调 `statsOnBodyMutation` 检测 addedNodes 中 `[role="dialog"]`（包括节点自身是 dialog 或包含 dialog 子节点），首次出现且 `statsPendingMirrorAnchor` 设上时接管：调 `statsApplyDialogPosition(dialog, rect)` 用 `setProperty('left'/'top', ..., 'important')` 把位置改到镜像 button 下方（PANEL_GAP=8、viewport margin=12 与 DSH `useAnchoredPosition` 的 `PANEL_GAP`/`PANEL_MARGIN` 常量对齐），然后挂 `statsWatchDialogPosition` 持续监听，并单次消费 `statsPendingMirrorAnchor = null`（避免后续其它 dialog 被误接管）。observer 是全局单例，跨 controller start/stop 保留，重复调幂等。
+    3. **`statsWatchDialogPosition(dialog, getRect)`**（`69-stats-line-position.js`）：给 dialog 挂两个 watcher——(a) 属性 observer `attributes: true, attributeFilter: ['style']`，DSH useAnchoredPosition 在 resize / scroll 时通过 React state 重设 panel 的 `style.left/top`，属性 observer 每次 React 改 style 后立即用 `!important` 覆盖回去；(b) window scroll 监听（capture 阶段），每次滚动重取镜像 button 的最新 viewport rect，dialog 跟着偏移保持"按钮下方"。两 watcher 都用 `dialog.isConnected` 检查自动 disconnect + removeEventListener——用户点外部 / Esc 关闭 dialog 时 dialog 被 React 移除，listener 立即清理，无泄漏。
+    4. **`statsClearPendingAnchor`**（`69-stats-line-position.js`）：controller 切到 bottom/hidden 时调，清掉残留 pending 状态——切走之后镜像已移除，不应再让 observer 接管后续 dialog。
+    5. **`createStatsLinePositionController.sync(position)`**（`69-stats-line-position.js`）：位置为 top 时先调 `statsEnsureDialogObserver()` 再 `start()`；非 top 时先调 `statsClearPendingAnchor()` 再 `stop()`。
+  - **`!important` vs React inline style**：React 用 `element.style.left = X` 设的是普通优先级，`setProperty('left', X, 'important')` 是 inline `!important`，按 CSS 优先级规则后者胜出——所以 React `useAnchoredPosition` 的每次重渲染都会被我们的属性 observer 立即覆盖回去，dialog 始终停在镜像 button 下方。
+  - **兼容性**：
+    - bottom / hidden 模式：镜像元素不存在，CSS gap 规则不输出（只在 top 时输出），`statsPendingMirrorAnchor` 永不设，observer 永不接管——行为与 v0.10.10 完全一致。
+    - 老 DSH（StatsLine 纯文本，无 button）：click 转发器 `clonedButtons` 是空 NodeList、循环 0 次、不挂 listener、不设 pending，CSS gap 仍输出但对单文本节点无可见差异——零回归。
+    - DSH 升级换 hash：`[role="dialog"]` 是 HTML 稳定属性，与 DSH CSS module hash 无关；镜像 / dock / header.actions 三个 slot key 已在 v0.10.7 核对 DSH v0.1.5-rc.1 源码未重命名。
+    - 性能：body observer 只在 dialog 添加/移除时触发（极低频）；dialog 属性 observer 只 watch 单个 dialog 的 style 属性（microtask 内自清理）；window scroll 监听只在 dialog 打开期间活跃（短时段，dialog 关闭自动 removeEventListener）。
+  - **诊断**：
+    - 在 DSH 内点顶部镜像的 TimePill → 详情对话框出现在镜像按钮下方（不再是底部），左对齐镜像 button。
+    - 滚动对话 → 对话框跟随镜像 button 一起移动，保持"按钮下方"位置。
+    - 点 UsagePill → 切换到 token 用量详情对话框，位置同样对齐 UsagePill 镜像 button。
+    - 点对话框外部 / 按 Esc → 对话框关闭，镜像正常显示（无残留 listener）。
+    - 切回「底部」→ 镜像元素消失，原生行重新显示，行为与 v0.10.10 完全一致。
+    - 控制台 `window.__dshUiTweaks.statsLinePosition()` 仍返回 `{position:'top', running:true, sourceFound:true, titleClusterFound:true, mirrorMounted:true}`（诊断 API 不变）。
+  - **改动文件**：
+    - `lib/client-src/69-stats-line-position.js`（header 注释加 v0.10.11 段 + `statsSyncMirror` JSDoc 加 v0.10.11 段 + click 转发器记 pendingAnchor + 新增模块级状态 `statsPendingMirrorAnchor` / `statsDialogObserver` / `statsDialogWatchers` + 新增 5 个函数 `statsApplyDialogPosition` / `statsWatchDialogPosition` / `statsOnBodyMutation` / `statsEnsureDialogObserver` / `statsClearPendingAnchor` + `createStatsLinePositionController` 的 `sync` 改 + `controller` JSDoc 加 v0.10.11 段）
+    - `lib/client-src/25-tweaks.js`（`stats-line-position` `description` 加"v0.10.11 起两个 pill 之间恢复 12px gap" + "详情对话框从镜像按钮下方弹出、跟随滚动" + `buildCSS` 镜像规则 +3 条属性：`display:inline-flex` / `align-items:center` / `gap:12px` + 注释同步）
+    - `lib/client-src/20-constants.js`（VERSION 0.10.10 → 0.10.11）
+    - `package.json`（version 0.10.10 → 0.10.11 + description 同步"镜像两个 pill 之间 12px gap，详情对话框从镜像按钮下方弹出、跟随滚动"）
+    - `CHANGELOG.md`（本段）
+    - `lib/client.js`（重新生成；预计 +800 bytes 含 5 个新函数 + 注释 + CSS +3 属性）
+
 ## [0.10.10] - 2026-09-12
 
 ### 修复
