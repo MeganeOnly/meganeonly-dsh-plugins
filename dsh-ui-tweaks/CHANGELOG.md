@@ -4,6 +4,36 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.12] - 2026-09-13
+
+### 修复
+
+- **`simple-mode` 不再吞掉错误信息**：用户反馈「`本轮运行失败400: {"message":"Invalid request parameters. (request_id: ...)","type":"invalid_request_error","param":null,"code":"10013"}` 这类信息被简洁模式隐藏了，看不到排查线索」。根因：`25-tweaks.js` 的 `simple-mode` `buildCSS` 把 `[data-chat-flow-kind="turn-error"]` 也 `display:none` ——DSH 把 API 失败渲染成 `turn-error` 节点（标题前缀「本轮运行失败」+ 状态码 + 完整 JSON），隐藏后用户看不到 HTTP 错误体、request_id、错误码这些最关键的排查信息。修法：从 simple-mode 隐藏列表里移除 `[data-chat-flow-kind="turn-error"]`，CSS 注释里说明「v0.10.12 起 turn-error 保留显示」，同时把注释掉的 selector 留在原位作历史档案（git blame 能直接看到这是 v0.10.12 故意保留的）。`turn-max-tokens`（模型达到 token 上限提示）用户未提及，行为不变，仍隐藏。
+- **`simple-mode` description 同步更新**：明示「错误信息（API 失败 / 4xx 5xx / 超时等，DSH 渲染为 `[data-chat-flow-kind="turn-error"]`）保留可见」——避免下次有人误把它加回隐藏列表。
+- **`README.md` / `package.json` description 同步**：简洁模式行的说明加粗「错误信息保留可见」，与 25-tweaks.js description 对齐。
+
+### 兼容性
+
+- 行为兼容性：仅影响 `[data-chat-flow-kind="turn-error"]` 一个选择器——开启 simple-mode 时错误信息从「完全隐藏」变「完全可见」。其它隐藏规则（tool-call / context / think / compaction / manual-compaction / model-retry / turn-max-tokens）行为不变。
+- 选择器兼容性：与 v0.10.7 已核对的 DSH v0.1.5-rc.1 源码 selector 列表完全一致——`turn-error` 仍是 DSH `data-chat-flow-kind` 的合法 kind。
+- localStorage / slot key / 调试 API：零变化。
+
+### 诊断
+
+- 触发 API 错误（如把请求参数搞坏让 LLM 拒绝）→ 对话区显示一条红色错误节点：`本轮运行失败400: {完整 JSON}`。
+- 关闭 simple-mode：节点仍可见（行为未变）。
+- 开启 simple-mode（默认）：节点也可见（v0.10.12 新行为）。
+- DevTools 控制台 `window.__dshUiTweaks.getInjectedCSS()` 应能看到生成的 CSS 里**不包含** `[data-chat-flow-kind="turn-error"]`（保留为注释，不输出）。
+
+### 改动文件
+
+- `lib/client-src/25-tweaks.js`（`simple-mode` buildCSS：从隐藏列表移除 `[data-chat-flow-kind="turn-error"]`，CSS 注释 + 防御性 layout zero 注释同步更新，selector 位置用注释 `// '...[data-chat-flow-kind="turn-error"],' +` 保留作历史档案）
+- `lib/client-src/20-constants.js`（VERSION 0.10.11 → 0.10.12）
+- `package.json`（version 0.10.11 → 0.10.12，description 加「v0.10.12 起错误信息保留显示」）
+- `README.md`（simple-mode 行说明加粗「错误信息保留可见」+ 加 DSH 渲染属性锚点）
+- `CHANGELOG.md`（本段）
+- `lib/client.js`（重新生成；HEAD v0.10.11 bundle 历史遗留 GBK-当-UTF-8 双重编码损坏——多字节中文乱码每字膨胀到 6-9 字节，HEAD 实际 146615 bytes 但解码后比干净 UTF-8 少很多内容。本次 build 输出干净 UTF-8 = 180844 bytes；语义增量仅约 +200 bytes：1 行 selector 删除 + 几行 JS / CSS / description 注释。其余 +34 KB 是「中文 mojibake → 正确 UTF-8」的偶发清理——按 `safe-text-file-editing-on-windows` skill 描述的 PowerShell 写入 UTF-8 双重损坏现象，本次 build 顺手修正。运行 `npm run build:client` + `node --check lib/client.js` 验证通过）
+
 ## [0.10.11] - 2026-09-12
 
 ### 修复

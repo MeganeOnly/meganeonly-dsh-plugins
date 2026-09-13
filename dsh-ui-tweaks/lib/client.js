@@ -43,7 +43,7 @@ window.__ModuleLoader__.load({
 
     // ===== constants =====
         // 版本号与各 tweak 引入历程见 `CHANGELOG.md`；本文件不重复 changelog 内容。
-        var VERSION = "0.10.11";
+        var VERSION = "0.10.12";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -152,24 +152,27 @@ window.__ModuleLoader__.load({
       {
         id: "simple-mode",
         name: "简洁模式",
-        description: "隐藏思考与工具调用过程，只在输入框上方显示一条极简状态行（正在思考…/正在阅读…/正在执行命令…）。",
+        description: "隐藏思考与工具调用过程，只在输入框上方显示一条极简状态行（正在思考…/正在阅读…/正在执行命令…）。错误信息（API 失败 / 4xx 5xx / 超时等，DSH 渲染为 [data-chat-flow-kind='turn-error']）**保留可见**——这些是排查问题必须的信号，隐藏后用户看不到失败原因。",
         // 仅开关型 tweak：enabled 和 value 复用同一 key；TweakRow 通过 k2===k1 检测不渲染数字框。
         configKeys: { enabled: "simpleModeEnabled", value: "simpleModeEnabled" },
         defaults: { enabled: true, value: true },
         buildCSS: function (state) {
           if (!state.simpleModeEnabled) return null;
-          return "/* === simple-mode : hide tool-call / context / think / process rows === */\n" +
+          return "/* === simple-mode : hide tool-call / context / think / process rows（turn-error 保留显示——v0.10.12 起） === */\n" +
             // 防御性 layout zero：`display:none` 在 CSS Grid / VirtualList / parent inline min-height
             // 等 layout context 下不一定让元素彻底不占布局空间（用户反馈"间距时大时小"），
             // 把 height / min-height / max-height / margin / padding / border / flex / grid-area
             // 显式归零确保任何 context 下都不留残余高度。
+            // turn-error（DSH 渲染 API 失败行的节点）v0.10.12 起从隐藏列表移除——
+            // 用户反馈「本轮运行失败400: {...}」这类信息被吞掉就看不到排查线索。
             '[data-chat-flow-kind="tool-call"],' +
             '[data-chat-flow-kind="context"],' +
             '[data-variant="think"],' +
             '[data-chat-flow-kind="compaction"],' +
             '[data-chat-flow-kind="manual-compaction"],' +
             '[data-chat-flow-kind="model-retry"],' +
-            '[data-chat-flow-kind="turn-error"],' +
+            // turn-error 故意保留显示——见 description。
+            // '[data-chat-flow-kind="turn-error"],' +
             '[data-chat-flow-kind="turn-max-tokens"]{' +
               "display:none !important;" +
               "height:0 !important;" +
