@@ -4,6 +4,41 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.10] - 2026-09-12
+
+### 修复
+
+- **`stats-line-position` 顶部镜像适配 DSH StatsPills 的双 pill + 详情对话框**：用户反馈"dsh 更新之后底部的会话统计和 token 用量变得可以点击了，我的插件界面微调的『统计行位置』设置在顶部时，不能正确的出现在底部时候会出现的相关信息"。
+  - **根因**：DSH 把底部的 `StatsLine` 升级为 `StatsPills`，渲染结构从纯文本 `<span>` 变成两个交互式 `<button aria-haspopup="dialog">`（TimePill + UsagePill），每个 button 都挂 React `onClick` 切换 `useState('openPill')`，通过 `createPortal(..., document.body)` + `useAnchoredPosition` 把详情对话框（TimePill → LLM/工具耗时/TTFT/速度；UsagePill → 缓存命中%/输入/缓存读/缓存写/输出）渲染到 body 并锚定到原 button 的 `.anchor` span。本插件 v0.10.0 用 `cloneNode(true)` 把 dock root 子节点搬进顶部镜像——`cloneNode` 只复制 DOM 结构 + 属性，**不复制 React listener**、**不复制 React fiber**；克隆出来的 button 是"哑"的：图标 + 文本能显示，但点不出详情对话框，"相关信息"自然就出不来。
+  - **修法（三处）**：
+    1. **`statsSyncMirror` 给克隆 button 挂 click 转发器**（`69-stats-line-position.js`）：遍历克隆出来的所有 `<button>`，按索引挂 listener——点击镜像 button → `e.preventDefault()` + `e.stopPropagation()`（克隆 button 不在 React 树里，两个 stop 是防 listener 之间互相冒泡，不是防 React），然后在 dock 里**实时查**对应索引的原生 button 调 `.click()`，触发 React onClick → openPill 切换 → dialog portal render。索引在闭包里用 `idx` 变量；点击时实时查 dock 是因为 DSH 重渲染后闭包捕获的 button 节点可能已卸，老引用 `.click()` React 不一定接得到。React 渲染顺序（TimePill 先、UsagePill 后）稳定，索引一一对应。
+    2. **`buildCSS` 加镜像 button reset 规则**（`25-tweaks.js`）：克隆 button 默认带浏览器原生样式（background/border/padding/font/color/cursor），必须 reset 到镜像自己的"紧凑 inline-flex + 纯文本"风格。两条规则——主体 reset + focus-visible 给键盘用户 outline 提示（鼠标点击不显示避免标题行噪声）：
+       ```css
+       [data-dsh-ui-tweaks-stats-mirror] button {
+         display:inline-flex; align-items:center; gap:4px;
+         background:transparent; border:0; padding:0; margin:0;
+         font:inherit; color:inherit; cursor:pointer;
+       }
+       [data-dsh-ui-tweaks-stats-mirror] button:focus-visible {
+         outline:1px solid currentColor; outline-offset:2px; border-radius:2px;
+       }
+       ```
+       选择器 `[data-dsh-ui-tweaks-stats-mirror] button` 特异性 (0,1,1) 高于 DSH `.css_pill` (0,1,0)，不需要 `!important`。底部 dock 在 `[data-slot="conversation.composer.dock"]` 出口里、不在镜像里，两条选择器无交集——reset 只作用于镜像 button，不污染底部。
+    3. **`description` 补一句"顶部镜像按钮可点击，转发到底部打开详情对话框"**（`25-tweaks.js`）：让用户知道现在顶部镜像的 button 是可点的，且与底部同源同数据。
+  - **对话框为什么开在底部而不是顶部**：DSH `useAnchoredPosition` 把 dialog 锚定到原 pill 的 `rootRef`（也就是底部 button 的 `.anchor` span），state 由底部 `StatsPills` 组件的 React useState 持有——重写锚点等于重写 StatsPills 的 React 组件，超出本插件可触及范围。click 转发让用户**看到**详情（与底部信息完全一致），只是位置仍在底部；这是 v0.10.10 的合理边界。
+  - **兼容性**：
+    - 老 DSH（StatsLine 纯文本，无 button）：`source.querySelectorAll("button")` 返回空 NodeList，循环 0 次，cloneNode 路径与 v0.10.0 行为完全一致——零回归。
+    - `display:none` vs `visibility:hidden` 不变（v0.10.1 决定）：底部 dock 仍 `visibility:hidden` 保留 24px composer footer 占位。click 转发的目标 button 在隐藏 dock 内仍参与 layout（visibility:hidden 不脱离 layout），`getBoundingClientRect` 返回真实坐标，React state 切换正常，dialog portal `useAnchoredPosition` 正常锚定。
+    - tweak id `stats-line-position` / localStorage key `statsLinePosition` / `choices` / `<select class="DTPD_select">` / `STATS_MIRROR_ATTR` / 标题簇定位 / 400ms 轮询节奏 / 镜像创建与清理 / 调试 API / 状态事件总线：全部不动；只改镜像"克隆后的内容处理" + 镜像 CSS + 顶部位置时的镜像 button 样式。
+    - DSH 升级换 hash：`css.pill` 类名变了仍命中（`[class*="_pill"]` 隐式命中不变，DCS CSS module `<hash>_<name>` 约定保留）；镜像选择器 `[data-dsh-ui-tweaks-stats-mirror]` 是本插件自己加的属性，与 DSH hash 无关。
+  - **诊断**：
+    - 浏览器 DevTools inspect 顶部标题行右侧的镜像容器 `[data-dsh-ui-tweaks-stats-mirror]`：里面有 1 或 2 个 `<button>`（视 StatsPills 渲染了 TimePill / UsagePill 哪个/哪些），button 文本与底部原生 StatsPills 完全一致（"3 轮 · 45 步 · 71 tok/s" + "3.6M tok · 96%"）；button 内的 SVG 图标（IconGaugeOutline16 / IconDatabaseOutline16）大小与底部一致。
+    - Computed 面板：镜像 button 的 `background` 是 `transparent`（v0.10.10 起）、`border` 是 `0`、padding/margin 归零、display 是 `inline-flex`、`gap` 是 `4px`、`color` 与 `font-size` 继承自镜像容器（`var(--dsw-alias-label-tertiary)` / `12px`）。
+    - 点击镜像 TimePill button → 控制台能看到 React onClick 调用 `setOpen(true)`（或 openPill 切换），body 末尾出现 `<div role="dialog" aria-label="...">` 详情面板——LLM time / tool time / TTFT / speed 四行 dl；点击 UsagePill button 同样打开"缓存命中% / 输入 / 缓存读 / 缓存写 / 输出"五行 dl。
+    - 控制台 `window.__dshUiTweaks.statsLinePosition()` 返回 `{position:'top', running:true, sourceFound:true, titleClusterFound:true, mirrorMounted:true}`。
+    - 老 DSH（StatsLine）实测：镜像仍是纯文本 span，与 v0.10.0 行为一致。
+  - **改动文件**：`lib/client-src/69-stats-line-position.js`（`statsSyncMirror` 末尾挂 click 转发器 + JSDoc 加 v0.10.10 段说明 StatsPills 结构 + cloneNode 不复制 listener 的根因）；`lib/client-src/25-tweaks.js`（stats-line-position `description` 补"镜像按钮可点击转发底部详情" + `buildCSS` 加两条镜像 button reset 规则 + 注释同步）；`lib/client-src/20-constants.js`（VERSION 0.10.9 → 0.10.10）；`package.json`（version 0.10.9 → 0.10.10 + description 同步）；`CHANGELOG.md`（本段）；走 `npm run build:client` + `npm run verify:client` + `node --check lib/client.js` 验证。
+
 ## [0.10.9] - 2026-09-12
 
 ### 修复

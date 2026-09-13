@@ -43,7 +43,7 @@ window.__ModuleLoader__.load({
 
     // ===== constants =====
         // 版本号与各 tweak 引入历程见 `CHANGELOG.md`；本文件不重复 changelog 内容。
-        var VERSION = "0.10.6";
+        var VERSION = "0.10.10";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -497,7 +497,7 @@ window.__ModuleLoader__.load({
       {
         id: "stats-line-position",
         name: "统计行位置",
-        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
+        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文；顶部镜像里的按钮可点击，转发到底部打开详情对话框——与底部同源同数据）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
         choices: [
           { value: STATS_POS_BOTTOM, label: "底部（DSH 默认）" },
           { value: STATS_POS_TOP, label: "顶部标题右侧" },
@@ -513,7 +513,7 @@ window.__ModuleLoader__.load({
           // 两条选择器：出口自身 + 后代——visibility 本身是继承属性，但后代那条是显式兜底
           // 防 DSH 后续给统计行自己写 visibility 覆盖。!important 必需：出口的 display:contents
           // 是 inline style，普通样式表规则压不过它（同规则组保持一致强度）。
-          var css = "/* === stats-line-position : " + pos + " —— 隐藏底部 composer.dock 出口（唯一占位者 = DSH StatsLine）；visibility 保留占位 === */\n" +
+          var css = "/* === stats-line-position : " + pos + " —— 隐藏底部 composer.dock 出口（唯一占位者 = DSH StatsPills = TimePill + UsagePill）；visibility 保留占位 === */\n" +
             STATS_DOCK_SEL + "," + STATS_DOCK_SEL + " *{visibility:hidden !important;}";
           if (pos !== STATS_POS_TOP) return css;
           // 顶部镜像外观：跟着标题簇的 flex 流排在"模式"标签右边（titleCluster 自带 gap:10px，
@@ -532,7 +532,29 @@ window.__ModuleLoader__.load({
               "font-variant-numeric:tabular-nums;" +
               "cursor:default;" +
             "}\n" +
-            // 新会话开局 StatsLine 返回 null → 镜像为空——连同 titleCluster 的 gap 一起去掉，不留可疑空隙
+            // v0.10.10：DSH StatsPills 把 pill 渲染成 `<button>`，默认浏览器会给 button 加
+            // background / border / padding / font——必须 reset 到镜像自己的"紧凑 inline-flex
+            // + 纯文本"风格。`[data-dsh-ui-tweaks-stats-mirror] button` 特异性 (0,1,1) 高于
+            // DSH `.css_pill` (0,1,0)，不需要 !important。focus-visible 给键盘用户一个 outline
+            // 提示（鼠标点击不显示，避免在标题行噪声）。
+            "[" + STATS_MIRROR_ATTR + "] button{" +
+              "display:inline-flex;" +
+              "align-items:center;" +
+              "gap:4px;" +
+              "background:transparent;" +
+              "border:0;" +
+              "padding:0;" +
+              "margin:0;" +
+              "font:inherit;" +
+              "color:inherit;" +
+              "cursor:pointer;" +
+            "}\n" +
+            "[" + STATS_MIRROR_ATTR + "] button:focus-visible{" +
+              "outline:1px solid currentColor;" +
+              "outline-offset:2px;" +
+              "border-radius:2px;" +
+            "}\n" +
+            // 新会话开局 StatsPills 返回 null → 镜像为空——连同 titleCluster 的 gap 一起去掉，不留可疑空隙
             "[" + STATS_MIRROR_ATTR + "]:empty{display:none;}";
         }
       }
@@ -2793,14 +2815,41 @@ window.__ModuleLoader__.load({
      *     镜像自身的 mutation 触发别的观察者）。用 `title` 同时兼作
      *     "上次内容"缓存与鼠标悬停时的完整内容 tooltip（标题行窄，
      *     镜像会 ellipsis 截断）。
+     *   - v0.10.10：DSH StatsPills 把两个 pill（TimePill + UsagePill）渲染成
+     *     `<button aria-haspopup="dialog">`，点击调 React useState 切换 openPill，
+     *     把详情对话框 portal 到 body（`useAnchoredPosition` 锚定到原 button 的
+     *     `.anchor` span）。`cloneNode(true)` 不复制 React listener——克隆 button
+     *     是哑的：图标 + 文本能显示，但点不出详情对话框，"相关信息"出不来。
+     *     修法：遍历克隆出来的所有 button，按索引挂 click 转发器——点击镜像 button
+     *     → 在 dock 里**实时查**对应索引的原生 button 调 `.click()`，触发 React
+     *     onClick → openPill 切换 → dialog render。索引在闭包里，实时查询避免
+     *     DSH 重渲染后闭包引用的 button 节点已卸。cloneNode 不复制 listener 也不
+     *     复制 React fiber，所以镜像 button 不在 React 树里——`stopPropagation` 是
+     *     防自己挂的 listener 之间互相冒泡，不是防 React；`preventDefault` 防镜像
+     *     button 在某些 form / document 默认行为下意外触发。详情 dialog 仍锚定到底部
+     *     原 button 位置（重写 StatsPills React 组件超出本插件可触及范围）。
      */
     function statsSyncMirror(mirror, source) {
       var text = source === null ? "" : (source.textContent || "");
-      if (mirror.title === text) return;
+      var liveButtons = source === null ? [] : source.querySelectorAll("button");
+      // 文本没变 + button 数量没变 → 跳过重建（克隆 button 上的转发 listener 也保留）
+      if (mirror.title === text && mirror.childElementCount === liveButtons.length) return;
       mirror.title = text;
       while (mirror.firstChild) mirror.removeChild(mirror.firstChild);
       if (text === "" || source === null) return;
       var clone = source.cloneNode(true);
+      var clonedButtons = clone.querySelectorAll("button");
+      // 给每个克隆 button 挂 click 转发器：index 闭包，click 时实时查 dock
+      for (var j = 0; j < clonedButtons.length; j++) (function (idx) {
+        clonedButtons[idx].addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var dock = document.querySelector(STATS_DOCK_SEL);
+          if (!dock) return;
+          var live = dock.querySelectorAll("button");
+          if (idx < live.length) live[idx].click();
+        });
+      })(j);
       while (clone.firstChild) mirror.appendChild(clone.firstChild);
     }
 

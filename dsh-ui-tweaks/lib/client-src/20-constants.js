@@ -1,6 +1,6 @@
     // ===== constants =====
         // 版本号与各 tweak 引入历程见 `CHANGELOG.md`；本文件不重复 changelog 内容。
-        var VERSION = "0.10.6";
+        var VERSION = "0.10.10";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";

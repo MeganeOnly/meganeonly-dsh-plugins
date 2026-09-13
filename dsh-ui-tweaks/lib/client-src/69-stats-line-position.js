@@ -106,14 +106,41 @@
      *     镜像自身的 mutation 触发别的观察者）。用 `title` 同时兼作
      *     "上次内容"缓存与鼠标悬停时的完整内容 tooltip（标题行窄，
      *     镜像会 ellipsis 截断）。
+     *   - v0.10.10：DSH StatsPills 把两个 pill（TimePill + UsagePill）渲染成
+     *     `<button aria-haspopup="dialog">`，点击调 React useState 切换 openPill，
+     *     把详情对话框 portal 到 body（`useAnchoredPosition` 锚定到原 button 的
+     *     `.anchor` span）。`cloneNode(true)` 不复制 React listener——克隆 button
+     *     是哑的：图标 + 文本能显示，但点不出详情对话框，"相关信息"出不来。
+     *     修法：遍历克隆出来的所有 button，按索引挂 click 转发器——点击镜像 button
+     *     → 在 dock 里**实时查**对应索引的原生 button 调 `.click()`，触发 React
+     *     onClick → openPill 切换 → dialog render。索引在闭包里，实时查询避免
+     *     DSH 重渲染后闭包引用的 button 节点已卸。cloneNode 不复制 listener 也不
+     *     复制 React fiber，所以镜像 button 不在 React 树里——`stopPropagation` 是
+     *     防自己挂的 listener 之间互相冒泡，不是防 React；`preventDefault` 防镜像
+     *     button 在某些 form / document 默认行为下意外触发。详情 dialog 仍锚定到底部
+     *     原 button 位置（重写 StatsPills React 组件超出本插件可触及范围）。
      */
     function statsSyncMirror(mirror, source) {
       var text = source === null ? "" : (source.textContent || "");
-      if (mirror.title === text) return;
+      var liveButtons = source === null ? [] : source.querySelectorAll("button");
+      // 文本没变 + button 数量没变 → 跳过重建（克隆 button 上的转发 listener 也保留）
+      if (mirror.title === text && mirror.childElementCount === liveButtons.length) return;
       mirror.title = text;
       while (mirror.firstChild) mirror.removeChild(mirror.firstChild);
       if (text === "" || source === null) return;
       var clone = source.cloneNode(true);
+      var clonedButtons = clone.querySelectorAll("button");
+      // 给每个克隆 button 挂 click 转发器：index 闭包，click 时实时查 dock
+      for (var j = 0; j < clonedButtons.length; j++) (function (idx) {
+        clonedButtons[idx].addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var dock = document.querySelector(STATS_DOCK_SEL);
+          if (!dock) return;
+          var live = dock.querySelectorAll("button");
+          if (idx < live.length) live[idx].click();
+        });
+      })(j);
       while (clone.firstChild) mirror.appendChild(clone.firstChild);
     }
 
