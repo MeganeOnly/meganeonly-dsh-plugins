@@ -4,6 +4,22 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.4] - 2026-10-03
+
+### 兼容性
+
+- 已对照本机安装的 DSH v0.2.0-rc.2 源码逐条核验，本插件接口契约全部成立，**无需改动任何代码**：
+  - 宿主半端 `lib/index.js` 仍是零副作用占位：`export const inject = []`（L17）、`apply()` 为空函数体（L19-21）；`ctx.systemPrompt` / `ctx.webServer` / `ctx.inject` 三个名字**只出现在文件头注释**（L9-11）中，不在可执行代码里——注释描述与实际行为一致，未注册 system prompt 段、未注册 HTTP 路由、不读写磁盘。
+  - 不涉及 `ctx.webServer.register`，因此无需路由查重守卫；`tools/check-dsh-contract.cjs` 对本包的包清单（`dsh.bundle.patch` / `dsh.client.platform` / `exports["./client"]` / `lib/index.js` / `lib/client.js`）与 client bundle 的 `__ModuleLoader__` 信封 id 校验全部通过。
+  - 浏览器半端只依赖 slot key `conversation.input.dock`：0.2.0-rc.2 的 slot catalog 中该 key 仍为 `list` / `session`（`@deepseek-ai/dsh-cordis-client-runner/lib/client.js:3004-3006`），FAB / 抽屉注册照旧。
+  - 数据持久化仍走浏览器 `localStorage`（key `dsh.taskPool.v1`），不触及 `ctx.agents` / `ctx.session` / `ctx.subprocess` 等宿主运行时 API。
+- **client 半端未改**：`lib/client-src/*.js` 与产物 `lib/client.js` 本轮均未编辑，因此**未跑** `node lib/build-client.cjs` / `node lib/verify-client.cjs`（无源改动即无需重建，避免无谓的产物扰动）。`lib/client.js` 保持 46223 字节，与 v0.6.2 注释精简后的体积一致。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.6.3 → 0.6.4）
+
 ## [Unreleased]
 
 ### 兼容性

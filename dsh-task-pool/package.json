@@ -1,6 +1,6 @@
 {
   "name": "dsh-task-pool",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "author": "MeganeOnly",
   "description": "DSH 任务池 v0.6.0：任务结构从 `{ title, description }` 双字段简化为单字段 `{ content }`——inline 新建、卡片预览、就地展开面板均只编辑/显示一段纯文本（多行 textarea，Enter 换行，Ctrl/⌘+Enter 保存）；发送时直接把 content 作为 user message；旧 schema 自动迁移（旧 title + description 合并为 content，无破坏性丢失）；其余 FAB / 抽屉互斥协议 / 发送后删除全局开关 / 钉住 / 数据持久化（localStorage key dsh.taskPool.v1）等沿用 v0.5.6。唯一 token 消耗路径：用户主动发送任务时。",
   "license": "MIT",
