@@ -333,10 +333,34 @@ async function listShadows(options) {
 // HTTP 路由
 // ---------------------------------------------------------------------------
 
-/** 最近一个可解析会话的 cwd（项目级视角用；sessions/agents 契约与 peak-hour-lock 同源）。 */
+/**
+ * 最近一个可解析会话的 cwd（项目级视角用；sessions/agents 契约与 peak-hour-lock 同源）。
+ *
+ * `ctx.sessions` 是 SessionStore，而 `list` **一直是方法**——0.1.5-rc.1 与
+ * 0.2.0-rc.2 都是 `list(): Session[]`（返回按创建序的 live session 数组；
+ * 0.2.0-rc.2 见 `dsh-session/lib/types/index.d.ts:334-472`，`list()` 在 `:452`、
+ * `Session.header` 在 `:119`；0.1.5-rc.1 见同包类型 `:424`）。旧代码假设的
+ * `list.getSnapshot()` 两版都不存在，故此处自始就是恒 undefined 的死代码
+ * （异常被 try/catch 静默吞掉）——现改走真实契约，并保留 `getSnapshot()`
+ * 对象形态的**回退**分支，以兼容更早或旁支版本。
+ * 两条路径都取最后一个非空字符串 cwd；解析不出时返回 undefined（语义不变）。
+ */
 function latestSessionCwd(ctx) {
   try {
-    const snapshot = ctx.sessions.list.getSnapshot()
+    if (typeof ctx.sessions.list === 'function') {
+      const sessions = ctx.sessions.list()
+      let cwd
+      for (const session of Array.isArray(sessions) ? sessions : []) {
+        try {
+          const value = session?.header?.cwd
+          if (typeof value === 'string' && value !== '') cwd = value
+        } catch {
+          // 会话可能已关闭，跳过
+        }
+      }
+      return cwd
+    }
+    const snapshot = ctx.sessions.list?.getSnapshot?.()
     const ids = Array.isArray(snapshot?.ids) ? snapshot.ids : []
     let cwd
     for (const id of ids) {

@@ -4,6 +4,24 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.4] - 2026-10-03
+
+### 修复
+
+- **修复既有死代码：`latestSessionCwd()` 恒返回 `undefined`，项目级 skill 视角恢复**。该函数原先只调 `ctx.sessions.list.getSnapshot()`，但 `ctx.sessions` 是 `SessionStore`，其 `list` **一直是方法**（`list(): Session[]`），`getSnapshot()` 并不存在——这不是升级引入的回归，而是自始未生效的死代码：调用抛错后被 `try/catch` 静默吞掉，函数恒返回 `undefined`，`/list` 的项目级分组与项目根目录扫描随之失效。现改走真实契约。
+
+### 兼容性
+
+- 主路径：`typeof ctx.sessions.list === 'function'` 时调用 `list()` 取 live session 数组（创建序），逐个读 `session.header.cwd`，取最后一个非空字符串。取证：`SessionStore.list()` 在 0.1.5-rc.1 与 0.2.0-rc.2 **均为方法**（0.1.5-rc.1 见 `dsh-session` 类型 `:424`；0.2.0-rc.2 见 `dsh-session/lib/types/index.d.ts:334-472`，`list(): Session[]` 在 `:452`、`Session.header` 在 `:119`）。
+- 回退路径：`ctx.sessions.list` 非函数时保留对 `getSnapshot()` 对象形态的处理，仍按 ids 经 `ctx.agents.get(id)?.session?.header?.cwd` 解析，取值优先级不变（兼容更早或旁支版本）。
+- 防御风格不变（整段 `try/catch`、可选链），解析不出时仍返回 `undefined`；host 半段其余代码零改动，client 半端不受影响。
+
+### 改动文件
+
+- `lib/index.js`（`latestSessionCwd()` 改走 `SessionStore.list()` + 双路径回退，注释标注取证来源）
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.1.3 → 0.1.4）
+
 ## [Unreleased]
 
 ### 兼容性
