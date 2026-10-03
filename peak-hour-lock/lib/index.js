@@ -212,6 +212,24 @@ function readJsonBody(req) {
   })
 }
 
+/**
+ * 注册 HTTP 路由；路径已被其他插件占用时跳过并告警。
+ *
+ * DSH 的 webServer 对重复 (kind, path) 直接 throw —— 一旦发生会把本次启动打崩，
+ * 因此本插件的全部路由统一走这里，而不是直接调 ctx.webServer.register。
+ * 守卫不可用时（表结构缺失）退回直接注册：宁可重复报错，也不要静默不注册。
+ */
+function registerRoute(ctx, route) {
+  const table = route.kind === 'exact' ? ctx.webServer.exact : ctx.webServer.prefixes
+  if (table !== undefined && table !== null && typeof table.has === 'function' && table.has(route.path)) {
+    const message = `peak-hour-lock: 路由 ${route.path} 已被其他插件注册，跳过注册以避免启动失败`
+    if (ctx.logger !== undefined && typeof ctx.logger.warn === 'function') ctx.logger.warn(message)
+    else console.warn(`[peak-hour-lock] ${message}`)
+    return () => {}
+  }
+  return ctx.webServer.register(route)
+}
+
 export function apply(ctx, config) {
   const lockModels = resolveLockModels(config?.lockModels)
   const staleAfterMs = resolveStaleAfterMs(config?.staleAfterMs)
@@ -361,7 +379,7 @@ export function apply(ctx, config) {
   }, 10000)
 
   // 3) 状态 API：客户端轮询显示“已暂存 N 条 / 预计补发时刻”
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: API_STATUS,
     handler: (req, res) => {
@@ -414,7 +432,7 @@ export function apply(ctx, config) {
   })
 
   // 4) 管理 API：GET 列表；POST { action: 'update' | 'delete' | 'send', id, text }
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: API_QUEUE,
     handler: (req, res) => {
