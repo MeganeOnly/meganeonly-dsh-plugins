@@ -20,7 +20,8 @@
 | `lib/scan.js` | 扫描调度：单飞 / 优先级 / 时间片 / 失败记忆 / 删除清理 / legacy 播种 | `createScanner` |
 | `lib/rollup.js` | 根会话归并（子代理沿 `parentSession` 归到 owner，纯函数） | `buildRoots` |
 | `lib/series.js` | 视图序列：日 / 历史全量日 / 多粒度趋势 / 按模型表 / 会话榜 / 工具榜 | `daySeries, rootsDaysAll, granularitySeries, modelTable, topSessions, toolTable` |
-| `lib/payload.js` | payload 装配 + 按记录代次的快照 memo + 诊断块 | `createPayloadBuilder` |
+| `lib/live.js` | 实时事件折叠（订阅 `session/event`；以磁盘为基 + 未播种只缓存 + 只在更全时采用） | `createLiveFolder` |
+| `lib/payload.js` | payload 装配 + 按记录代次的快照 memo + 实时条目合并 + 诊断块 | `createPayloadBuilder` |
 | `lib/http.js` | HTTP 边界：`json()` 断连防护 + `registerRoute()` 重复路由守卫 | `json, registerRoute` |
 
 约定：

@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 本文件记录 `dsh-usage-stats` 的重要变更。
 
@@ -25,6 +25,7 @@ v0.5.0 的替代方案：
 - **保留量有界**：分钟桶 48h、小时桶 15d、日/模型×日/工具永久（客户端分钟视图只看 24h、小时视图只看 7d，留 2 倍余量）。
 - **每会话一条记录**：`<web profile 根>/.usage-stats/sessions/<id>.json`，临时文件 + rename 原子写、2 秒去抖合并；解析失败或不符 schema 的记录改名 `.bak-<ts>` 跳过；`manifest.storeVersion` 不匹配时整目录改名 `.usage-stats.bak-<ts>` 后从空重建；存储目录不可用时降级为仅内存统计。
 - **请求永不阻塞**：`/api/usage-stats/summary` 立即返回已发布快照（heavy 部分按记录代次 memo），扫描在后台单飞推进；`?force=1` 只绕过节流重新比对修订（不做全量重建），新增 `?rebuild=1` 才整库重建，`?diag=1` 返回诊断块。
+- **实时支路**：直接订阅框架的 `session/event` 提交事件流（与投影注册表同一个 seam），用与磁盘折叠**同一套**内核逐事件折叠活跃会话。三条规则保证它只会让数字更准：以磁盘记录为基（深拷贝 agg + 回放缓存事件）、未播种时只缓存不折叠（插件中途启动时实时 agg 缺前半段，不参与统计）、只在 `lastSeq` 领先于磁盘水位时采用。内存有界（LRU 200 条 + 缓存上限 2000 事件），被淘汰的数据由下一次扫描从磁盘补齐。
 - **旧缓存只读迁移**：`.usage-stats-cache.json` 仅作为首屏占位显示（`legacy: true`，不写入新库），全量重算成功且无错误后才改名 `.usage-stats-cache.json.legacy-<ts>`（原件保留可回滚）。
 - **入口依赖收敛**：`inject` 从 `['webServer','sessionQuery']` 收敛为 `['webServer']`；`sessionPersistence` / `sessionQuery` 经 `ctx.get()` 可选获取，框架服务缺失时功能降级而不是启动失败。`apply()` 内只做纯 fs 工作，不再有启动期框架异步调用。
 - **host 半段拆模块**：`index.js`（入口）· `discover.js`（发现）· `frames.js`（帧级读取）· `fold.js`（折叠/保留量）· `store.js`（记录存储）· `scan.js`（调度）· `rollup.js`（根归并）· `series.js`（视图）· `payload.js`（装配/快照）· `http.js`（HTTP 边界）。`aggregateSession` / `beijingDayKey` / `withSessionHeaderEvent` / `granularitySeries` / `rootsDaysAll` 继续从 `lib/index.js` 导出（签名与语义不变）。
@@ -55,11 +56,11 @@ v0.5.0 的替代方案：
 
 ### 测试
 
-- 新增 7 个测试文件：`test-v050-frames`（帧级扫描/撕裂/非法结构）、`test-v050-fold-incremental`（增量 ≡ 全量的 property、幂等、非稠密 seq、保留量边界、与旧实现逐字段等价）、`test-v050-store`（往返/去抖/损坏跳过/版本重建/legacy 只读）、`test-v050-discover`（三级来源与降级）、`test-v050-scan`（真实 zstd 多帧日志 + 真实文件系统：零 I/O 复用、追加即见、撕裂尾帧、改写重折叠、删除清理、失败记忆、单飞/节流/rebuild、折叠优先级、legacy 导入与退役）、`test-v050-summary`（快照 memo、字段完整性、归并、保留量、force/rebuild、diag、legacy 首屏覆盖）、`test-v050-client-status`（状态行三态、轮询、按钮 URL、ES5/marker 规范）。
+- 新增 8 个测试文件：`test-v050-frames`（帧级扫描/撕裂/非法结构）、`test-v050-fold-incremental`（增量 ≡ 全量的 property、幂等、非稠密 seq、保留量边界、与旧实现逐字段等价）、`test-v050-store`（往返/去抖/损坏跳过/版本重建/legacy 只读）、`test-v050-discover`（三级来源与降级）、`test-v050-scan`（真实 zstd 多帧日志 + 真实文件系统：零 I/O 复用、追加即见、撕裂尾帧、改写重折叠、删除清理、失败记忆、单飞/节流/rebuild、折叠优先级、legacy 导入与退役）、`test-v050-summary`（快照 memo、字段完整性、归并、保留量、force/rebuild、diag、legacy 首屏覆盖）、`test-v050-client-status`（状态行三态、轮询、按钮 URL、ES5/marker 规范）。
 - `test-v050-undercount` 由 characterization 翻转为**目标断言**：会话被观测后追加的 usage 现在计入（1 请求 / 507 token）。
 - `test-header-rollup` 端到端部分改为真实会话树（不再 mock `sessionQuery`），`test-byDayAll` 静态断言改指 `lib/series.js` / `lib/payload.js`。
 - 删除 `test-v040-official.mjs`：其前提（mock `sessionQuery` 的旧缓存协议）已不存在，覆盖迁至 `test-v050-scan` 与 `test-v050-summary`。
-- 全套 13 个文件、378 项断言。
+- 全套 14 个文件、435 项断言。
 
 ### 已知问题（上游）
 

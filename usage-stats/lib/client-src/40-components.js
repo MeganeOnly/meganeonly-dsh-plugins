@@ -34,6 +34,12 @@
         if (d.lastScanAt != null) pieces.push("上次扫描 " + fmtTime(d.lastScanAt));
         if (d.reused != null && d.reused > 0) pieces.push("复用 " + d.reused + " 个会话");
       }
+      // 实时支路（v0.5.0）：当前会话的用量不必等落盘，直接逐事件折叠
+      if (d.live != null && d.live.active > 0) {
+        pieces.push(d.live.ahead > 0
+          ? "实时跟踪 " + d.live.active + " 个会话（含未落盘增量）"
+          : "实时跟踪 " + d.live.active + " 个会话");
+      }
       if (d.restartFolds > 0) pieces.push(d.restartFolds + " 个会话日志被改写，已重折叠");
       if (d.errorCount > 0) pieces.push(d.errorCount + " 个会话失败");
 

@@ -89,6 +89,7 @@ export function createScanner(deps) {
   const yieldTo = typeof deps.yieldTo === 'function' ? deps.yieldTo : defaultYieldToLoop
   const logger = deps.logger || { warn: (m) => console.warn(`[usage-stats] ${m}`) }
   const onRecordsChanged = typeof deps.onRecordsChanged === 'function' ? deps.onRecordsChanged : () => {}
+  const onRecordFolded = typeof deps.onRecordFolded === 'function' ? deps.onRecordFolded : null
   const liveIds = typeof deps.liveIds === 'function' ? deps.liveIds : () => new Set()
 
   /** key -> 折叠状态（瞬态 openStep/pendingCalls 跨扫描存活，保证跨帧配对不丢） */
@@ -306,6 +307,14 @@ export function createScanner(deps) {
     // 折叠状态按最终 key 归档（dirKey 与 header.id 不一致时纠正）
     foldStates.set(key, fold)
     if (key !== entry.dirKey) foldStates.delete(entry.dirKey)
+    // 通知实时支路：用磁盘真相重新播种该会话（保留尚未 flush 的实时事件）
+    if (onRecordFolded !== null) {
+      try {
+        onRecordFolded(store.get(key))
+      } catch (error) {
+        logger.warn(`实时播种回调失败：${String(error && error.message)}`)
+      }
+    }
     return key
   }
 

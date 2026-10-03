@@ -39,8 +39,25 @@ payload.js 归并 rollup.js（子代理沿 parentSession 归到 root）
         → series.js（日/时/分/周序列、按模型表、会话榜、工具榜）
 ```
 
-实时支路（`live.js`，v0.5.0 起可选启用）：`ctx.on('session/event')` 逐事件折叠本进程内的
-活跃会话，使"今天/当前会话"不必等落盘；与磁盘值按 `lastSeq` 取大者。
+实时支路（`live.js`）：`ctx.on('session/event')` 逐事件折叠本进程内的活跃会话，使
+"当前会话用了多少"不必等 flush、也不必等下一次扫描。规则见下节。
+
+## 二半、实时支路（live.js）
+
+订阅 seam 与投影注册表相同（`ctx.on('session/event', (session, event) => …)`），折叠用的是
+**同一套** `fold.js` 内核，因此口径与磁盘完全一致。三条规则保证它只会让数字更准：
+
+1. **以磁盘为基**：条目创建时若已有该会话的记录，立即深拷贝记录 agg（含 `lastSeq`）作为基准，
+   再往上叠加实时事件；`seq ≤ 水位` 的事件会被 fold 判为 duplicate，不会重复计。
+2. **未播种只缓存不折叠**：插件在会话中途启动、磁盘还没折过该会话时，实时 agg 缺前半段 ——
+   此时只把事件缓存起来（上限 `LIVE_BUFFER_MAX`，超限丢弃条目交给磁盘补齐），
+   既不参与统计也不假装自己完整。扫描器折叠完该会话后调 `seedFrom(record)` 接上磁盘真相，
+   再回放缓存事件。
+3. **只在更全时采用**：payload 仅当实时 `lastSeq >` 磁盘水位时才用实时 agg 覆盖
+   （`live.ahead` 计数即由此而来）。磁盘随时可能反超，此时实时条目让位。
+
+内存有界：条目上限 `LIVE_MAX_ENTRIES`（LRU），被淘汰的数据由下一次扫描从磁盘补齐。
+客户端在 `live.ahead > 0` 时保持 2 秒轮询，于是页面上的数字会随会话推进自己往上走。
 
 ## 三、磁盘契约
 
@@ -124,6 +141,9 @@ payload.js 归并 rollup.js（子代理沿 parentSession 归到 root）
 | `?rebuild=1` | 旧存储整体改名 `.usage-stats.bak-<ts>` 后从零重算（界面显示进度） |
 | `?diag=1` | 附诊断块：存储目录 / 记录数 / 扫描状态 / 折叠表 / 失败记忆 / zstd 能力，errors 不截断 |
 
+响应中的 `live` 块（`{active, ahead, tracked}`）供客户端判断是否继续轮询：`ahead > 0`
+表示当前有会话的实时增量领先于磁盘（见第二半节）。
+
 ## 七、失败与降级
 
 | 场景 | 处理 |
@@ -166,5 +186,6 @@ DSH 自身的会话列表 / 搜索每次都要付约 30 秒：`sessionQuery.list
 - `lib/discover.js` 发现 · `lib/frames.js` 帧级读取 · `lib/fold.js` 折叠与保留量
 - `lib/store.js` 记录存储 · `lib/scan.js` 扫描调度 · `lib/rollup.js` 根归并
 - `lib/series.js` 视图序列 · `lib/payload.js` 装配与快照 · `lib/http.js` HTTP 边界
+- `lib/live.js` 实时事件折叠（见第二半节）
 - `lib/client-src/*` 浏览器半端（见 `./maintainability.md`）
 - 测试：`tests/test-v050-*.mjs`（真实 zstd 多帧日志 + 真实文件系统）

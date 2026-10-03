@@ -42,13 +42,14 @@
       React.useEffect(function () { load(false); }, [load]);
 
       // v0.5.0 轮询：host 的响应永远立即返回"已发布快照"，后台扫描在单飞推进。
-      // 只要载荷还在 scanning 或仍是 legacy 占位，就 2s 后再拉一次；上限 60 次
-      // （约 2 分钟）避免任何异常情况下无限轮询；载荷对象每次 fetch 都换身份，
-      // 因此 effect 会随新载荷重新排期。
+      // 只要载荷还在 scanning、仍是 legacy 占位，或有实时会话领先于磁盘（live.ahead > 0，
+      // 即当前会话正在产生未落盘的增量），就 2s 后再拉一次；上限 60 次（约 2 分钟）
+      // 避免任何异常情况下无限轮询。载荷对象每次 fetch 都换身份，effect 随新载荷重新排期。
       React.useEffect(function () {
         var current = data[0];
         if (current == null) return undefined;
-        if (!current.scanning && !current.legacy) { pollCount.current = 0; return undefined; }
+        var liveAhead = current.live != null && current.live.ahead > 0;
+        if (!current.scanning && !current.legacy && !liveAhead) { pollCount.current = 0; return undefined; }
         if (pollCount.current >= 60) return undefined;
         var timer = setTimeout(function () {
           pollCount.current += 1;

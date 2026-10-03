@@ -1,4 +1,4 @@
-/**
+﻿/**
  * dsh-usage-stats — 常量（v0.5.0）
  *
  * 全部可调参数集中在本文件：保留量窗口、扫描节奏、存储布局、榜单长度。
@@ -46,6 +46,12 @@ export const FOLD_SLICE_EVENTS = 20000
 
 /** 实时折叠表上限（LRU），避免长跑进程无界增长。 */
 export const LIVE_MAX_ENTRIES = 200
+
+/** 未播种条目最多缓存多少事件（超限丢弃条目，交给磁盘扫描补齐）。 */
+export const LIVE_BUFFER_MAX = 2000
+
+/** "最近活跃"窗口：客户端据此决定是否继续轮询（实时会话在窗口内持续出数）。 */
+export const LIVE_ACTIVE_WINDOW_MS = 60 * 1000
 
 /** 失败记忆表上限（同一修订的确定性失败只报一次）。 */
 export const FAILED_MEMO_MAX = 500

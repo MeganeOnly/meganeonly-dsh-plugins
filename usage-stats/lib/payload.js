@@ -34,6 +34,19 @@ export function createPayloadBuilder(deps) {
   const scanner = deps.scanner || null
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now()
 
+  /** 取当前实时折叠器（可选；未启用时返回 null）。 */
+  function liveNow() {
+    if (typeof deps.getLive === 'function') {
+      try {
+        const value = deps.getLive()
+        if (value != null) return value
+      } catch {
+        // 忽略：实时支路缺失不应影响统计输出
+      }
+    }
+    return deps.live || null
+  }
+
   /** 取当前扫描器：支持构造期互相引用（getScanner 优先）。 */
   function scannerNow() {
     if (typeof deps.getScanner === 'function') {
@@ -55,10 +68,28 @@ export function createPayloadBuilder(deps) {
     generation += 1
   }
 
+  /**
+   * 把实时条目合并进记录集：**只在实时水位领先于磁盘水位时**用实时 agg 覆盖。
+   * 未播种（seeded=false）或落后的条目一律不用 —— 那意味着实时值缺前半段或更旧，
+   * 用它就等于少报（v0.4.x 那类"活跃会话显示 0"的反向版本）。
+   */
+  function recordsWithLive() {
+    const records = [...store.records.values()]
+    const liveFolder = liveNow()
+    if (liveFolder == null) return records
+    return records.map((record) => {
+      if (typeof record.key !== 'string') return record
+      if (liveFolder.isAheadOf(record.key, record.cursor?.lastSeq) !== true) return record
+      const entry = liveFolder.get(record.key)
+      if (entry == null || entry.seeded !== true) return record
+      return { ...record, agg: entry.agg, live: true }
+    })
+  }
+
   /** 归并 + 派生视图（重部分）。 */
   function buildHeavy() {
     const records = [...store.records.values()]
-    const roots = buildRoots(records)
+    const roots = buildRoots(recordsWithLive())
     const totals = emptyBucket()
     let steps = 0
     let turns = 0
@@ -105,6 +136,7 @@ export function createPayloadBuilder(deps) {
     const active = scannerNow()
     const state = active != null ? active.state : null
     const errors = active != null ? active.errors : []
+    const liveFolder = liveNow()
     const legacyCount = countLegacy()
     const heavy = published.heavy
     const payload = {
@@ -141,6 +173,17 @@ export function createPayloadBuilder(deps) {
       },
       legacy: legacyCount > 0,
       legacyCount,
+      // 实时支路状态：客户端据此在"有会话正在产生用量"时继续轮询
+      live: liveFolder == null
+        ? null
+        : {
+          active: liveFolder.activeCount(),
+          ahead: liveFolder.aheadCount((id) => {
+            const record = store.get(id)
+            return record != null ? (record.cursor != null ? record.cursor.lastSeq : -1) : -1
+          }),
+          tracked: liveFolder.size(),
+        },
       stale: state != null ? state.errorCount > 0 || state.running === true : false,
       discovery: state != null ? state.discovery : 'none',
       discoveryMs: state != null ? state.discoveryMs : null,

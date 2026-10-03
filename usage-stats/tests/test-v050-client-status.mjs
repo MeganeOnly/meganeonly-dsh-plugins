@@ -1,4 +1,4 @@
-// tests/test-v050-client-status.mjs
+﻿// tests/test-v050-client-status.mjs
 // v0.5.0 步骤 8：客户端扫描状态 / 轮询 / 按钮语义的渲染测试。
 //
 // host 半段现在"永远立即返回已发布快照"，因此客户端必须能把三种状态讲清楚：
@@ -234,6 +234,21 @@ const visibility = { meta: true, cards: true, chart: false, heatmap: false, byMo
   const page2 = loadPage([false, payload({ errorCount: 3, errors: ['a: boom', 'b: boom', 'c: boom'] }), null, 'all', visibility, false, null], harness2)
   const bar2 = findByAttr(page2({}), 'data-usage-stats-status')
   assert('3.5 有失败时显示条数并切警示配色', textOf(bar2).includes('3 个会话失败') && bar2.props.style.background !== undefined, textOf(bar2))
+
+  // 实时支路：有会话正在产生未落盘增量时，状态行提示 + 轮询继续
+  const harness3 = newHarness()
+  const page3 = loadPage([false, payload({ live: { active: 2, ahead: 1, tracked: 3 } }), null, 'all', visibility, false, null], harness3)
+  const tree3 = page3({})
+  const bar3 = findByAttr(tree3, 'data-usage-stats-status')
+  assert('3.6 实时跟踪提示（含未落盘增量）', textOf(bar3).includes('实时跟踪 2 个会话') && textOf(bar3).includes('未落盘'), textOf(bar3))
+  for (const fn of harness3.effects) fn()
+  assert('3.7 live.ahead > 0 时保持轮询（实时数字自己往上走）', harness3.timers.length === 1 && harness3.timers[0].ms === 2000, JSON.stringify(harness3.timers.map((t) => t.ms)))
+
+  // 没有实时增量时不轮询（避免无意义的后台请求）
+  const harness4 = newHarness()
+  const page4 = loadPage([false, payload({ live: { active: 1, ahead: 0, tracked: 1 } }), null, 'all', visibility, false, null], harness4)
+  for (const fn of harness4.effects) fn()
+  assert('3.8 live.ahead = 0 时不轮询', harness4.timers.length === 0, JSON.stringify(harness4.timers.map((t) => t.ms)))
 }
 
 /* ------------------------------------------------------------------ *

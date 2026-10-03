@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url'
 import { API_SUMMARY } from './constants.js'
 import { createStore, readLegacyRecords } from './store.js'
 import { createScanner } from './scan.js'
+import { createLiveFolder } from './live.js'
 import { createPayloadBuilder } from './payload.js'
 import { json, registerRoute } from './http.js'
 
@@ -44,6 +45,7 @@ export { aggregateSession, beijingDayKey, withSessionHeaderEvent, toFiniteNumber
 export { granularitySeries, rootsDaysAll } from './series.js'
 export { buildRoots } from './rollup.js'
 export { scanZstdFrames, zstdAvailable } from './frames.js'
+export { createLiveFolder } from './live.js'
 
 export const name = 'usage-stats'
 
@@ -99,14 +101,37 @@ export function apply(ctx) {
     })
 
   let scanner = null
-  const builder = createPayloadBuilder({ store, getScanner: () => scanner })
+  const live = createLiveFolder({
+    onChanged: () => builder.invalidate(),
+    // 条目创建时用磁盘记录立刻播种（否则"插件中途启动 + 扫描已跑过"的组合下
+    // 实时支路永远无法启用：磁盘水位已经领先，而条目又没有可回放的缓冲）
+    getRecord: (id) => store.get(id),
+  })
+  const builder = createPayloadBuilder({ store, getScanner: () => scanner, getLive: () => live })
   scanner = createScanner({
     store,
     sessionPersistence: optional(ctx, 'sessionPersistence'),
     sessionQuery: optional(ctx, 'sessionQuery'),
     onRecordsChanged: () => builder.invalidate(),
+    onRecordFolded: (record) => {
+      // 扫描器的磁盘真相 → 给实时条目重新播种（保留尚未 flush 的实时事件）
+      if (live.seedFrom(record)) builder.invalidate()
+    },
     logger,
   })
+
+  // 实时支路：直接订阅框架的提交事件流（投影注册表用的是同一个 seam），
+  // 用与磁盘折叠同一套 fold.js 内核逐事件折叠 —— 于是"我现在这个会话用了多少"
+  // 不必等 flush、也不必等下一次扫描。事件流不可用时静默跳过（功能降级为纯磁盘）。
+  if (typeof ctx.on === 'function') {
+    try {
+      ctx.on('session/event', (session, event) => {
+        if (live.handleEvent(session, event)) builder.invalidate()
+      })
+    } catch (error) {
+      logger.warn(`实时事件订阅失败（降级为纯磁盘统计）：${String(error && error.message)}`)
+    }
+  }
 
   registerRoute(ctx, {
     kind: 'exact',

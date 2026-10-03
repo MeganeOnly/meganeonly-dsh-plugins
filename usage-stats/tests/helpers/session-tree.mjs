@@ -103,11 +103,12 @@ export function appendRaw(path, buffer) {
  * Host 半端装载与 HTTP 驱动
  * ------------------------------------------------------------------ */
 
-/** 装载 host 半端（mock ctx：baseUrl + webServer + 可选服务），返回 { handler, ctx, services }。 */
+/** 装载 host 半端（mock ctx：baseUrl + webServer + 可选服务 + 可选事件订阅），返回 { handler, ctx, services, ... }。 */
 export async function loadHost(options = {}) {
   const { apply } = await import('../../lib/index.js')
   const registered = []
   const services = options.services || {}
+  const events = []
   const ctx = {
     baseUrl: pathToFileURL(options.profileRoot).href + '/',
     webServer: {
@@ -116,11 +117,32 @@ export async function loadHost(options = {}) {
     },
     logger: options.logger || { warn() {} },
     get(name) { return services[name] },
+    // 事件订阅：把 (name, listener) 记下来，测试用 emit(name, ...args) 触发
+    on(name, listener) {
+      if (typeof options.onEvent === 'function') options.onEvent(name, listener)
+      events.push({ name, listener })
+      return () => {}
+    },
   }
   apply(ctx)
   const handler = registered.find((r) => r.path === '/api/usage-stats/summary').handler
   if (handler === undefined) throw new Error('summary 路由未注册')
-  return { handler, ctx, services, registered }
+  return {
+    handler,
+    ctx,
+    services,
+    registered,
+    events,
+    emit(name, ...args) {
+      let count = 0
+      for (const entry of events) {
+        if (entry.name !== name) continue
+        entry.listener(...args)
+        count += 1
+      }
+      return count
+    },
+  }
 }
 
 /** 调一次 handler，解析 JSON 响应。 */

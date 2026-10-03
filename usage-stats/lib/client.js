@@ -438,6 +438,12 @@
         if (d.lastScanAt != null) pieces.push("上次扫描 " + fmtTime(d.lastScanAt));
         if (d.reused != null && d.reused > 0) pieces.push("复用 " + d.reused + " 个会话");
       }
+      // 实时支路（v0.5.0）：当前会话的用量不必等落盘，直接逐事件折叠
+      if (d.live != null && d.live.active > 0) {
+        pieces.push(d.live.ahead > 0
+          ? "实时跟踪 " + d.live.active + " 个会话（含未落盘增量）"
+          : "实时跟踪 " + d.live.active + " 个会话");
+      }
       if (d.restartFolds > 0) pieces.push(d.restartFolds + " 个会话日志被改写，已重折叠");
       if (d.errorCount > 0) pieces.push(d.errorCount + " 个会话失败");
 
@@ -1136,13 +1142,14 @@
       React.useEffect(function () { load(false); }, [load]);
 
       // v0.5.0 轮询：host 的响应永远立即返回"已发布快照"，后台扫描在单飞推进。
-      // 只要载荷还在 scanning 或仍是 legacy 占位，就 2s 后再拉一次；上限 60 次
-      // （约 2 分钟）避免任何异常情况下无限轮询；载荷对象每次 fetch 都换身份，
-      // 因此 effect 会随新载荷重新排期。
+      // 只要载荷还在 scanning、仍是 legacy 占位，或有实时会话领先于磁盘（live.ahead > 0，
+      // 即当前会话正在产生未落盘的增量），就 2s 后再拉一次；上限 60 次（约 2 分钟）
+      // 避免任何异常情况下无限轮询。载荷对象每次 fetch 都换身份，effect 随新载荷重新排期。
       React.useEffect(function () {
         var current = data[0];
         if (current == null) return undefined;
-        if (!current.scanning && !current.legacy) { pollCount.current = 0; return undefined; }
+        var liveAhead = current.live != null && current.live.ahead > 0;
+        if (!current.scanning && !current.legacy && !liveAhead) { pollCount.current = 0; return undefined; }
         if (pollCount.current >= 60) return undefined;
         var timer = setTimeout(function () {
           pollCount.current += 1;
