@@ -1,6 +1,6 @@
     // ===== constants =====
         // 版本号与各 tweak 引入历程见 `CHANGELOG.md`；本文件不重复 changelog 内容。
-        var VERSION = "0.10.12";
+        var VERSION = "0.10.13";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -33,7 +33,9 @@
         ].join(", ");
         // 统计行位置 tweak（stats-line-position）锚点——DSH renderer SlotOutlet 给每个
         // 出口包 `<div data-slot="<slot key>" style="display:contents">`，不含构建 hash；
-        // 只在兜底时才用 `[class*="..."]` 子串匹配。
+        // 只在兜底时才用 `[class*="..."]` 子串匹配。0.2.x 起该出口与 ContextMeter 同为
+        // composer dock 行的子节点（出口在前、ContextMeter 在后），隐藏/取源都只在出口
+        // 这一层做，见 `25-tweaks.js` 的兄弟选择器规则与 `69-stats-line-position.js`。
         var STATS_DOCK_SEL = '[data-slot="conversation.composer.dock"]';
         var STATS_HEADER_ACTIONS_SEL = '[data-slot="conversation.session.header.actions"]';
         var STATS_TITLE_CLUSTER_HINT_SEL = '[class*="_titleCluster"]';

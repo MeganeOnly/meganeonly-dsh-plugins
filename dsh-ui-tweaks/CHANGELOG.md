@@ -4,6 +4,42 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.13] - 2026-10-03
+
+### 修复
+
+- **`stats-line-position` 在 DSH 0.2.x 上隐藏不彻底**：选「顶部标题右侧」或「不显示」时，底部 dock 行仍有内容残留（上下文占用计量器 ContextMeter 仍在显示）。根因：0.1.5 时代 `conversation.composer.dock` 的 dock 容器里**只有** slot 出口一个子节点，隐藏出口 == 隐藏整行统计；0.2.x 把 `ContextMeter` 搬进同一个 dock 容器，成为 slot 出口的**后继兄弟**节点——dock 行的 JSX children 是 `[renderSlot("conversation.composer.dock", {}), ContextMeter]`，两者同处一条 `display:flex; gap:12px` 的行，所以「隐藏出口 == 隐藏整行」不再成立。修法：保留原有「出口自身 + 出口后代」两条规则（对老版本 DSH 依然正确），追加一条以出口为锚的通用兄弟选择器 `[data-slot="conversation.composer.dock"] ~ *{visibility:hidden !important;}`，把出口之后的同级节点一并隐藏。**用 `~ *` 而不是 `~ div`**：0.2.x 的 ContextMeter 根节点是 `<span>`（类名同样带 `_root` 子串），写死 `div` 会漏掉它。仍用 `visibility` 而非 `display:none`，与 v0.10.1 起的「保留占位、不改输入区高度」语义一致。老版本 DSH 的 dock 行里出口没有后继兄弟，新规则零命中、行为不变。
+- **`stats-line-position` 镜像源范围收窄（防御性）**：`statsFindSource()` 的候选范围显式限定在 slot 出口**子树内**，并加一道 `outlet.contains(candidate)` 校验——不在出口子树内的候选直接丢弃、继续走兜底链。背景：0.2.x 的 ContextMeter 与出口同级、根节点类名同样含 `_root`，一旦将来的实现把查询范围放宽到整行，就会把计量器当成统计行克隆到顶部。**静态复核结论：0.2.x 下这条路径并未真的选错**——`[data-slot="conversation.composer.dock"]` 选中的就是出口包装 div（`display:contents`），`querySelectorAll` 天然只在出口子树内匹配，而 ContextMeter 是出口的兄弟、不在该子树内。故本条是防御性收窄 + 把范围写进注释，不改变任何 DSH 版本上的实际行为。
+- **`statsSyncMirror` 点击转发器**：局部变量 `dock` 更名 `outlet`，并注明索引映射只在出口子树内取 button（0.2.x 的 ContextMeter 也渲染 button，但在子树外，不会挤进索引）。
+- **文档同步**：tweak `description`、`69-stats-line-position.js` 头部注释、`README.md` 均注明「0.2.x 起 ContextMeter 与统计行同处底部 dock 行，本 tweak 会一并隐藏；老版本 DSH 上该兄弟节点不存在，规则自动无副作用」，并提示想保留计量器请选「底部」。
+
+### 兼容性
+
+- 老版本 DSH（dock 行里只有 slot 出口）：新增的兄弟选择器无匹配节点，隐藏行为与 v0.10.12 完全一致；`statsFindSource()` 的候选全部落在出口子树内，`contains` 校验恒真，镜像源不变。
+- DSH 0.2.x：`top` / `hidden` 两态恢复「整行统计 + 同行的 ContextMeter 一起隐藏」；`bottom` 态不注入任何隐藏规则，行为不变。
+- 锚点选择器全部与构建 hash 无关（`data-slot` 属性 + `_root` 子串 + 兄弟组合器），DSH 重新构建换 hash 不影响命中。localStorage key / slot key / 调试 API 零变化。
+- 已知代价（原有）：隐藏作用于整条 dock 行，若将来有别的插件也往这一行放东西，`top` / `hidden` 时会一并隐藏。
+
+### 验证
+
+- 静态证据（对照已安装的 DSH 0.2.0-rc.2）：
+  - `dsh-client-ui-conversation` 客户端 bundle 的 dock 容器 JSX：`className: InputBar_module_css_default.dock`，`children: [variant === "composer" && … ? renderSlot("conversation.composer.dock", {}) : null, activity ? null : jsx(ContextMeter, { useProjection, t })]`——出口与 ContextMeter 确为同一 dock 行的两个子节点。
+  - 同 bundle 的 dock CSS：`.…_dock{justify-content:center;align-items:center;gap:12px;max-width:100%;padding-top:4px;display:flex}`——两者确在同一 flex 行。
+  - ContextMeter 组件返回 `jsxs("span", { ref: rootRef, className: ContextMeter_module_css_default.root, … })`——根节点是 `span`，故兄弟选择器必须用 `~ *`。
+  - `dsh-client-ui-chat` 客户端 bundle：`ctx.slots.inject("conversation.composer.dock", () => ctx.slots.register({ name: "conversation.composer.dock", id: "stats", order: 0, locale: NS, … }, StatsPills))`——该 slot 唯一登记的组件是 `StatsPills`；组件返回 `<div className={StatsPills_module_css_default.root} data-composer-stats>`，其 CSS module 映射为 `"root": "bOPqQW_root"`，**仍能被 `[class*="_root"]` 命中**；renderer 的 SlotOutlet 把它包在 `<div data-slot="<slot key>" style="display:contents">` 内，即**位于出口子树内**——镜像源判定成立。
+- 构建与字节校验：`node lib/build-client.cjs` → `node lib/verify-client.cjs` 输出 `BYTE-IDENTICAL ✓`；仓库根 `node tools/check-dsh-contract.cjs` 中 `dsh-ui-tweaks` 行 PASS。
+- 未能离线验证的部分：真实 DOM 需要浏览器（运行中的 DSH 实例需要 cookie 鉴权），静态取证只能证明 JSX / CSS / slot 注册的预期结构，不能替代实际渲染确认。人工复核要点：在会话里依次切 `bottom` / `top` / `hidden` 三态，观察底部 dock 行是否整行消失（含 ContextMeter）、顶部标题行右侧镜像是否为统计 pill 而非上下文计量器。
+
+### 改动文件
+
+- `lib/client-src/25-tweaks.js`（`stats-line-position` `buildCSS` 追加兄弟选择器规则 + 规则注释；`description` 更新为「整条 dock 行 + 同行的 ContextMeter」）
+- `lib/client-src/69-stats-line-position.js`（header 注释的「隐藏粒度」段改写 + 新增「镜像源范围」段；`statsFindSource()` 收窄到出口子树 + `contains` 校验；`statsSyncMirror` 点击转发器变量更名与注释）
+- `lib/client-src/20-constants.js`（VERSION 0.10.12 → 0.10.13；`STATS_DOCK_SEL` 注释补 0.2.x 同级 ContextMeter 说明）
+- `package.json`（version 0.10.12 → 0.10.13 + description 同步）
+- `README.md`（`stats-line-position` 行的说明 + 「实现约定与已知代价」两条 bullet）
+- `CHANGELOG.md`（本段）
+- `lib/client.js`（重新生成）
+
 ## [0.10.12] - 2026-09-13
 
 ### 修复

@@ -391,7 +391,7 @@
       {
         id: "stats-line-position",
         name: "统计行位置",
-        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文；v0.10.11 起两个 pill 之间恢复 12px gap，视觉与底部原生行对齐；顶部镜像里的按钮可点击，详情对话框从镜像按钮下方弹出——与底部同源同数据，但位置跟随顶部镜像而非底部隐藏的原生按钮，滚动时对话框跟随镜像 button 一起移动）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
+        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文；v0.10.11 起两个 pill 之间恢复 12px gap，视觉与底部原生行对齐；顶部镜像里的按钮可点击，详情对话框从镜像按钮下方弹出——与底部同源同数据，但位置跟随顶部镜像而非底部隐藏的原生按钮，滚动时对话框跟随镜像 button 一起移动）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 行——0.2.x 起 DSH 把上下文占用计量器（ContextMeter）也放进这一行、与统计行出口同级，所以选「顶部标题右侧」或「不显示」时会连它一起隐藏（想保留计量器请选「底部」）；老版本 DSH 上这一行只有统计行，规则不产生任何差别。若将来有别的插件也往这一行放东西，同样会被一并隐藏。",
         choices: [
           { value: STATS_POS_BOTTOM, label: "底部（DSH 默认）" },
           { value: STATS_POS_TOP, label: "顶部标题右侧" },
@@ -407,8 +407,16 @@
           // 两条选择器：出口自身 + 后代——visibility 本身是继承属性，但后代那条是显式兜底
           // 防 DSH 后续给统计行自己写 visibility 覆盖。!important 必需：出口的 display:contents
           // 是 inline style，普通样式表规则压不过它（同规则组保持一致强度）。
-          var css = "/* === stats-line-position : " + pos + " —— 隐藏底部 composer.dock 出口（唯一占位者 = DSH StatsPills = TimePill + UsagePill）；visibility 保留占位 === */\n" +
-            STATS_DOCK_SEL + "," + STATS_DOCK_SEL + " *{visibility:hidden !important;}";
+          // v0.10.13：0.2.x 起 DSH 把 ContextMeter（上下文占用计量器）放进同一个 dock 行，
+          // 与 slot 出口同为该 flex 行的子节点（出口是它的**前一个兄弟**）——只隐藏出口不再
+          // 等于隐藏整行。第三条规则以出口为锚，用通用兄弟选择器 `~` 把出口之后的同级节点
+          // 一并隐藏：ContextMeter 的根节点是 `<span>`，所以用 `~ *` 而不是 `~ div`，不写死
+          // 元素类型。仍是 visibility（保留占位、不改输入区高度）。老版本 DSH 的 dock 行里
+          // 出口没有后继兄弟，该规则零命中、零副作用。
+          var css = "/* === stats-line-position : " + pos + " —— 隐藏底部 composer.dock 出口（占位者 = DSH StatsPills = TimePill + UsagePill）+ 0.2.x 同行同级的 ContextMeter；visibility 保留占位 === */\n" +
+            STATS_DOCK_SEL + "," + STATS_DOCK_SEL + " *{visibility:hidden !important;}\n" +
+            "/* 0.2.x：ContextMeter 是 slot 出口的后继兄弟节点（同一 dock 行的 flex 子项），单独隐藏一次 */\n" +
+            STATS_DOCK_SEL + " ~ *{visibility:hidden !important;}";
           if (pos !== STATS_POS_TOP) return css;
           // 顶部镜像外观：跟着标题簇的 flex 流排在"模式"标签右边（titleCluster 自带 gap:10px，
           // 无需额外 margin）。可收缩 + 省略号避免长统计挤没面包屑；tabular-nums 让数字跳动时

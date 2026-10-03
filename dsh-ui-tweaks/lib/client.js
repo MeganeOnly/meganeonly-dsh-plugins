@@ -43,7 +43,7 @@ window.__ModuleLoader__.load({
 
     // ===== constants =====
         // 版本号与各 tweak 引入历程见 `CHANGELOG.md`；本文件不重复 changelog 内容。
-        var VERSION = "0.10.12";
+        var VERSION = "0.10.13";
         var MAIN_CSS_TAG_ID = "dsh-ui-tweaks/main.css";
         var SECTION_CSS_TAG_ID = "dsh-ui-tweaks/Section.css";
         var STORAGE_KEY = "dsh-ui-tweaks/state";
@@ -76,7 +76,9 @@ window.__ModuleLoader__.load({
         ].join(", ");
         // 统计行位置 tweak（stats-line-position）锚点——DSH renderer SlotOutlet 给每个
         // 出口包 `<div data-slot="<slot key>" style="display:contents">`，不含构建 hash；
-        // 只在兜底时才用 `[class*="..."]` 子串匹配。
+        // 只在兜底时才用 `[class*="..."]` 子串匹配。0.2.x 起该出口与 ContextMeter 同为
+        // composer dock 行的子节点（出口在前、ContextMeter 在后），隐藏/取源都只在出口
+        // 这一层做，见 `25-tweaks.js` 的兄弟选择器规则与 `69-stats-line-position.js`。
         var STATS_DOCK_SEL = '[data-slot="conversation.composer.dock"]';
         var STATS_HEADER_ACTIONS_SEL = '[data-slot="conversation.session.header.actions"]';
         var STATS_TITLE_CLUSTER_HINT_SEL = '[class*="_titleCluster"]';
@@ -500,7 +502,7 @@ window.__ModuleLoader__.load({
       {
         id: "stats-line-position",
         name: "统计行位置",
-        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文；v0.10.11 起两个 pill 之间恢复 12px gap，视觉与底部原生行对齐；顶部镜像里的按钮可点击，详情对话框从镜像按钮下方弹出——与底部同源同数据，但位置跟随顶部镜像而非底部隐藏的原生按钮，滚动时对话框跟随镜像 button 一起移动）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 区域——目前 DSH 里该区域的唯一内容就是这行统计，但若将来有别的插件也往这里放东西，会被一并隐藏。",
+        description: "对话底部那行运行统计（轮次 / 步数、LLM 与工具耗时、首 token 与吞吐、缓存命中、输入输出 token）的位置。「底部」是 DSH 默认；「顶部标题右侧」把它挪到对话名与模式标签右边（内容与底部完全一致，标题行放不下时省略号截断，鼠标悬停看全文；v0.10.11 起两个 pill 之间恢复 12px gap，视觉与底部原生行对齐；顶部镜像里的按钮可点击，详情对话框从镜像按钮下方弹出——与底部同源同数据，但位置跟随顶部镜像而非底部隐藏的原生按钮，滚动时对话框跟随镜像 button 一起移动）；「不显示」则完全隐藏。非「底部」时原生行用 visibility 隐藏而非移除，保留它原本占的 24px——这样输入框位置与「底部」时完全一致，代价是输入框下方留一条等高空白。注意：隐藏作用于整个底部 dock 行——0.2.x 起 DSH 把上下文占用计量器（ContextMeter）也放进这一行、与统计行出口同级，所以选「顶部标题右侧」或「不显示」时会连它一起隐藏（想保留计量器请选「底部」）；老版本 DSH 上这一行只有统计行，规则不产生任何差别。若将来有别的插件也往这一行放东西，同样会被一并隐藏。",
         choices: [
           { value: STATS_POS_BOTTOM, label: "底部（DSH 默认）" },
           { value: STATS_POS_TOP, label: "顶部标题右侧" },
@@ -516,8 +518,16 @@ window.__ModuleLoader__.load({
           // 两条选择器：出口自身 + 后代——visibility 本身是继承属性，但后代那条是显式兜底
           // 防 DSH 后续给统计行自己写 visibility 覆盖。!important 必需：出口的 display:contents
           // 是 inline style，普通样式表规则压不过它（同规则组保持一致强度）。
-          var css = "/* === stats-line-position : " + pos + " —— 隐藏底部 composer.dock 出口（唯一占位者 = DSH StatsPills = TimePill + UsagePill）；visibility 保留占位 === */\n" +
-            STATS_DOCK_SEL + "," + STATS_DOCK_SEL + " *{visibility:hidden !important;}";
+          // v0.10.13：0.2.x 起 DSH 把 ContextMeter（上下文占用计量器）放进同一个 dock 行，
+          // 与 slot 出口同为该 flex 行的子节点（出口是它的**前一个兄弟**）——只隐藏出口不再
+          // 等于隐藏整行。第三条规则以出口为锚，用通用兄弟选择器 `~` 把出口之后的同级节点
+          // 一并隐藏：ContextMeter 的根节点是 `<span>`，所以用 `~ *` 而不是 `~ div`，不写死
+          // 元素类型。仍是 visibility（保留占位、不改输入区高度）。老版本 DSH 的 dock 行里
+          // 出口没有后继兄弟，该规则零命中、零副作用。
+          var css = "/* === stats-line-position : " + pos + " —— 隐藏底部 composer.dock 出口（占位者 = DSH StatsPills = TimePill + UsagePill）+ 0.2.x 同行同级的 ContextMeter；visibility 保留占位 === */\n" +
+            STATS_DOCK_SEL + "," + STATS_DOCK_SEL + " *{visibility:hidden !important;}\n" +
+            "/* 0.2.x：ContextMeter 是 slot 出口的后继兄弟节点（同一 dock 行的 flex 子项），单独隐藏一次 */\n" +
+            STATS_DOCK_SEL + " ~ *{visibility:hidden !important;}";
           if (pos !== STATS_POS_TOP) return css;
           // 顶部镜像外观：跟着标题簇的 flex 流排在"模式"标签右边（titleCluster 自带 gap:10px，
           // 无需额外 margin）。可收缩 + 省略号避免长统计挤没面包屑；tabular-nums 让数字跳动时
@@ -2737,9 +2747,18 @@ window.__ModuleLoader__.load({
     // 跨版本稳定；与 v0.7.3 HoverCard `[class*="_hoverContent"]` 同源的 hash-independence
     // 策略）。`display:contents` 是 inline style，所有针对出口层的规则一律带 !important。
     //
-    // 隐藏粒度：整个 `conversation.composer.dock` 出口——DSH slot 目录登记的唯一占位者
-    // 是 StatsLine，隐藏出口 == 隐藏统计行。代价：若将来第三方插件也往 composer.dock
-    // 注册条目，top/hidden 时会连带隐藏（已在 tweak description 注明）。
+    // 隐藏粒度（0.2.x 修正）：老版本 DSH 的 dock 行里只有 slot 出口一个子节点，隐藏出口 ==
+    // 隐藏统计行。0.2.x 起 DSH 把 ContextMeter（上下文占用计量器）作为**后继兄弟**放进同一
+    // dock 行（`[slotOutlet, ContextMeter]` 两个 flex 子项），只隐藏出口会把它留下——CSS 侧
+    // 因此追加一条以出口为锚的通用兄弟选择器 `[data-slot="..."] ~ *`，把出口之后的同级节点
+    // 一并隐藏；老版本上该兄弟节点不存在，规则零命中。代价：若将来第三方插件也往
+    // composer.dock 注册条目，top/hidden 时会连带隐藏（已在 tweak description 与 README 注明）。
+    // 边界：出口只在 composer 变体渲染（`variant === "composer"` 且 input / sessionId 齐备），
+    // 没有出口就没有锚点，兄弟规则在该变体下不生效——那里本来也没有统计行可隐藏。
+    //
+    // 镜像源范围（v0.10.13 显式收窄）：`statsFindSource()` 只在 slot 出口**子树内**找
+    // StatsPills 根节点，候选还要过 `outlet.contains()` 校验——0.2.x 的 ContextMeter 与出口
+    // 同级、不在子树内，不可能被选成镜像源；校验同时挡住将来的结构漂移。
     //
     // v0.10.11 顶部镜像两点修复：
     //   (1) 两个 pill 之间补 12px gap——镜像 CSS 加 `display:inline-flex; gap:12px`，恢复
@@ -2763,22 +2782,32 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 找 DSH 原生统计行的根元素（StatsLine 的 `<div className={...root}>`）。
+     * 找 DSH 原生统计行的根元素（StatsPills 的 `<div class="..._root">`）。
      *
-     * 策略：先用稳定锚点 `[data-slot="conversation.composer.dock"]` 圈定范围，
-     *   再在其中取**最内层**的 `[class*="_root"]`——DSH 用 Tooltip 包裹
-     *   StatsLine，若 Tooltip 将来也带 `_root` 类名，最内层那个才是统计行
-     *   自身。全都没命中时退回出口的第一个元素子节点。
+     * 策略：先用稳定锚点 `[data-slot="conversation.composer.dock"]` 定位 slot 出口
+     *   （出口是 dock 行的子节点、自身是 `display:contents` 包装），再**只在该出口
+     *   子树内**取最内层的 `[class*="_root"]`——DSH 用 Tooltip 包裹 StatsPills，
+     *   若 Tooltip 将来也带 `_root` 类名，最内层那个才是统计行自身。0.2.x 起同一
+     *   dock 行里出口之后还有同级 ContextMeter（根节点同样落在 `_root` 子串上），
+     *   查询范围一旦放宽到整行就会克隆错节点，所以候选一律过 `outlet.contains()`
+     *   校验，不在出口子树内的直接丢弃、继续往前找。全都没命中时退回出口的第一个
+     *   元素子节点。
      */
     function statsFindSource() {
       if (typeof document === "undefined") return null;
-      var dock = document.querySelector(STATS_DOCK_SEL);
-      if (!dock) return null;
-      var list = dock.querySelectorAll(STATS_ROOT_HINT_SEL);
+      var outlet = document.querySelector(STATS_DOCK_SEL);
+      if (!outlet) return null;
+      var list = outlet.querySelectorAll(STATS_ROOT_HINT_SEL);
       for (var i = list.length - 1; i >= 0; i--) {
-        if (list[i].querySelector(STATS_ROOT_HINT_SEL) === null) return list[i];
+        // 只接受出口子树内的候选：DSH 换结构 / 查询范围漂移时宁可退回兜底也不克隆错节点
+        if (outlet.contains(list[i]) && list[i].querySelector(STATS_ROOT_HINT_SEL) === null) {
+          return list[i];
+        }
       }
-      return dock.firstElementChild;
+      // 出口的 `display:contents` 不生成盒子，StatsPills 根节点就是它的元素子节点
+      var first = outlet.firstElementChild;
+      if (first !== null && outlet.contains(first)) return first;
+      return null;
     }
 
     /**
@@ -2884,9 +2913,11 @@ window.__ModuleLoader__.load({
             getRect: function () { return btn.getBoundingClientRect(); }
           };
           statsEnsureDialogObserver();
-          var dock = document.querySelector(STATS_DOCK_SEL);
-          if (!dock) return;
-          var live = dock.querySelectorAll("button");
+          var outlet = document.querySelector(STATS_DOCK_SEL);
+          if (!outlet) return;
+          // 索引映射只在出口子树内取 button——0.2.x 的 ContextMeter 也渲染 button，
+          // 但它是出口的兄弟节点、不在子树内，不会挤进索引。
+          var live = outlet.querySelectorAll("button");
           if (idx < live.length) live[idx].click();
         });
       })(j);

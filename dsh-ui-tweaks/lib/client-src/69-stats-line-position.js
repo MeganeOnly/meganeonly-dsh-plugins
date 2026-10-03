@@ -18,9 +18,18 @@
     // 跨版本稳定；与 v0.7.3 HoverCard `[class*="_hoverContent"]` 同源的 hash-independence
     // 策略）。`display:contents` 是 inline style，所有针对出口层的规则一律带 !important。
     //
-    // 隐藏粒度：整个 `conversation.composer.dock` 出口——DSH slot 目录登记的唯一占位者
-    // 是 StatsLine，隐藏出口 == 隐藏统计行。代价：若将来第三方插件也往 composer.dock
-    // 注册条目，top/hidden 时会连带隐藏（已在 tweak description 注明）。
+    // 隐藏粒度（0.2.x 修正）：老版本 DSH 的 dock 行里只有 slot 出口一个子节点，隐藏出口 ==
+    // 隐藏统计行。0.2.x 起 DSH 把 ContextMeter（上下文占用计量器）作为**后继兄弟**放进同一
+    // dock 行（`[slotOutlet, ContextMeter]` 两个 flex 子项），只隐藏出口会把它留下——CSS 侧
+    // 因此追加一条以出口为锚的通用兄弟选择器 `[data-slot="..."] ~ *`，把出口之后的同级节点
+    // 一并隐藏；老版本上该兄弟节点不存在，规则零命中。代价：若将来第三方插件也往
+    // composer.dock 注册条目，top/hidden 时会连带隐藏（已在 tweak description 与 README 注明）。
+    // 边界：出口只在 composer 变体渲染（`variant === "composer"` 且 input / sessionId 齐备），
+    // 没有出口就没有锚点，兄弟规则在该变体下不生效——那里本来也没有统计行可隐藏。
+    //
+    // 镜像源范围（v0.10.13 显式收窄）：`statsFindSource()` 只在 slot 出口**子树内**找
+    // StatsPills 根节点，候选还要过 `outlet.contains()` 校验——0.2.x 的 ContextMeter 与出口
+    // 同级、不在子树内，不可能被选成镜像源；校验同时挡住将来的结构漂移。
     //
     // v0.10.11 顶部镜像两点修复：
     //   (1) 两个 pill 之间补 12px gap——镜像 CSS 加 `display:inline-flex; gap:12px`，恢复
@@ -44,22 +53,32 @@
     }
 
     /**
-     * 找 DSH 原生统计行的根元素（StatsLine 的 `<div className={...root}>`）。
+     * 找 DSH 原生统计行的根元素（StatsPills 的 `<div class="..._root">`）。
      *
-     * 策略：先用稳定锚点 `[data-slot="conversation.composer.dock"]` 圈定范围，
-     *   再在其中取**最内层**的 `[class*="_root"]`——DSH 用 Tooltip 包裹
-     *   StatsLine，若 Tooltip 将来也带 `_root` 类名，最内层那个才是统计行
-     *   自身。全都没命中时退回出口的第一个元素子节点。
+     * 策略：先用稳定锚点 `[data-slot="conversation.composer.dock"]` 定位 slot 出口
+     *   （出口是 dock 行的子节点、自身是 `display:contents` 包装），再**只在该出口
+     *   子树内**取最内层的 `[class*="_root"]`——DSH 用 Tooltip 包裹 StatsPills，
+     *   若 Tooltip 将来也带 `_root` 类名，最内层那个才是统计行自身。0.2.x 起同一
+     *   dock 行里出口之后还有同级 ContextMeter（根节点同样落在 `_root` 子串上），
+     *   查询范围一旦放宽到整行就会克隆错节点，所以候选一律过 `outlet.contains()`
+     *   校验，不在出口子树内的直接丢弃、继续往前找。全都没命中时退回出口的第一个
+     *   元素子节点。
      */
     function statsFindSource() {
       if (typeof document === "undefined") return null;
-      var dock = document.querySelector(STATS_DOCK_SEL);
-      if (!dock) return null;
-      var list = dock.querySelectorAll(STATS_ROOT_HINT_SEL);
+      var outlet = document.querySelector(STATS_DOCK_SEL);
+      if (!outlet) return null;
+      var list = outlet.querySelectorAll(STATS_ROOT_HINT_SEL);
       for (var i = list.length - 1; i >= 0; i--) {
-        if (list[i].querySelector(STATS_ROOT_HINT_SEL) === null) return list[i];
+        // 只接受出口子树内的候选：DSH 换结构 / 查询范围漂移时宁可退回兜底也不克隆错节点
+        if (outlet.contains(list[i]) && list[i].querySelector(STATS_ROOT_HINT_SEL) === null) {
+          return list[i];
+        }
       }
-      return dock.firstElementChild;
+      // 出口的 `display:contents` 不生成盒子，StatsPills 根节点就是它的元素子节点
+      var first = outlet.firstElementChild;
+      if (first !== null && outlet.contains(first)) return first;
+      return null;
     }
 
     /**
@@ -165,9 +184,11 @@
             getRect: function () { return btn.getBoundingClientRect(); }
           };
           statsEnsureDialogObserver();
-          var dock = document.querySelector(STATS_DOCK_SEL);
-          if (!dock) return;
-          var live = dock.querySelectorAll("button");
+          var outlet = document.querySelector(STATS_DOCK_SEL);
+          if (!outlet) return;
+          // 索引映射只在出口子树内取 button——0.2.x 的 ContextMeter 也渲染 button，
+          // 但它是出口的兄弟节点、不在子树内，不会挤进索引。
+          var live = outlet.querySelectorAll("button");
           if (idx < live.length) live[idx].click();
         });
       })(j);
