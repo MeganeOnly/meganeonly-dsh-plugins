@@ -116,6 +116,28 @@ function toolSchemas(ctx) {
 // cordis.patch.yml 读取与启停覆盖
 // ---------------------------------------------------------------------------
 
+/**
+ * patch 文件的统一解析选项：显式声明 `!!js` 标量标签。
+ *
+ * DSH 内核写同一个 cordis.patch.yml 的两处都传同一份 customTags：
+ *   - `@deepseek-ai/dsh-plugin-manager/lib/types/patch.js`（writePluginEnabled，23-25 行）
+ *   - `@deepseek-ai/dsh-config-editor/lib/index.js`（配置编辑器写盘，91-94 行）
+ * 均为 `customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value) => value }]`。
+ *
+ * DSH 自带层（如 dsh-base/cordis.patch.yml）大量使用 `!!js` 表达式，而 yaml 默认
+ * 不认识这个标签。实测（yaml 2.9.0）裸 parseDocument 并不会抛错、document.errors
+ * 仍为 0，但每个 `!!js` 都会记一条 `Unresolved tag: tag:yaml.org,2002:js` 警告——
+ * 即该节点在本插件读到的文档树里始终处于"标签未解析"状态，而本插件随后要改写并
+ * 整篇回写这个文件（patchDisabledIds 读停用集合、setEnabled 改写后 String(doc)
+ * 回写），未解析标签参与回写时其语义不由 yaml 保证。传上 customTags 后
+ * warnings/errors 均为 0，且回写结果与裸解析逐字节相同：本选项因此是"消除未解析
+ * 标签警告、与内核写入方解析语义对齐"的防御性一致性措施，不改变现有启停行为。
+ * 选项收敛为一个常量，两处调用共用，避免后续新增入口再漏。
+ */
+const PATCH_PARSE_OPTIONS = {
+  customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value) => value }],
+}
+
 /** 解析 profile 根目录（loader 的 baseUrl 即 profile 目录）。 */
 function profileRoot(ctx) {
   const base = ctx.baseUrl
@@ -174,7 +196,7 @@ async function patchDisabledIds(ctx) {
 
   let doc
   try {
-    doc = parseDocument(await readFile(path, 'utf8'))
+    doc = parseDocument(await readFile(path, 'utf8'), PATCH_PARSE_OPTIONS)
   } catch {
     const empty = new Set()
     patchDisabledCache.set(path, { mtimeMs, ids: empty })
@@ -251,7 +273,7 @@ async function setEnabled(ctx, targetId, enabled) {
 
   const path = patchPathOf(ctx)
   const text = await readFile(path, 'utf8')
-  const doc = parseDocument(text)
+  const doc = parseDocument(text, PATCH_PARSE_OPTIONS)
   if (doc.contents === null || !Array.isArray(doc.contents.items)) {
     doc.contents = doc.createNode([])
   }
