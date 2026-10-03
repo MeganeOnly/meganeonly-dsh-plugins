@@ -62,7 +62,8 @@ dsh web
 - **渲染器覆盖**：覆盖官方同 key 渲染器须显式 `priority: -1`（最小 priority 成为 shadow winner），否则与官方 priority 0 冲突抛错；
 - **HTTP 路由**：宿主端用 `ctx.webServer.register({ kind: 'exact', path, handler })`；
 - 各插件的实现细节见 [docs/implementation.md](docs/implementation.md)；
-- 维护规范见 [docs/maintainability.md](docs/maintainability.md)，协作流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 维护规范见 [docs/maintainability.md](docs/maintainability.md)，协作流程见 [CONTRIBUTING.md](CONTRIBUTING.md)；
+- 升级 DSH 本体前的预检清单见 [docs/dsh-upgrade-precheck.md](docs/dsh-upgrade-precheck.md)。
 
 ## 发布
 
