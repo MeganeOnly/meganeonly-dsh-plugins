@@ -66,9 +66,11 @@ pnpm install --no-frozen-lockfile
 临时停用可在 profile 的 `cordis.patch.yml` 中追加：
 
 ```yaml
-- id: plugin-manager
+- id: megane-plugin-manager
   disabled: true
 ```
+
+> 名册行 id 是 `megane-plugin-manager`，与包名 `dsh-plugin-manager` 不同：`plugin-manager` 这个 id 在 dsh-base 里留给官方 `@deepseek-ai/dsh-plugin-manager`（发布 `pluginManager` 服务的唯一包），loader 按 id 建键、同 id 只存活一行，占用它会把官方行顶掉——`cordis` agent 预设里等待该服务的 `tool-plugin-manager` 行会一直挂在 `waiting for pluginManager`，官方插件清单的 `managementAvailable` 也会缺失。自 v0.3.2 起本插件改用独立 id，宿主 API（`/api/plugin-manager/*`）与设置页条目 id 均未变化。
 
 ## 许可证
 

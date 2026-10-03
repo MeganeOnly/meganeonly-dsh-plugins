@@ -4,6 +4,22 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.2] - 2026-10-03
+
+### 修复
+
+- **名册行 id 与官方包冲突**：行 id 由 `plugin-manager` 改为 `megane-plugin-manager`。dsh-base 用 `plugin-manager` 这一 id 承载官方 `@deepseek-ai/dsh-plugin-manager`（发布 `pluginManager` 服务的唯一包），而 loader 按 id 建键、同 id 只存活一行——本插件后插入的同 id 行把官方行顶掉后，`pluginManager` 服务失去提供者，产生两处可见后果：
+  - `cordis` agent 预设里 `inject: ['tools', 'pluginManager', 'sandboxPolicy']` 的 `tool-plugin-manager` 行（`@deepseek-ai/dsh-plugin-manager/tools`）长期停在 pending，设置页预设卡片显示 `tool-plugin-manager (@deepseek-ai/dsh-plugin-manager/tools): waiting for pluginManager`；
+  - 官方插件清单的 `managementAvailable` 缺失（`dsh-host-plugin-inventory` 以 `ctx.get('pluginManager')` 判定），官方客户端插件管理（`remote.pluginManager.*`）不可用。
+- 改 id 后两行共存：官方行恢复并发布 `pluginManager` 服务；本插件的宿主 API 路径（`/api/plugin-manager/*`）与设置页条目 id（`settings.section` 的 `plugin-manager`）保持不变，功能无变化。生效需重启 DSH。
+
+### 改动文件
+
+- `cordis.patch.yml`（`id: plugin-manager` → `id: megane-plugin-manager`，并补注释说明原因）
+- `README.md`（停用示例同步新 id + 说明行 id 与包名的差异）
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.3.1 → 0.3.2）
+
 ## [Unreleased]
 
 ### 兼容性

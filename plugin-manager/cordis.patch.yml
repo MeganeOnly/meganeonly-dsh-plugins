@@ -1,4 +1,13 @@
 # dsh-plugin-manager bundle patch：向 web profile 的插件名册插入自身一行。
+#
+# 行 id 刻意避开 `plugin-manager`：该 id 在 dsh-base 里属于官方
+# `@deepseek-ai/dsh-plugin-manager`（发布 `pluginManager` 服务的唯一包）。
+# loader 按 id 建键，同 id 只存活一行（本机实测官方行被顶掉），于是：
+#   - `cordis` agent 预设里 `inject: ['tools','pluginManager','sandboxPolicy']`
+#     的 `tool-plugin-manager` 行（`@deepseek-ai/dsh-plugin-manager/tools`）
+#     长期停在 pending，设置页预设卡片显示
+#     `tool-plugin-manager (...): waiting for pluginManager`；
+#   - 官方插件清单的 `managementAvailable` 缺失（dsh-host-plugin-inventory）。
 - insert:
-    - id: plugin-manager
+    - id: megane-plugin-manager
       name: dsh-plugin-manager

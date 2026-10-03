@@ -116,3 +116,17 @@
 **踩坑教训**：JSON description 半角引号问题已在 E008 标注，这次写 v0.1.6+1.7 描述时已用全角引号「」——但仍要警觉，每个版本发布前检查。
 
 **日期**：2026-08-18 · **状态**：active
+
+---
+
+### E010 · dsh-plugin-manager 名册行 id 改用 `megane-plugin-manager`
+
+**问题**：本插件 bundle patch 以 `- id: plugin-manager` 插入自身行，而 dsh-base 用同一 id 承载官方 `@deepseek-ai/dsh-plugin-manager`——它是发布 `pluginManager` 服务的唯一包。loader 按 id 建键、同 id 只存活一行，本插件行把官方行顶掉后该服务失去提供者：
+- `cordis` agent 预设里 `inject: ['tools', 'pluginManager', 'sandboxPolicy']` 的 `tool-plugin-manager` 行（`@deepseek-ai/dsh-plugin-manager/tools`）长期停在 pending，设置页预设卡片显示 `tool-plugin-manager (@deepseek-ai/dsh-plugin-manager/tools): waiting for pluginManager`（文本出自 `dsh-agent-preset-registry` 的 `auditRows()`，是预设诊断而非报错）；
+- 官方插件清单的 `managementAvailable` 缺失（`dsh-host-plugin-inventory` 以 `ctx.get('pluginManager')` 判定），官方客户端插件管理（`remote.pluginManager.*`）不可用。
+
+**决策**：行 id 改为 `megane-plugin-manager`，与包名 `dsh-plugin-manager` 分离。**由此确立约定**：自建插件的名册行 id 一律带作者前缀，避开 `@deepseek-ai/*` 官方包在 `dsh-base` / `dsh-web-app` 的 patch 里已占用的 id（同 id 不会合并，只会静默顶掉一行）。宿主 API 路径（`/api/plugin-manager/*`）与 `settings.section` 条目 id 不在名册 id 命名空间内，保持原样。
+
+**验证**：`dsh --profile web --dump-config` 复查组合结果——`plugin-manager`（官方）与 `megane-plugin-manager`（本插件）两行共存。bundle patch 启动时加载、运行时不 HMR（参见 E007 第 5 条），改后需重启 DSH；`node_modules/plugin-manager` 这类旧行 id 遗留的 junction 不影响解析，未清理。
+
+**日期**：2026-10-03 · **状态**：active
