@@ -1,4 +1,57 @@
     // ===== components =====
+    /**
+     * v0.5.0 扫描状态行。
+     *
+     * host 半段每次请求都立即返回"已发布快照"，后台扫描在单飞推进；因此客户端需要
+     * 一个进度与新鲜度的可视入口：
+     *   - scanning：后台重算中（done/total + 进度条），首次安装或全量重建时会持续一段时间
+     *   - legacy：当前展示的是 v0.4.x 旧缓存的占位数据，等重算完成后自动被真实值覆盖
+     *   - 常态：数据截至时间 + 上次扫描耗时 + 生命周期空洞诊断计数
+     *   - errorCount > 0：切换成警示配色并提示条数（明细在 errors 盒里）
+     */
+    function ScanStatus(d) {
+      var scanning = d.scanning === true;
+      var legacy = d.legacy === true;
+      var progress = d.scanProgress || null;
+      var pct = 0;
+      if (progress != null && progress.total > 0) {
+        pct = Math.max(0, Math.min(100, Math.round((progress.done / progress.total) * 100)));
+      }
+      var pieces = [];
+      if (scanning) {
+        pieces.push("后台重算中");
+        if (progress != null) {
+          if (progress.total > 0) pieces.push(progress.done + "/" + progress.total + " 会话");
+          else pieces.push("发现会话中");
+          if (progress.changed != null) pieces.push("本次重折 " + progress.changed + " · 复用 " + progress.reused);
+        }
+      } else if (legacy) {
+        pieces.push("当前展示旧缓存数据，等待重算完成");
+      } else {
+        pieces.push("数据已是最新");
+        if (d.dataAsOf != null) pieces.push("截至 " + fmtTime(d.dataAsOf));
+        if (d.lastScanAt != null) pieces.push("上次扫描 " + fmtTime(d.lastScanAt));
+        if (d.reused != null && d.reused > 0) pieces.push("复用 " + d.reused + " 个会话");
+      }
+      if (d.restartFolds > 0) pieces.push(d.restartFolds + " 个会话日志被改写，已重折叠");
+      if (d.errorCount > 0) pieces.push(d.errorCount + " 个会话失败");
+
+      var warn = d.errorCount > 0;
+      return React.createElement(
+        "div",
+        { style: warn ? Object.assign({}, s.statusBar, s.statusWarn) : s.statusBar, "data-usage-stats-status": scanning ? "scanning" : (legacy ? "legacy" : "idle") },
+        React.createElement("span", { style: s.statusDot }),
+        React.createElement("span", null, pieces.join(" · ")),
+        scanning && progress != null && progress.total > 0
+          ? React.createElement(
+            "span",
+            { style: s.statusTrack },
+            React.createElement("span", { style: Object.assign({}, s.statusFill, { width: pct + "%" }) })
+          )
+          : null
+      );
+    }
+
     function Card(label, value, sub) {
       return React.createElement(
         "div",

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * dsh-usage-stats — payload 装配与快照 memo（v0.5.0）
  *
  * 一次请求 = 取"已发布快照"（零计算）。快照只在**记录集合发生变化**时重算：
@@ -151,7 +151,7 @@ export function createPayloadBuilder(deps) {
       lastScanAt: state != null ? state.lastFinishedAt : null,
       errors: diag ? errors.slice(0, 200) : errors.slice(0, MAX_ERRORS_REPORTED),
       errorCount: state != null ? state.errorCount : 0,
-      gapFolds: state != null ? state.gapFolds : 0,
+      restartFolds: state != null ? state.restartFolds : 0,
     }
     if (options.error !== undefined) payload.error = options.error
     if (diag) {

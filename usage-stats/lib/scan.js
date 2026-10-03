@@ -1,4 +1,4 @@
-/**
+﻿/**
  * dsh-usage-stats — 扫描调度器（v0.5.0）
  *
  * 一次扫描 = 发现 → 逐会话修订比较 → 只对"新增字节"做帧级增量折叠 → 落盘 → 通知上层。
@@ -106,7 +106,7 @@ export function createScanner(deps) {
     changed: 0,
     reused: 0,
     removed: 0,
-    gapFolds: 0,
+    restartFolds: 0,
     errorCount: 0,
     discovery: 'none',
     lastStartedAt: null,
@@ -192,53 +192,34 @@ export function createScanner(deps) {
     // 兜底来源（sessionQuery）：没有路径，只能整会话读
     if (entry.path == null) return foldViaFramework(entry)
 
-    let resumed = await canResume(record, entry, info)
+    const resumed = await canResume(record, entry, info)
     let start = resumed ? record.cursor.bytes : 0
     let baseFrames = resumed && Number.isFinite(record.cursor?.frames) ? record.cursor.frames : 0
     let fold = resumed ? foldStateFor(record) : null
-    if (resumed && fold == null) resumed = false
-    if (!resumed) {
+    if (fold == null) {
+      // 记录缺失 / 世代变化 / 尺寸回缩 / 前缀锚不符 / 无锚 → 作用域内全量重折叠
       start = 0
       baseFrames = 0
       fold = createFoldState(null)
+      if (record != null) state.restartFolds += 1
     }
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const result = await foldFromDisk(entry, info, fold, start, baseFrames)
-      if (result.status === 'gap') {
-        // 作用域内重折叠：只重置这一个会话
-        fold = createFoldState(null)
-        start = 0
-        baseFrames = 0
-        continue
-      }
-      if (result.status !== 'ok') return result
-      if (result.sawGap) {
-        // 全量折叠下遇到 seq 空洞：日志自身不连续（被压缩/改写过的历史）。
-        // 处理方式是"折叠所见 + 记一条诊断"，不当作错误（拒绝折叠会让该会话永远停在旧值）。
-        state.gapFolds += 1
-        logger.warn(`${entry.path}：日志存在 seq 空洞，已按"折叠所见"处理（历史可能被压缩过）`)
-      }
-      const key = await persist(entry, fold, result)
-      return { status: 'folded', bytes: result.bytes, key }
-    }
-    return { status: 'failed', reason: '重折叠仍失败' }
+    const result = await foldFromDisk(entry, info, fold, start, baseFrames)
+    if (result.status !== 'ok') return result
+    const key = await persist(entry, fold, result)
+    return { status: 'folded', bytes: result.bytes, key }
   }
 
-  /** 从磁盘按水位续读并折叠；返回 ok / gap / failed。 */
+  /** 从磁盘按水位续读并折叠；返回 ok / failed。 */
   async function foldFromDisk(entry, info, fold, start, baseFrames) {
     let bytes = start
     let frameCount = baseFrames
-    let sawGap = false
-    // 全量折叠（start=0）允许日志自身存在 seq 空洞：拒绝折叠只会让该会话永远停在旧值。
-    // 增量折叠（start>0）保持严格：空洞说明中间有我们没读到的字节，必须改走全量重折叠。
-    const continueOnGap = start === 0
     try {
       const read = await readAppended(entry.path, start)
       if (read.buffer.length > 0) {
         const scanned = scanZstdFrames(read.buffer)
         if (scanned.invalidAt !== undefined) {
-          if (start > 0) return { status: 'gap', reason: `新增字节结构非法（${scanned.invalidReason}），改走全量重折叠` }
+          if (start > 0) return { status: 'failed', reason: `新增字节结构非法（${scanned.invalidReason}）` }
           return { status: 'failed', reason: `日志结构非法（${scanned.invalidReason}）` }
         }
         const limit = scanned.tornStart === undefined ? read.buffer.length : scanned.tornStart
@@ -248,9 +229,7 @@ export function createScanner(deps) {
           const text = decodeFrameRange(read.buffer, range)
           if (text === null) return { status: 'failed', reason: '帧解码失败' }
           const events = parseEventLines(text)
-          const outcome = foldEvents(fold, events, { continueOnGap })
-          if (outcome.gap) return { status: 'gap', reason: `seq 空洞（${String(outcome.gapAt)}）` }
-          if (outcome.sawGap) sawGap = true
+          foldEvents(fold, events)
           frameCount += 1
           sinceYield += events.length
           if (sinceYield >= FOLD_SLICE_EVENTS) {
@@ -263,7 +242,7 @@ export function createScanner(deps) {
     } catch (error) {
       return { status: 'failed', reason: `读取失败：${String(error && error.message)}` }
     }
-    return { status: 'ok', bytes, frameCount, info, sawGap }
+    return { status: 'ok', bytes, frameCount, info }
   }
 
   /** 慢兜底：通过框架读整个会话（无路径时的唯一选择）。 */
@@ -361,7 +340,7 @@ export function createScanner(deps) {
     state.changed = 0
     state.reused = 0
     state.removed = 0
-    state.gapFolds = 0
+    state.restartFolds = 0
     state.errorCount = 0
     errors.length = 0
     state.lastStartedAt = startedAt

@@ -192,7 +192,7 @@ const restoreHome = useDshHome(fx.home)
   const bakDirs = readdirSync(fx.profile).filter((n) => n.startsWith('.usage-stats.bak-'))
   assert('9.2 rebuild 后旧存储改名为 .bak-<ts>', bakDirs.length === 1, JSON.stringify(readdirSync(fx.profile)))
   assert('9.3 rebuild 后重新折叠出正确总量', pRebuild.totals.inputTokens === 1107 && pRebuild.sessionCount === 2 && pRebuild.rawSessionCount === 2, `${JSON.stringify(pRebuild.totals)} sessionCount=${pRebuild.sessionCount}`)
-  assert('9.4 rebuild 重建的是"当前存在的会话"（坏日志仍记错误）', pRebuild.errorCount === 1, `errorCount=${pRebuild.errorCount}`)
+  assert('9.4 rebuild 重建的是"当前存在的会话"（坏日志仍记错误）', pRebuild.errorCount === 1 && pRebuild.restartFolds === 0, `errorCount=${pRebuild.errorCount}, restarts=${pRebuild.restartFolds}`)
 }
 
 restoreHome()

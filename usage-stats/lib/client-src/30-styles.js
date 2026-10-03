@@ -93,6 +93,12 @@
       sectionHint: { marginLeft: "8px", fontSize: "11px", color: C.text3, fontWeight: 400 },
       // 错误
       errBox: { padding: "8px 12px", borderRadius: "5px", background: C.errSoft, border: "1px solid rgba(176,42,55,0.25)", color: C.err, fontSize: "12px", marginBottom: "12px" },
+      // 扫描状态行（v0.5.0：后台重算进度 / 旧缓存占位 / 数据新鲜度）
+      statusBar: { display: "flex", alignItems: "center", gap: "10px", marginTop: "10px", padding: "7px 11px", borderRadius: "5px", border: "1px solid " + C.hairline, background: C.faint, fontSize: "11px", color: C.text2, fontVariantNumeric: "tabular-nums" },
+      statusWarn: { borderColor: "rgba(176,42,55,0.25)", background: C.errSoft, color: C.err },
+      statusDot: { width: "7px", height: "7px", borderRadius: "50%", background: C.accent, flex: "0 0 auto" },
+      statusTrack: { flex: "1 1 120px", height: "3px", borderRadius: "2px", background: C.hairlineSoft, overflow: "hidden", minWidth: "80px" },
+      statusFill: { height: "100%", borderRadius: "2px", background: C.accent },
       // 图表
       chartSection: { marginTop: "4px" },
       chartLegend: { display: "flex", alignItems: "center", gap: "14px", fontSize: "11px", color: C.text2, marginBottom: "12px" },

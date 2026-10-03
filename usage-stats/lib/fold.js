@@ -173,8 +173,16 @@ export function createFoldState(id = null) {
 /**
  * 应用一条事件到折叠状态（原地更新 fold.agg）。
  *
- * @returns {'applied'|'duplicate'|'gap'|'skipped'}
- *   duplicate = seq ≤ 水位（重读同一段字节）；gap = seq 空洞（需全量重折叠该会话）；
+ * **水位是"去重标记"而不是"连续性断言"**：实测真实日志（本机 734 个会话）里
+ * seq 并非稠密 —— v0 世代把流式分片写成 `assistant/chunk`（带 seq）与
+ * `tool-call-chunks` / `reasoning-chunks` / `text-chunks`（带 seq0/time0，无 seq），
+ * 加上历史迁移丢掉的事件，可见 seq 序列本来就有跳号。因此这里只做两件事：
+ *   seq ≤ 水位 → duplicate（重读同一段字节无副作用）
+ *   seq >  水位 → applied，并把水位推到该 seq
+ * "日志是否被改写"由字节层保证（scan.js 的世代号 / 文件尺寸 / 前缀锚校验），
+ * 不靠 seq 推断。
+ *
+ * @returns {'applied'|'duplicate'|'skipped'}
  *   skipped = 形态非法（null / 非对象 / 数组）。
  */
 export function applyEvent(fold, event) {
@@ -182,12 +190,9 @@ export function applyEvent(fold, event) {
   const agg = fold.agg
   const hasSeq = Number.isFinite(event.seq)
 
-  // 水位只对"带 seq 的事件"生效：DSH 日志里 header 行没有 seq（首帧首行），
-  // 老 fixture 也可能整批不带 seq —— 这类事件照常应用，只是不参与去重/空洞判定。
-  if (hasSeq) {
-    if (event.seq <= agg.lastSeq) return 'duplicate'
-    if (event.seq > agg.lastSeq + 1) return 'gap'
-  }
+  // 水位只对"带 seq 的事件"生效：header 行没有 seq（首帧首行），
+  // 流式分片带的是 seq0，老 fixture 也可能整批不带 seq —— 这类事件照常应用。
+  if (hasSeq && event.seq <= agg.lastSeq) return 'duplicate'
 
   if (Number.isFinite(event.time) && event.time > (agg.lastTs ?? 0)) agg.lastTs = event.time
 
@@ -300,37 +305,22 @@ function applySessionHeader(agg, event) {
 /**
  * 按序折叠一批事件。
  *
- * @param options.continueOnGap true = 遇到 seq 空洞也照常应用（全量折叠语义：
- *   日志本身就不连续时，拒绝折叠只会让该会话永远停在旧值；改为"折叠所见 + 记警告"）。
- *   false（默认）= 立即返回 gap，由调用方决定是否作用域内全量重折叠。
- * @returns {{ applied: number, duplicate: number, skipped: number, gap: boolean, gapAt: number|null, sawGap: boolean }}
- *   gap=true 时本批**未应用**任何事件（水位不变）；sawGap=true 表示 continueOnGap 下跳过了空洞。
+ * @returns {{ applied: number, duplicate: number, skipped: number }}
+ *   duplicate = seq ≤ 水位（重读同一段字节）；skipped = 非法形态。
+ *   两者都不改变聚合结果，因此"重复折叠同一段字节"是幂等的。
  */
-export function foldEvents(fold, events, options = {}) {
-  const continueOnGap = options.continueOnGap === true
+export function foldEvents(fold, events) {
   let applied = 0
   let duplicate = 0
   let skipped = 0
-  let sawGap = false
-  if (!Array.isArray(events)) return { applied, duplicate, skipped, gap: false, gapAt: null, sawGap }
+  if (!Array.isArray(events)) return { applied, duplicate, skipped }
   for (const event of events) {
     const outcome = applyEvent(fold, event)
-    if (outcome === 'gap') {
-      if (!continueOnGap) return { applied, duplicate, skipped, gap: true, gapAt: toFiniteNumber(event.seq), sawGap }
-      // 断点续折：把水位退到 seq-1 再应用该事件（它携带的 usage 不能丢）
-      sawGap = true
-      fold.agg.lastSeq = toFiniteNumber(event.seq) - 1
-      const retry = applyEvent(fold, event)
-      if (retry === 'applied') applied += 1
-      else if (retry === 'duplicate') duplicate += 1
-      else skipped += 1
-      continue
-    }
     if (outcome === 'applied') applied += 1
     else if (outcome === 'duplicate') duplicate += 1
     else skipped += 1
   }
-  return { applied, duplicate, skipped, gap: false, gapAt: null, sawGap }
+  return { applied, duplicate, skipped }
 }
 
 /* ------------------------------------------------------------------ *

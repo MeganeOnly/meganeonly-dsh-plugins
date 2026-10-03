@@ -15,10 +15,16 @@
       var setPanelOpen = panelOpenState[1];
       var setHeatmapModel = heatmapModelState[1];
 
-      var load = React.useCallback(function (force) {
+      var load = React.useCallback(function (mode) {
         setLoading(true);
         setError(null);
-        fetch(API + (force ? "?force=1&t=" + Date.now() : "?t=" + Date.now()))
+        // v0.5.0：mode false/undefined = 常规刷新；"force" = 绕过节流重新比对修订；
+        // "rebuild" = 让 host 把旧存储整体改名后从零重算（原「强制重算」按钮的语义）。
+        // 兼容旧调用：true 等价于 "force"。
+        var query = "?t=" + Date.now();
+        if (mode === "rebuild") query = "?rebuild=1&t=" + Date.now();
+        else if (mode === "force" || mode === true) query = "?force=1&t=" + Date.now();
+        fetch(API + query)
           .then(function (res) { return res.json(); })
           .then(function (payload) {
             if (!payload.ok) throw new Error(payload.error || "summary failed");
@@ -32,6 +38,22 @@
       }, []);
 
       React.useEffect(function () { load(false); }, [load]);
+
+      // v0.5.0 轮询：host 的响应永远立即返回"已发布快照"，后台扫描在单飞推进。
+      // 只要载荷还在 scanning 或仍是 legacy 占位，就 2s 后再拉一次；上限 60 次
+      // （约 2 分钟）避免任何异常情况下无限轮询；载荷对象每次 fetch 都换身份，
+      // 因此 effect 会随新载荷重新排期。
+      React.useEffect(function () {
+        var current = data[0];
+        if (current == null) return undefined;
+        if (!current.scanning && !current.legacy) { pollCount.current = 0; return undefined; }
+        if (pollCount.current >= 60) return undefined;
+        var timer = setTimeout(function () {
+          pollCount.current += 1;
+          load(false);
+        }, 2000);
+        return function () { clearTimeout(timer); };
+      }, [data[0], load]);
 
       // 显示偏好变更后写回 localStorage（首次 mount 的初始值也会触发一次，无害）
       React.useEffect(function () {

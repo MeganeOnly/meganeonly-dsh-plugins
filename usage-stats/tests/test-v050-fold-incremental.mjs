@@ -115,22 +115,47 @@ const fullStream = [headerEvent, ...buildStream()]
 }
 
 /* ------------------------------------------------------------------ *
- * 3) seq 空洞 → gap（调用方做作用域内全量重折叠）
+ * 3) 非稠密 seq 是常态：水位只做去重，不做连续性断言
+ *    （实测真实日志：v0 世代写入 assistant/chunk 与带 seq0 的流式分片，
+ *      可见 seq 序列本来就有跳号 —— 若把它当"空洞"会误伤 69% 的会话）
  * ------------------------------------------------------------------ */
 {
   const fold = createFoldState('sess-gap')
   const r1 = foldEvents(fold, fullStream.slice(0, 3))
   const before = stable(fold.agg)
-  const holed = [{ seq: 9, time: 1791000500000, type: 'assistant/message', data: { usage: { inputTokens: 999 } } }]
+  const holed = [
+    { seq: 9, time: 1791000500000, type: 'assistant/message', data: { usage: { inputTokens: 999 } } },
+    { seq: 10, time: 1791000501000, type: 'step/end', data: { turn: 1, step: 1 } },
+  ]
   const r2 = foldEvents(fold, holed)
-  assert('3.1 前缀折叠正常', r1.gap === false && r1.applied === 3, `applied=${r1.applied}`)
-  assert('3.2 出现空洞 → gap=true 且报告 gapAt', r2.gap === true && r2.gapAt === 9, `gap=${r2.gap}, gapAt=${r2.gapAt}`)
-  assert('3.3 空洞事件不被应用（水位与状态不变，交给全量重折叠）', stable(fold.agg) === before && fold.agg.lastSeq === 1, `lastSeq=${fold.agg.lastSeq}`)
-  assert('3.4 空洞后从 0 全量重折叠可恢复 → 与全量结果一致', (() => {
-    const fresh = createFoldState('sess-gap')
-    foldEvents(fresh, fullStream)
-    return stable(fresh.agg) === stable(aggregateSession(fullStream, 'sess-gap'))
+  assert('3.1 前缀折叠正常', r1.applied === 3, `applied=${r1.applied}`)
+  assert('3.2 seq 跳号不被当作异常（事件照常应用，无 gap 概念）', r2.applied === 2 && !('gap' in r2), JSON.stringify(r2))
+  assert('3.3 跳号事件的 usage 被计入（不丢数据）', fold.agg.totals.requests === 1 && fold.agg.totals.inputTokens === 999, JSON.stringify(fold.agg.totals))
+  assert('3.4 水位推进到最新 seq', fold.agg.lastSeq === 10, `lastSeq=${fold.agg.lastSeq}`)
+  assert('3.5 重读同一批（含跳号）仍全部 duplicate（幂等）', (() => {
+    const before2 = stable(fold.agg)
+    const r3 = foldEvents(fold, holed)
+    return r3.duplicate === 2 && stable(fold.agg) === before2
   })())
+  assert('3.6 跳号后接续正常（后续事件只要 seq 更大就应用）', (() => {
+    const r4 = foldEvents(fold, [{ seq: 11, time: 1791000502000, type: 'assistant/message', data: { usage: { inputTokens: 1 } } }])
+    return r4.applied === 1 && fold.agg.totals.requests === 2
+  })())
+  assert('3.7 带 seq0/time0 的流式分片不污染水位与时间', (() => {
+    const f = createFoldState('chunks')
+    foldEvents(f, [headerEvent, { type: 'tool-call-chunks', seq0: 53, time0: 1791000000000, data: { turn: 1, step: 3 } }])
+    return f.agg.lastSeq === -1 && f.agg.lastTs === null
+  })(), 'streaming chunks leaked into watermark/lastTs')
+  assert('3.8 含跳号的事件流：分两次折叠与一次全量折叠结果一致', (() => {
+    const prefix = fullStream.slice(0, 3)
+    const inc = createFoldState('x')
+    foldEvents(inc, prefix)
+    foldEvents(inc, holed)
+    const fresh = createFoldState('x')
+    foldEvents(fresh, [...prefix, ...holed])
+    return stable(inc.agg) === stable(fresh.agg)
+  })())
+  void before
 }
 
 /* ------------------------------------------------------------------ *

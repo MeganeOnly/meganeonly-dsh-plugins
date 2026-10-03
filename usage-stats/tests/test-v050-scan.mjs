@@ -165,19 +165,23 @@ const fx1 = freshProfile('first')
   assert('4.4 幂等：再次扫描不重复计', await (async () => { await scanner.ensure({ force: true }); return store.get('session-1').agg.totals.requests === 4 })())
 
   /* ---------------------------------------------------------------- *
-   * 5) seq 空洞 → 作用域内全量重折叠（不重复计、不漏计）
+   * 5) 日志被改写 → 字节层校验触发作用域内全量重折叠（不重复计、不漏计）
+   *    注：seq 在真实日志里不稠密（流式分片），因此"改写"只能靠字节层识别：
+   *    世代号 / 文件尺寸回缩 / 前缀锚哈希，而不是靠 seq 连续性推断。
    * ---------------------------------------------------------------- */
   const holed = buildLog('session-1', [
     usageEvent(0, 1791000100000, { inputTokens: 1, outputTokens: 1 }),
     usageEvent(1, 1791000101000, { inputTokens: 1, outputTokens: 1 }),
     usageEvent(7, 1791000102000, { inputTokens: 1, outputTokens: 1 }),
   ])
+  const beforeRewrite = store.get('session-1')
   writeFileSync(logPath1, holed)
   await scanner.ensure({ force: true })
   const afterHole = store.get('session-1')
-  assert('5.1 空洞触发全量重折叠（记录与重写后的日志一致）', afterHole.agg.totals.requests === 3, `requests=${afterHole.agg.totals.requests}`)
-  assert('5.2 重折叠后水位 = 新日志最大 seq', afterHole.cursor.lastSeq === 7, `lastSeq=${afterHole.cursor.lastSeq}`)
-  assert('5.3 空洞不产生错误（属于已知场景，已自愈且记诊断）', scanner.state.errorCount === 0 && scanner.state.gapFolds === 1, `errors=${scanner.state.errorCount}, gapFolds=${scanner.state.gapFolds}`)
+  assert('5.1 日志被整体改写 → 记录与重写后的内容一致（旧值不叠加）', afterHole.agg.totals.requests === 3, `requests=${afterHole.agg.totals.requests}`)
+  assert('5.2 重折叠后水位 = 新日志最大 seq（seq 跳号照常推进）', afterHole.cursor.lastSeq === 7, `lastSeq=${afterHole.cursor.lastSeq}`)
+  assert('5.3 改写被计入 restartFolds 诊断（不是错误）', scanner.state.errorCount === 0 && scanner.state.restartFolds === 1, `errors=${scanner.state.errorCount}, restarts=${scanner.state.restartFolds}`)
+  assert('5.4 改写后字节水位指向新文件大小', afterHole.cursor.bytes === statSync(logPath1).size && beforeRewrite.cursor.bytes !== afterHole.cursor.bytes, `bytes=${afterHole.cursor.bytes}, size=${statSync(logPath1).size}`)
 
   /* ---------------------------------------------------------------- *
    * 6) 世代迁移：v0 → v4（同 id 新文件）
