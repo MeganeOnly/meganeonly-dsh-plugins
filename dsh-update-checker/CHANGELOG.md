@@ -4,6 +4,26 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7] - 2026-10-03
+
+### 兼容性
+
+- 已对照 DSH 0.2.0-rc.2 实际安装源码（`@deepseek-ai/dsh` 及同目录下的 `@deepseek-ai/*` 依赖包）核验，本插件无功能代码变更：
+  - **版本探测仍可解析**：`dsh --version` 仍输出单行裸版本号（实测 `0.2.0-rc.2`，退出码 0），`readLocalVersion()` 的"取首行并去空白"解析路径不变；`execFile('dsh', ['--version'])`（Windows 上以 `shell: true` 经 `cmd.exe` 解析 `dsh.cmd` shim）的调用方式不变。
+  - **路由契约未变**：`ctx.webServer.register({ kind, path, handler })` 签名与 `exact` Map 形态未变，三条 `/api/dsh-update/*` 路由的注册前查重守卫继续成立；`GET /api/dsh-update/status` 实测 200（`current` 与 `latest` 均为 `0.2.0-rc.2`，`hasUpdate: false`），`GET /api/dsh-update/check` 实测 405 `method-not-allowed`——`check` / `update` 仅接受 POST，405 是方法守卫的预期行为而非路由缺失。
+  - **npm 路径未变**：`POST /api/dsh-update/check` 实测 200，registry 查询（`https://registry.npmjs.org/@deepseek-ai/dsh/latest`）与升级命令 `npm install -g @deepseek-ai/dsh@latest` 都与 DSH 内核 API 解耦；0.2.x 新增的 `dsh plugin allow-version` / `revoke-version` / `version-exemptions` 子命令只作用于 profile 内插件的兼容闸门，与本插件的 npm 全局升级路径无关。
+  - **客户端契约未变**：`ctx.slots.inject("settings.section", …)` 的 slot key 仍在 0.2.0-rc.2 的 slot catalog 中（90 个 key），catalog 里唯一被删除的 `settings.plugin.item` 本插件未使用；`__ModuleLoader__.load({ id, factory })` 信封、`react` 平台模块表、React 18 均未变。
+- **README 口径复核**：README 未描述 `dsh` CLI 的子命令结构，与 0.2.x 的实际情况无冲突（`dsh web` 的应用参数 `--host` / `--port` / `--no-open` / `--trusted-host` 完全未变，仅由位置参数改写实现），逐条复核后无需改动措辞。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.1.6 → 0.1.7）
+
+### 验证
+
+- `node tools/check-dsh-contract.cjs`：`PASS  dsh-update-checker`
+
 ## [Unreleased]
 
 ### 兼容性
