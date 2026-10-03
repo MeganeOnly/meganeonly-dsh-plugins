@@ -330,6 +330,14 @@ export function createScanner(deps) {
     return key
   }
 
+  /** 记录集里是否还有 v0.4.x 旧缓存的占位记录。 */
+  function hasLegacyRecords() {
+    for (const record of store.records.values()) {
+      if (record.legacy === true) return true
+    }
+    return false
+  }
+
   /** 导入 v0.4.x 单体缓存为临时记录（首屏先显示旧数据）。 */
   async function seedLegacy() {
     if (store.records.size > 0) return false
@@ -365,7 +373,12 @@ export function createScanner(deps) {
       state.legacy = false
       if (moved !== null) logger.warn(`按请求全量重建：旧存储已改名为 ${moved}`)
     } else {
-      await seedLegacy()
+      // legacy 判定以"记录集里还有占位记录"为准：index.js 会在首个请求前预播种，
+      // 那时 records.size 已经 > 0，不能再靠 seedLegacy 的返回值判断。
+      state.legacy = hasLegacyRecords()
+      if (!state.legacy && store.records.size === 0) {
+        state.legacy = await seedLegacy()
+      }
     }
 
     const discovery = await discoverSessions(
@@ -468,13 +481,9 @@ export function createScanner(deps) {
 
     await store.flush()
     await store.markScan(now())
-    state.phase = 'idle'
-    state.running = false
-    state.lastFinishedAt = now()
-    state.lastDurationMs = state.lastFinishedAt - startedAt
 
-    // 全量重算完成且无失败 → 旧单体缓存退役（保留 .legacy-<ts> 可回滚）
-    if (state.legacy && state.errorCount === 0 && todo.length > 0) {
+    // 全量重算完成、占位记录已全部被真实折叠结果替换、且无失败 → 旧单体缓存退役
+    if (state.legacy && state.errorCount === 0 && todo.length > 0 && !hasLegacyRecords()) {
       const retired = await store.retireLegacy()
       if (retired !== null) {
         state.legacy = false
@@ -482,7 +491,15 @@ export function createScanner(deps) {
       }
     }
 
+    // 顺序很关键：**先**让上层快照失效，**再**把 running 置回 false。
+    // 反过来的话，轮询到 scanning=false 的那一刻可能拿到尚未失效的旧快照
+    // （客户端会停在旧数字上直到下一次刷新）。
     onRecordsChanged()
+    state.phase = 'idle'
+    state.running = false
+    state.lastFinishedAt = now()
+    state.lastDurationMs = state.lastFinishedAt - startedAt
+
     return { ok: true, folded: todo.length, reused: state.reused, removed: state.removed, errors: state.errorCount }
   }
 

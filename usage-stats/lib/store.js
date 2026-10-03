@@ -299,6 +299,24 @@ export function createStore(profileRoot, options = {}) {
     return true
   }
 
+  /**
+   * 只放进内存、**不落盘**（v0.4.x 旧缓存的占位记录用）。
+   * 占位记录只是首屏的临时展示，扫描器会用真实折叠结果覆盖同 key 的记录；
+   * 若写盘就等于把"已知偏少"的旧数字固化进新库。
+   */
+  function seed(record) {
+    const verdict = validateRecord(record)
+    if (!verdict.ok) {
+      warn(`跳过不合规的占位记录 ${String(record && record.key)}（${verdict.reason}）`)
+      return false
+    }
+    const previous = records.get(record.key)
+    if (previous !== undefined) deindex(previous)
+    records.set(record.key, record)
+    reindex(record)
+    return true
+  }
+
   /** 删除一条记录。 */
   function remove(key, opts = {}) {
     const previous = records.get(key)
@@ -384,6 +402,7 @@ export function createStore(profileRoot, options = {}) {
     getByPath(path) { const key = byPath.get(path); return key === undefined ? undefined : records.get(key) },
     load,
     set,
+    seed,
     remove,
     flush,
     markScan,

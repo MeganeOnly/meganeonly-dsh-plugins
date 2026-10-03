@@ -37,35 +37,39 @@ function assert(label, cond, detail) {
  * ------------------------------------------------------------------ */
 
 {
-  const src = readFileSync(path.join(ROOT, 'lib/index.js'), 'utf8')
+  // v0.5.0：host 半段拆成多模块，rootsDaysAll 落在 lib/series.js，
+  // lib/index.js 作为兼容入口继续 re-export（老调用方不受影响）。
+  const seriesSrc = readFileSync(path.join(ROOT, 'lib/series.js'), 'utf8')
+  const indexSrc = readFileSync(path.join(ROOT, 'lib/index.js'), 'utf8')
+  const payloadSrc = readFileSync(path.join(ROOT, 'lib/payload.js'), 'utf8')
 
-  // A.1 rootsDaysAll 导出
+  // A.1 rootsDaysAll 导出（本模块 + 入口 re-export）
   assert(
-    'lib/index.js: rootsDaysAll 已被 export',
-    /export function rootsDaysAll/.test(src),
-    'rootsDaysAll export 未找到'
+    'lib/series.js: rootsDaysAll 已被 export 且 lib/index.js 继续 re-export',
+    /export function rootsDaysAll/.test(seriesSrc) && /export \{[^}]*rootsDaysAll[^}]*\} from '\.\/series\.js'/.test(indexSrc),
+    'rootsDaysAll export / re-export 未找到'
   )
 
-  // A.2 buildSummary 输出 byDayAll 字段
+  // A.2 payload 输出 byDayAll 字段
   assert(
-    'lib/index.js: buildSummary 输出 byDayAll 字段',
-    /byDayAll:\s*rootsDaysAll\(/.test(src),
-    'byDayAll 字段在 buildSummary 输出中未匹配'
+    'lib/payload.js: 快照输出 byDayAll 字段',
+    /byDayAll:\s*rootsDaysAll\(/.test(payloadSrc),
+    'byDayAll 字段在 payload 输出中未匹配'
   )
 
   // A.3 rootsDaysAll 升序排序（确保日期早的在前）
   assert(
-    'lib/index.js: rootsDaysAll 用 sort() 升序排序 keys',
-    /function rootsDaysAll[\s\S]{0,1000}\.sort\(/.test(src),
+    'lib/series.js: rootsDaysAll 用 sort() 升序排序 keys',
+    /function rootsDaysAll[\s\S]{0,1000}\.sort\(/.test(seriesSrc),
     'rootsDaysAll 升序排序未匹配'
   )
 
   // A.4 rootsDaysAll 不零填充（不调用 stepMs / windowMs / 空 bucket 补 0）
   // 简单 sanity：函数签名 + body 不应与 "windowMs" / "stepMs" 同时出现。
   // 真正的"不零填充"在 C.* 行为测试里端到端验证。
-  const rootsDaysAllBlock = src.match(/export function rootsDaysAll[\s\S]{0,2000}\n\}/)
+  const rootsDaysAllBlock = seriesSrc.match(/export function rootsDaysAll[\s\S]{0,2000}\n\}/)
   assert(
-    'lib/index.js: rootsDaysAll 输出长度等于 root.days keys 数（不零填充）',
+    'lib/series.js: rootsDaysAll 输出长度等于 root.days keys 数（不零填充）',
     rootsDaysAllBlock != null &&
       !/windowMs/.test(rootsDaysAllBlock[0]) &&
       !/stepMs/.test(rootsDaysAllBlock[0]),
