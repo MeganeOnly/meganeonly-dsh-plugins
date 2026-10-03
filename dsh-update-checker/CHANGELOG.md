@@ -14,10 +14,16 @@
 - 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
 - 注：v0.1.5-rc.1 是 release candidate，发布到正式版前本插件可能再发一版跟踪版本切换。
 
+### 加固
+
+- **HTTP 路由注册前查重（防启动崩溃）**：`/api/dsh-update/status`、`/api/dsh-update/check`、`/api/dsh-update/update` 三条路由改为统一经本地 `registerRoute()` 注册——先查 `ctx.webServer.exact`，路径已被其他插件占用时告警并跳过该条，不再让 `ctx.webServer.register()` 抛 `duplicate exact route`。DSH 的 webServer 对重复 `(kind, path)` 直接 throw，一次冲突会连带把本次启动打崩。守卫所需的表结构不存在时退回直接注册，不静默失效。
+- 行为变化只发生在"路径被占用"这条异常路径上：无冲突时注册的路由数量与之前完全一致。
+
 ### 改动文件
 
 - `CHANGELOG.md`（本段）
-- `package.json`（version 0.1.4 → 0.1.5）
+- `lib/index.js`（新增 `registerRoute()` 守卫 + 3 处调用点）
+- `package.json`（version 0.1.5 → 0.1.6）
 
 ## [0.1.4] - 2026-09-05
 
