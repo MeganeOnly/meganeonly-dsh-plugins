@@ -485,6 +485,18 @@ function readJsonBody(req) {
   })
 }
 
+/**
+ * 路由是否已被别的插件占用。
+ *
+ * DSH 的 webServer 对重复 (kind, path) 直接 throw —— 一旦发生会把本次启动打崩，
+ * 因此批量注册前先查表跳过，而不是直接调 ctx.webServer.register 撞上去。
+ * 表结构不可用时返回 false（退回直接注册：宁可重复报错，也不要静默不注册）。
+ */
+function routeTaken(ctx, route) {
+  const table = route.kind === 'exact' ? ctx.webServer.exact : ctx.webServer.prefixes
+  return table !== undefined && table !== null && typeof table.has === 'function' && table.has(route.path)
+}
+
 export async function apply(ctx) {
   await loadState(ctx)
 
@@ -530,7 +542,18 @@ export async function apply(ctx) {
     },
   ]
   ctx.effect(() => {
-    const disposers = routes.map((route) => ctx.webServer.register(route))
+    const disposers = []
+    for (const route of routes) {
+      // 路径被其他插件先占用时跳过本插件注册：DSH 的 webServer 对重复 exact
+      // 路由直接 throw，会把本次启动打崩（与 plugin-manager 同款守卫）。
+      if (routeTaken(ctx, route)) {
+        const message = `skill-manager: 路由 ${route.path} 已被其他插件注册，跳过注册以避免启动失败`
+        if (ctx.logger !== undefined && typeof ctx.logger.warn === 'function') ctx.logger.warn(message)
+        else console.warn(`[skill-manager] ${message}`)
+        continue
+      }
+      disposers.push(ctx.webServer.register(route))
+    }
     return () => {
       for (const dispose of disposers) dispose()
     }

@@ -13,10 +13,16 @@
   - `ctx.skills.registerProvider` + `ctx.sessions.list.getSnapshot()` API 在 v0.1.5-rc.1 保留（`AgentHandle.agent` / `Agent.followup` 等公共字段未变）。
 - 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
 
+### 加固
+
+- **HTTP 路由注册前查重（防启动崩溃）**：`/api/skill-manager/list`、`/api/skill-manager/set-enabled` 两条路由改为批量注册前先经本地 `routeTaken()` 查 `ctx.webServer.exact`——路径已被其他插件占用时告警并跳过该条，不再让 `ctx.webServer.register()` 抛 `duplicate exact route`。DSH 的 webServer 对重复 `(kind, path)` 直接 throw，一次冲突会连带把本次启动打崩。守卫所需的表结构不存在时退回直接注册，不静默失效。
+- 行为变化只发生在"路径被占用"这条异常路径上：无冲突时注册的路由数量与顺序与之前完全一致。
+
 ### 改动文件
 
 - `CHANGELOG.md`（本段）
-- `package.json`（version 0.1.1 → 0.1.2）
+- `lib/index.js`（新增 `routeTaken()` 守卫 + 注册循环改造）
+- `package.json`（version 0.1.2 → 0.1.3）
 
 ## [0.1.1] - 2026-09-04
 
