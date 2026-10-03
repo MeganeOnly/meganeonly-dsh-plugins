@@ -14,10 +14,16 @@
   - 客户端 bundle（`client-src/`）不涉及 `ctx.agents` / `ctx.slots` 字段访问，无破坏性变更命中点。
 - 行为零变化——升级 DSH 内核至 v0.1.5-rc.1 不需改本插件任何代码。
 
+### 加固
+
+- **HTTP 路由注册前查重（防启动崩溃）**：13 条 `/api/git-hub/*` 路由改为统一经本地 `registerRoute()` 注册——先查 `ctx.webServer.exact`，路径已被其他插件占用时告警并跳过该条，不再让 `ctx.webServer.register()` 抛 `duplicate exact route`。DSH 的 webServer 对重复 `(kind, path)` 直接 throw，一次冲突会连带把本次启动打崩（历史案例：两个插件管理器抢同一条 `/api/plugin-manager/list`）。守卫所需的表结构不存在时退回直接注册，不静默失效。
+- 行为变化只发生在"路径被占用"这条异常路径上：无冲突时注册的路由数量与顺序与之前完全一致。
+
 ### 改动文件
 
 - `CHANGELOG.md`（本段）
-- `package.json`（version 0.5.2 → 0.5.3）
+- `lib/index.js`（新增 `registerRoute()` 守卫 + 13 处调用点）
+- `package.json`（version 0.5.3 → 0.5.4）
 
 ## [0.5.2] - 2026-09-06
 

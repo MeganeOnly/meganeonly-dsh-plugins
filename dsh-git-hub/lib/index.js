@@ -488,6 +488,25 @@ function spawnPush(args, scopeLabel, repoPath) {
  * apply：注册 HTTP 路由
  * ------------------------------------------------------------------ */
 
+/**
+ * 注册 HTTP 路由；路径已被其他插件占用时跳过并告警。
+ *
+ * DSH 的 webServer 对重复 (kind, path) 直接 throw —— 一旦发生会把本次启动打崩
+ * （历史案例：两个插件管理器抢同一条 /api/plugin-manager/list），因此本插件的
+ * 全部路由统一走这里，而不是直接调 ctx.webServer.register。
+ * 守卫不可用时（表结构缺失）退回直接注册：宁可重复报错，也不要静默不注册。
+ */
+function registerRoute(ctx, route) {
+  const table = route.kind === 'exact' ? ctx.webServer.exact : ctx.webServer.prefixes
+  if (table !== undefined && table !== null && typeof table.has === 'function' && table.has(route.path)) {
+    const message = `dsh-git-hub: 路由 ${route.path} 已被其他插件注册，跳过注册以避免启动失败`
+    if (ctx.logger !== undefined && typeof ctx.logger.warn === 'function') ctx.logger.warn(message)
+    else console.warn(`[dsh-git-hub] ${message}`)
+    return () => {}
+  }
+  return ctx.webServer.register(route)
+}
+
 export function apply(ctx) {
   // 启动期一次性探测 daily-push.cjs 工具
   const toolAvailable = existsSync(DEFAULT_PUSH_TOOL)
@@ -504,7 +523,7 @@ export function apply(ctx) {
   // listMergeableRepos 共享同一个路径。
   configPath = join(resolveProfileRoot(ctx), CONFIG_FILENAME)
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/config',
     handler: async (req, res) => {
@@ -534,7 +553,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos',
     handler: async (req, res) => {
@@ -552,7 +571,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos/refresh',
     handler: async (req, res) => {
@@ -570,7 +589,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/push-all',
     handler: async (req, res) => {
@@ -596,7 +615,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos/push',
     handler: async (req, res) => {
@@ -632,7 +651,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/push-status',
     handler: async (req, res) => {
@@ -1082,7 +1101,7 @@ export function apply(ctx) {
     return results
   }
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/commit',
     handler: async (req, res) => {
@@ -1127,7 +1146,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/commit-status',
     handler: async (req, res) => {
@@ -1158,7 +1177,7 @@ export function apply(ctx) {
     return { ok: true, path }
   }
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos/branches',
     handler: async (req, res) => {
@@ -1192,7 +1211,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos/merge',
     handler: async (req, res) => {
@@ -1233,7 +1252,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos/pull',
     handler: async (req, res) => {
@@ -1268,7 +1287,7 @@ export function apply(ctx) {
     },
   })
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos/merge-abort',
     handler: async (req, res) => {
@@ -1303,7 +1322,7 @@ export function apply(ctx) {
   })
 
   /* /api/git-hub/repos/merge-status：扫所有可合并仓库（给抽屉批量渲染用） */
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: '/api/git-hub/repos/merge-status',
     handler: async (req, res) => {
