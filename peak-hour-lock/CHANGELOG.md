@@ -4,6 +4,25 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.7] - 2026-10-03
+
+### 兼容性
+
+- 已对照本机安装的 DSH v0.2.0-rc.2 源码逐条核验本插件用到的宿主 API，形状全部未变，**无需改动任何代码**：
+  - `ctx.timer.interval(callback, delay)`：`@deepseek-ai/cordis-plugin-timer/lib/types/index.d.ts:21`（`interval(callback: () => void, delay: number): () => void`），`interface Context extends Pick<TimerService, 'interval' | ...>`（同文件 L3）；`inject` 里的服务名 `'timer'` 仍可解析。调用点 `lib/index.js:361-379`（`ctx.timer.interval(fn, 10000)`）不受影响。
+  - `ctx.webServer`：`exact` / `prefixes` 仍是实例上的两个 `Map`（`@deepseek-ai/dsh-host-webserver/lib/index.js:148-149`），`register(route)` 仍按 `route.kind === "exact" ? this.exact : this.prefixes` 选表，重复 `(kind, path)` 仍直接抛错（同文件 L177-180：`webserver: duplicate ${route.kind} route "${route.path}"`；类型声明见 `lib/types/index.d.ts:84-90`）。本插件 `lib/index.js:222-231` 的 `registerRoute()` 守卫（先查 `ctx.webServer.exact` / `.prefixes` 的 `.has(path)`，命中则告警跳过）因此依旧成立；两条路由 `/api/peak-hour-lock/status`（L382-384）与 `/api/peak-hour-lock/queue`（L435-437）仍统一经守卫注册。注：`.d.ts` 把 `exact` / `prefixes` 标为 `private readonly`（`lib/types/index.d.ts:70-71`），但运行时确为实例自有 `Map`，守卫的读取路径可用。
+  - `ctx.on('agent/pre-step', ...)`（本插件 L306）的 payload 字段逐字未变：`{ agent, messages, turn, step, signal }`（`@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:304-310`）。`payload.agent?.options`（本插件 L310-311）对应运行时 `Agent.options: AgentOptions`（同文件 L141）；`payload.agent.id`（本插件 L314）与 `Agent.session`（同文件 L143）同样保留；`payload.messages[].source.kind === 'user'`（本插件 L312）对应 `@deepseek-ai/dsh-session/lib/types/types.d.ts:149`（`readonly kind: 'user'`）。
+  - `ctx.agents.get(id)` 仍返回裸 `Agent | undefined`（`@deepseek-ai/dsh-agent/lib/types/index.d.ts:343`；同文件 L138-139 明确 `ctx.agents.get(id)` still returns a bare `Agent`）——本插件 L279 不受影响。`ctx.agents.resume({ resumeSessionId })` 仍返回 `AgentHandle`（同文件 L286），`ResumeAgentOptions.resumeSessionId` 仍在（L109-111），`AgentHandle.agent` 公共字段保留（L143-146）——本插件 L284-286 的 `handle.agent` 不受影响。
+  - `agent.followup(message: UserMessage): void` 仍是 `Agent` 的公共方法（`runtime-types.d.ts:192`）——本插件 L298 不受影响。
+  - 服务名与其它宿主面同样未变：`export const inject = ['timer', 'webServer', 'agents']`（本插件 L41）三个名字在离线契约自检的服务名表中均可解析；`ctx.logger.warn`（本插件 L226 守卫告警路径）仍可用；`ctx.baseUrl`（本插件 L133，用于定位 profile 目录下的 `.peak-hour-lock-queue.json`）仍由 loader 提供（`@deepseek-ai/cordis-plugin-loader/lib/index.js:596`）。
+  - 客户端状态行注册的 slot 仍存在且未改名：`conversation.input.dock` 在 0.2.0-rc.2 的 slot catalog 中仍为 `list` / `session`（`@deepseek-ai/dsh-cordis-client-runner/lib/client.js:3004-3006`）。**该 slot 在 0.2.0-rc.2 新增了第三个占位者**：`@deepseek-ai/dsh-client-ui-goal` 的 `GoalDock`（`dsh-client-ui-goal/lib/client.js:557-561`：`name: "conversation.input.dock"`, `id: "goal"`, `order: 10`）；0.1.5-rc.1 时同 slot 只有 queue（order 20）/ todo（order 0）。本插件状态行 `order: -10`（本插件 `lib/client.js:627`），仍在全部占位者之前，渲染位置不受影响。
+- 注：本插件当前在 web profile 的 `cordis.patch.yml` 里被用户主动停用（`- id: peak-hour-lock / disabled: true`），因此其两条路由不会被注册——未加载时探测这两个路径不会得到本插件的响应（返回 401 属正常，表示插件未加载）。发布本版本不改变该停用状态。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.3.6 → 0.3.7）
+
 ## [Unreleased]
 
 ### 兼容性
