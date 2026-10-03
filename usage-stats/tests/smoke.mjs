@@ -1,4 +1,4 @@
-﻿// tests/smoke.mjs
+// tests/smoke.mjs
 // 冒烟测试：模拟 browser 加载 bundle，调用 UsageStatsPage / UsageStatsPageBody 渲染 mock 数据。
 // 目的：保证拆分后的 source files 拼接产物在 apply 路径与渲染路径上都抛错为 0。
 

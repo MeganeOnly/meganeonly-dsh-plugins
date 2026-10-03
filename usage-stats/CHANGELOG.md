@@ -4,7 +4,74 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.5.0] - 2026-10-04
+
+### 变更（架构）
+
+**host 半段从"单体缓存 + 整文件重解码 + 每次请求重算"改为"每会话记录（水位 + 锚）+ 帧级续读 + 快照 memo"。** 三条 v0.4.x 设计在真实数据上都不成立：
+
+| v0.4.x 做法 | 实测后果 |
+| --- | --- |
+| 以 `header.createdAt` 判定缓存命中 | 该字段会话创建后**永不变化** → 活跃会话被永久冻结在首次聚合状态。实测某活跃会话 46 次请求 / 5,576,193 token 在面板显示 `0`；近 12 个活跃会话覆盖率仅 73.8% |
+| 每次刷新 `sessionQuery.listSessions()`（或加 30s TTL 掩盖） | 框架列表对每个会话解压首帧（`listArtifacts` + `historicalCorpusRevision`），734 会话约 30 秒；TTL 方案则冻结新会话发现 |
+| 变更即整文件重解码 + 单个 JSON 整份重写 | 缓存版本 bump 触发全量重建（曾 OOM 打崩 DSH）；缓存文件 4.14 MB 且分钟桶永久累积 |
+
+v0.5.0 的替代方案：
+
+- **失效键 = 文件修订令牌**（`dev:ino:size:mtimeNs:ctimeNs`，与框架 `fileRevision` 同构）+ 日志世代号 → 会话追加内容立刻可见。
+- **帧级续读**：DSH 日志是追加式多帧 zstd 容器，因此只从 `cursor.bytes` 起读新增字节、只解新增帧；撕裂尾帧丢弃且不推进水位（正在写入的会话也能安全折叠）。
+- **水位去重**：`seq ≤ lastSeq` 的事件判为 duplicate，重读同一段字节无副作用（幂等）。**不做 seq 连续性断言** —— 实测 v0 世代会写 `assistant/chunk`（带 seq）与 `tool-call-chunks` / `reasoning-chunks` / `text-chunks`（带 `seq0`/`time0`），可见 seq 序列天然跳号（prev 17 → next 275），按"空洞"处理会误伤 69% 的正常会话。
+- **改写识别走字节层**：世代号变化 / 文件尺寸回缩 / 前缀锚 SHA-256 不符 / 记录缺锚 → **作用域内**全量重折叠该会话（只重算它一个），计入 `restartFolds` 诊断。
+- **保留量有界**：分钟桶 48h、小时桶 15d、日/模型×日/工具永久（客户端分钟视图只看 24h、小时视图只看 7d，留 2 倍余量）。
+- **每会话一条记录**：`<web profile 根>/.usage-stats/sessions/<id>.json`，临时文件 + rename 原子写、2 秒去抖合并；解析失败或不符 schema 的记录改名 `.bak-<ts>` 跳过；`manifest.storeVersion` 不匹配时整目录改名 `.usage-stats.bak-<ts>` 后从空重建；存储目录不可用时降级为仅内存统计。
+- **请求永不阻塞**：`/api/usage-stats/summary` 立即返回已发布快照（heavy 部分按记录代次 memo），扫描在后台单飞推进；`?force=1` 只绕过节流重新比对修订（不做全量重建），新增 `?rebuild=1` 才整库重建，`?diag=1` 返回诊断块。
+- **旧缓存只读迁移**：`.usage-stats-cache.json` 仅作为首屏占位显示（`legacy: true`，不写入新库），全量重算成功且无错误后才改名 `.usage-stats-cache.json.legacy-<ts>`（原件保留可回滚）。
+- **入口依赖收敛**：`inject` 从 `['webServer','sessionQuery']` 收敛为 `['webServer']`；`sessionPersistence` / `sessionQuery` 经 `ctx.get()` 可选获取，框架服务缺失时功能降级而不是启动失败。`apply()` 内只做纯 fs 工作，不再有启动期框架异步调用。
+- **host 半段拆模块**：`index.js`（入口）· `discover.js`（发现）· `frames.js`（帧级读取）· `fold.js`（折叠/保留量）· `store.js`（记录存储）· `scan.js`（调度）· `rollup.js`（根归并）· `series.js`（视图）· `payload.js`（装配/快照）· `http.js`（HTTP 边界）。`aggregateSession` / `beijingDayKey` / `withSessionHeaderEvent` / `granularitySeries` / `rootsDaysAll` 继续从 `lib/index.js` 导出（签名与语义不变）。
+- **无新增依赖**：仅 `node:` 内置模块。实测插件目录无法解析 `zod` / `@deepseek-ai/*`，故不注册投影单元、不使用 storageDomain 写入。
+
+### 新增（客户端）
+
+- **扫描状态行**（标题下方）：后台重算进度（`done/total` + 进度条）、旧缓存占位提示、数据截至时间、上次扫描耗时、改写重折叠与失败会话计数；有失败时切警示配色。
+- **自动轮询**：`scanning` 或 `legacy` 时每 2 秒追平一次（上限 60 次，卸载即清理），完成后自动停在最新数据。
+- **按钮语义**：「刷新」= `?force=1`（只重折有变化的会话）、「全量重算」= `?rebuild=1`（替换原「强制重算」）。
+- **元信息行**改用 `discovery` / `decoded` / `reused` / `dataAsOf` —— v0.4.0 起 host 已移除 `home` 字段，旧代码会渲染成"数据源 undefined"。
+
+### 性能（本机实测，734 会话 / 439 MB）
+
+| 指标 | v0.4.x | v0.5.0 |
+| --- | --- | --- |
+| 首响应 | 挂到全量重建完成（分钟级） | **23 ms**（立即返回扫描中快照） |
+| 热 payload 组装 | 每次请求重新归并 692 条聚合 | **3 ms**（快照命中） |
+| 无变更刷新 | 每次仍要付 `listSessions` 的 30 s（或 TTL 冻结） | 约 190 ms（734 次 stat），`decoded = 0` |
+| 全量重算 | 10-15 分钟，曾有 2 GB OOM | 65.0 s，峰值 RSS 320 MB |
+| 存储 | 单文件 4.14 MB 且无界增长 | 每会话记录 + 48h/15d 裁剪，有界 |
+
+### 兼容性
+
+- **DSH 版本要求**：核对 DSH 0.2.0-rc.2（`session/event`、`sessionPersistence.listGenerations`、Node 22 的 `zlib.zstdDecompressSync`）。缺少同步 zstd 解码（Node < 22.15）时自动降级到框架 `sessionQuery.readSession()` 全量路径（正确但慢），诊断里标注能力探测结果。
+- **HTTP 契约**：路径不变，v0.4.x 全部 payload 字段保留，只新增字段（`scanning` / `scanProgress` / `legacy` / `dataAsOf` / `stale` / `discovery` / `storeVersion` / `retention` / `restartFolds` / `errorCount`）。老客户端在新 host 下可用（新字段被忽略）。
+- **磁盘格式**：`.usage-stats-cache.json`（v8）→ `.usage-stats/`（`STORE_VERSION = 1`）。旧文件保名保留，重算成功后才改名 `.legacy-<ts>`；回滚到 v0.4.x 只需把 `.legacy-<ts>` 改回原名。
+
+### 测试
+
+- 新增 7 个测试文件：`test-v050-frames`（帧级扫描/撕裂/非法结构）、`test-v050-fold-incremental`（增量 ≡ 全量的 property、幂等、非稠密 seq、保留量边界、与旧实现逐字段等价）、`test-v050-store`（往返/去抖/损坏跳过/版本重建/legacy 只读）、`test-v050-discover`（三级来源与降级）、`test-v050-scan`（真实 zstd 多帧日志 + 真实文件系统：零 I/O 复用、追加即见、撕裂尾帧、改写重折叠、删除清理、失败记忆、单飞/节流/rebuild、折叠优先级、legacy 导入与退役）、`test-v050-summary`（快照 memo、字段完整性、归并、保留量、force/rebuild、diag、legacy 首屏覆盖）、`test-v050-client-status`（状态行三态、轮询、按钮 URL、ES5/marker 规范）。
+- `test-v050-undercount` 由 characterization 翻转为**目标断言**：会话被观测后追加的 usage 现在计入（1 请求 / 507 token）。
+- `test-header-rollup` 端到端部分改为真实会话树（不再 mock `sessionQuery`），`test-byDayAll` 静态断言改指 `lib/series.js` / `lib/payload.js`。
+- 删除 `test-v040-official.mjs`：其前提（mock `sessionQuery` 的旧缓存协议）已不存在，覆盖迁至 `test-v050-scan` 与 `test-v050-summary`。
+- 全套 13 个文件、378 项断言。
+
+### 已知问题（上游）
+
+DSH 自身的会话列表与搜索每次要付约 30 秒（`sessionQuery.listSessions()` → `listArtifacts()` 逐会话解压首帧 + `historicalCorpusRevision()` 二次全走查）。本插件已完全绕开该入口，但侧边栏/搜索仍受影响 —— 属于框架侧问题，见 `docs/architecture.md` § 九。
+
+## [0.4.5] - 2026-10-03
+
+### 修复
+
+- **全量重建打爆 V8 堆导致 DSH 进程 SIGABRT（OOM 崩溃循环）**：v0.4.5 把 `CACHE_VERSION` 7→8 后，全部落盘缓存作废，启动预热的 `buildSummary` 用一次性 `Promise.allSettled` 并发 `readSession` 所有 cache miss——缓存全 miss 时（版本 bump / 首次安装）等于把**所有** session 的解码事件同时拽在堆上。本机实测 373 个 session（磁盘 440MB zstd）→ Node 默认 2GB 堆打满 → `Ineffective mark-compacts near heap limit` → 整个 DSH 进程 abort（exit 134），且 OOM 死在 `saveCache` 之前、缓存永远写不回去 → 每次重启重复全量重建 → 无限崩溃循环。修复：miss 解码改为 `DECODE_CONCURRENCY = 4` 分批（对齐 libuv 线程池宽度），每个 batch 聚合完即可被 GC，堆上界 ≈ 4 × 单 session 解码体积；代价是全量重建从"理论并行"变为约 10-15 分钟的串行批次（仅发生在缓存版本 bump / 首次安装，之后仍走增量缓存）。
+- **移除启动期 prewarm，改为首次 HTTP 请求触发构建**：apply() 内立刻发起的重建在 DSH 0.2.0-rc.2 上会被 cordis 以 fiber 级失败回收——路由整体消失（`/api/usage-stats/summary` 404）、无任何控制台日志、进程照常存活，且与重建是否完成无关（实测复现 3/4 次启动；同进程内 git-hub 等排在后面的插件不受影响）。推定为 framework（sessionQuery 启动窗口内的异步 rejection）被 AsyncLocalStorage 归因到调用方 fiber。改为按需构建：设置页打开即调用 summary，彼时框架已完全就绪；冷启动首次多等一次全量重建（之后走增量缓存），换加载期稳定。
+- **json() 客户端断连防护**：请求方在响应前断开（刷新页面、代理超时）后往已销毁 socket 写响应会触发无监听的 `error` 事件，cordis 把它算到本插件 fiber 头上——插件被整体卸载、路由消失，只能重启恢复。写前检查 `writableEnded` / `socket.destroyed` + 挂空 `error` 监听 + try/catch，断开视为"响应作废"而非故障。
 
 ### 兼容性
 
@@ -31,7 +98,7 @@
 
 **v0.4.0.3 引入的"启动后新 session 永远不进汇总"bug**：plugin 自己 cache framework `listSessions()` 结果避免 437 sessions × ~70ms / zstd frame = 30+ 秒延迟。但 `getRecords(force)` 只在 `force=true` 或首次（`recordsCache === null`）时刷新——DSH 启动之后浏览器每次刷新都复用 module-level recordsCache，**新生成的 session 永远进不了 recordsCache**，进而 `cache.sessions` 不增长、`cacheDirty=false`、`saveCache` 永不触发。
 
-实测：用户报告"两天经常使用，但数据里显示 0"。磁盘 `F:\.dsh\sessions\--E-dsh-plugins--\` 下 9/6 12:03 之后有 5 个 UUID session（2dea2dc6 / b52ec907 / 806b447c / 6ccde05b / d175b366，全部是 subagent rollup 到 `session-8f12230b-...`）+ 9/6 12:47 / 13:59 两个 main session（8f12230b / 993044e5），但 `.usage-stats-cache.json` 最后修改时间是 2026-09-06 12:00:49（与 session-86095a1e 写入时间一致），**之后 4 小时 0 次 cache 更新**。plugin 看到的 session 数永远停在 457。
+实测：用户报告"两天经常使用，但数据里显示 0"。磁盘会话目录（`<DSH_HOME>/sessions/<项目>/`）下 9/6 12:03 之后有 5 个 UUID session（2dea2dc6 / b52ec907 / 806b447c / 6ccde05b / d175b366，全部是 subagent rollup 到 `session-8f12230b-...`）+ 9/6 12:47 / 13:59 两个 main session（8f12230b / 993044e5），但 `.usage-stats-cache.json` 最后修改时间是 2026-09-06 12:00:49（与 session-86095a1e 写入时间一致），**之后 4 小时 0 次 cache 更新**。plugin 看到的 session 数永远停在 457。
 
 修复：新增 `RECORDS_CACHE_TTL_MS = 30 * 1000`。`getRecords(force)` 条件加 `(now - recordsCacheFetchedAt) >= RECORDS_CACHE_TTL_MS`——30 秒内复用 listSessions 结果（保留 v0.4.0.3 优化），超过 30 秒后下一次 summary 自动重新 listSessions 发现新 session。`force=true` 仍立即重新 list。
 

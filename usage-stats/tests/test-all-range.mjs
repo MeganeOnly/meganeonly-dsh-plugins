@@ -1,4 +1,4 @@
-﻿// tests/test-all-range.mjs
+// tests/test-all-range.mjs
 // v0.3.9 增量回归：RANGES 'all' tab 语义从"近 30 天切片（byDay.slice(-30)）"切到
 // "全程指标 + 图表走 byDayAll"——
 //   - 50-config.js: 'all'.label = "全部"，'all'.window = null

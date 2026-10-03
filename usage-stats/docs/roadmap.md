@@ -15,6 +15,50 @@
 | § 三 级别扩 5 → 7 | ✅ 已实施（用户反馈后） | v0.3.2（2026-09-03） |
 | § 三 HeatmapCalendar 渲染异常修复 | ✅ 已实施（用户实测反馈） | v0.3.3（2026-09-03） |
 | 用 UsageStatsPageBody 渲染异常治本（所有 d.X safeX 兜底 + self-diagn） | ✅ 已实施（用户实测反馈） | v0.3.4（2026-09-03） |
+| **§ 四 增量账本架构重构（会话级水位 + 帧级续读 + 快照 memo + 保留量）** | ✅ 已实施 | **v0.5.0（2026-10-04）** |
+| **§ 五 上游会话列表 30s 问题（框架侧，本插件已绕开）** | ⚠️ 记录在案，不在本插件范围 | — |
+
+---
+
+## 四、增量账本架构重构（v0.5.0，已实施）
+
+本规划在 v0.4.5 之后追加：v0.4.x 的三条核心设计（`createdAt` 判缓存命中、每次刷新走框架
+`listSessions()`、变更即整文件重解码 + 单体 JSON 重写）在真实数据上均不成立，实测证据与
+替代方案见 `CHANGELOG.md` 的 `[0.5.0]` 条目与 [`architecture.md`](./architecture.md)。
+
+实施顺序与落地情况（每步一个 commit）：
+
+1. 复现活跃会话漏统计的 characterization 测试（`test-v050-undercount`，随后翻转为目标断言）
+2. `lib/frames.js` 帧级增量解码内核
+3. `lib/fold.js` 水位折叠 + 保留量裁剪
+4. `lib/store.js` 会话级记录 + 修订失效
+5. `lib/discover.js` 廉价发现（`listGenerations` 优先 + 自走查回退）
+6. `lib/scan.js` 单飞扫描 + 时间片 + 进度
+7. `lib/rollup.js` + `lib/payload.js`（归并 + 快照 memo）+ 入口切换
+8. 客户端扫描状态行 + 轮询 + 按钮语义
+9. 文档与版本（architecture.md / README / CHANGELOG / maintainability / roadmap）
+
+实测结果（734 会话 / 439 MB）：首响应 23 ms、热 payload 3 ms、全量重算 65.0 s、
+峰值 RSS 320 MB、无变更刷新约 190 ms（`decoded = 0`）。
+
+**过程中发现并修正的两个非预期问题**（原规划未预见到）：
+
+1. **seq 非稠密**：真实日志的可见 seq 序列天然跳号（v0 世代写 `assistant/chunk` 与带
+   `seq0` 的 `*-chunks` 分片，加上历史迁移丢掉的序号），按"空洞"处理会误伤 69% 的会话 ——
+   最终删掉 gap 概念，水位只做去重，改写识别完全交给字节层（世代/尺寸/前缀锚）。
+2. **Map 与普通对象混用**：`series.js` 的聚合 Map 误用面向普通对象的取桶辅助函数，
+   症状是"派生视图静默全零"（`Map.entries()` 恒空），已改为 Map 原生取桶并加非零断言。
+
+## 五、上游会话列表 30s（框架侧，已绕开）
+
+`ctx.sessionQuery.listSessions()` → `persistence.list()` → `listArtifacts()` 对每个会话解压
+首帧；语料里存在历史世代时还会再跑一遍 `historicalCorpusRevision()`（第二次全走查 +
+每文件 `stat` + sha256）。本机 734 会话约 30 秒，且 DSH 侧边栏与搜索走同一条路
+（`dsh-api-session-controller` 的 `list`）。
+
+本插件自 v0.5.0 起完全绕开该入口（自建发现 + 帧级续读），但**这不是插件能修的**：
+若上游愿意修，切入点是把"列表所需的 header 元数据"落成索引（或让 `listArtifacts` 走
+缓存/并行），而不是每次列表都解压首帧。详细证据见 `architecture.md` § 九。
 
 ---
 

@@ -36,9 +36,19 @@ function assert(label, cond, detail) {
 }
 
 const DAY = 86400000
-const now = Date.now()
-/** 主/子两个会话的 usage 时间（用于按北京时间键回查派生视图）。 */
-const mainEventTime = now - 3500000
+/**
+ * 时间锚点：北京时间"当日 12:00"。
+ *
+ * 不能用 `Date.now() - 1h` 这类相对锚点 —— 若测试恰好在跨北京午夜的时刻运行，
+ * 主会话与 subagent 的事件会落进不同的日桶，断言就变成"看运气"。
+ * 锚到当日正午后，所有事件必然同属一个北京日，且仍在 byDay 的 30 天窗口内。
+ */
+const BEIJING_OFFSET_MS = 8 * 3600 * 1000
+const dayAnchor = Math.floor((Date.now() + BEIJING_OFFSET_MS) / DAY) * DAY - BEIJING_OFFSET_MS + 12 * 3600 * 1000
+/** 主会话 usage 时间（用于按北京时间键回查派生视图）。 */
+const mainEventTime = dayAnchor + 60000
+const subEventTime = dayAnchor + 120000
+const ancientEventTime = dayAnchor - 60 * DAY
 
 /* ------------------------------------------------------------------ *
  * 1) 快照 memo（单元）：未 invalidate 时重部分不重算
@@ -83,7 +93,7 @@ const restoreHome = useDshHome(fx.home)
   writeSessionLog(fx.sessions, {
     id: 'session-main',
     events: [
-      modelEvent(0, now - 3600000, 'deepseek', 'v4-flash'),
+      modelEvent(0, mainEventTime - 1000, 'deepseek', 'v4-flash'),
       usageEvent(1, mainEventTime, { inputTokens: 100, outputTokens: 20, cacheReadTokens: 1000, cacheWriteTokens: 5, reasoningTokens: 7 }),
     ],
   })
@@ -91,16 +101,16 @@ const restoreHome = useDshHome(fx.home)
     id: 'sub-1',
     headerExtra: { parentSession: 'session-main', delegationDepth: 1, origin: 'subagent' },
     events: [
-      modelEvent(0, now - 3000000, 'deepseek', 'v4-pro'),
-      usageEvent(1, now - 2900000, { inputTokens: 10, outputTokens: 2, cacheReadTokens: 100, cacheWriteTokens: 0 }),
+      modelEvent(0, subEventTime - 1000, 'deepseek', 'v4-pro'),
+      usageEvent(1, subEventTime, { inputTokens: 10, outputTokens: 2, cacheReadTokens: 100, cacheWriteTokens: 0 }),
     ],
   })
   // 一条非常老的会话：用于验证保留量裁剪（分钟/小时桶被裁掉、日桶保留）
   writeSessionLog(fx.sessions, {
     id: 'session-ancient',
     events: [
-      modelEvent(0, now - 60 * DAY, 'deepseek', 'v4-flash'),
-      usageEvent(1, now - 60 * DAY + 1000, { inputTokens: 7, outputTokens: 3 }),
+      modelEvent(0, ancientEventTime - 1000, 'deepseek', 'v4-flash'),
+      usageEvent(1, ancientEventTime, { inputTokens: 7, outputTokens: 3 }),
     ],
   })
 
@@ -154,7 +164,7 @@ const restoreHome = useDshHome(fx.home)
    * 5) 追加后 force 立即看到新值（不点"全量重算"也能更新）
    * ---------------------------------------------------------------- */
   appendEvents(join(fx.sessions, '--proj--', 'session-main', 'session.jsonl.zstd'), [
-    usageEvent(2, now - 1800000, { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 }),
+    usageEvent(2, dayAnchor + 180000, { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 }),
   ])
   const pAppend = await scanAndSettle(handler)
   assert('5.1 追加的 usage 进入 payload（且只重折该会话）', pAppend.totals.inputTokens === 1117 && pAppend.totals.requests === 4, JSON.stringify(pAppend.totals))
@@ -207,7 +217,7 @@ cleanup(fx.root)
   try {
     writeSessionLog(dir.sessions, {
       id: 'session-old',
-      events: [modelEvent(0, now - 60000, 'deepseek', 'v4-flash'), usageEvent(1, now - 59000, { inputTokens: 42, outputTokens: 8 })],
+      events: [modelEvent(0, mainEventTime - 1000, 'deepseek', 'v4-flash'), usageEvent(1, mainEventTime, { inputTokens: 42, outputTokens: 8 })],
     })
     mkdirSync(dir.profile, { recursive: true })
     const legacyAgg = { id: 'session-old', createdAt: 1700000000000, cwd: '/tmp/old', parentSession: null, delegationDepth: 0, title: '旧标题', models: {}, days: {}, modelDays: {}, hours: {}, modelHours: {}, minutes: {}, modelMinutes: {}, tools: {}, totals: { ...emptyBucket(), inputTokens: 999, requests: 9 }, steps: 9, turns: 9, llmMs: 0, toolMs: 0, lastTs: null }
