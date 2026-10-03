@@ -4,6 +4,21 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.3] - 2026-10-03
+
+### 修复
+
+- **patch 解析未注册 `!!js` 标签**：`setEnabled()` 里的 `parseDocument(text)` 补上 `customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (v) => v }]`，与 DSH 0.2.0-rc.2 内核写入同一份 `cordis.patch.yml` 的两处保持一致（`@deepseek-ai/dsh-plugin-manager/lib/types/patch.js:23-25`、`@deepseek-ai/dsh-config-editor/lib/index.js:91-94`）。
+  - 现象：patch 文件允许 `!!js <JS 表达式>`，而 yaml 内置 schema 不含该标签。不注册时每个 `!!js` 节点都会记一条 `TAG_RESOLVE_FAILED` 警告（Unresolved tag），节点退回默认 string 标签解析——`dsh-base/cordis.patch.yml` 一文件即有 16 处（含 `root: !!js dshHomePath('sessions')` 这类无引号裸标量），逐节点警告且解析语义与内核写入方不一致。
+  - 实测（yaml 2.9.0，与本插件及 profile 实际加载的版本一致）：未注册的标量标签只产生警告、不阻塞 `doc.toString()`，因此这是**一致性与防御性修复**，不是崩溃修复；无法解析的标签 token（如 `!<not a tag>`）仍会产生 error 并让回写在 `toString()` 处抛错，那种情况本改动也不掩盖。
+  - 回归面：对不含 `!!js` 的文件，注册前后的回写结果**逐字节相同**（在 profile 实际 patch 上验证：7301 字节一致、24 行注释全部保留），注释保留式改写行为不变。
+
+### 改动文件
+
+- `lib/index.js`（新增 `JS_CUSTOM_TAGS` 常量与成因注释；`parseDocument` 调用补 `customTags`）
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.3.2 → 0.3.3）
+
 ## [0.3.2] - 2026-10-03
 
 ### 修复

@@ -11,7 +11,8 @@
  * 启停实现：在 profile 的 cordis.patch.yml 中维护 id 定向覆盖
  *   - 停用：追加/写入 `- id: <x>` + `disabled: true`
  *   - 启用：删除对应条目中的 disabled（纯覆盖条目整体移除）
- * 使用 yaml 的 parseDocument 保留原文件注释；临时文件 + rename 原子写。
+ * 使用 yaml 的 parseDocument 保留原文件注释（customTags 注册 `!!js`，见 JS_CUSTOM_TAGS）；
+ * 临时文件 + rename 原子写。
  *
  * 路由守卫：注册前检测 ctx.webServer.exact / prefixes，路由已被其他插件占用时
  * 跳过本插件注册（打警告），避免 duplicate exact route 导致 DSH 启动崩溃。
@@ -27,6 +28,22 @@ export const inject = ['loader', 'webServer']
 
 const API_PREFIX = '/api/plugin-manager'
 const PATCH_FILENAME = 'cordis.patch.yml'
+
+/**
+ * `!!js` 标签注册表——patch 文件允许 `!!js <JS 表达式>`，值即表达式的源码字符串。
+ *
+ * yaml 内置 schema 不含 `tag:yaml.org,2002:js`，所以必须显式注册：
+ *   - 不注册：每个 `!!js` 节点都会记一条 TAG_RESOLVE_FAILED 警告（Unresolved tag），
+ *     节点退回默认 string 标签解析，解析语义与节点类型和内核写入方不一致；
+ *   - 注册后：警告归零，标量按 resolve 原样取值，与内核解析结果一致。
+ * 实测 yaml 2.9.0 下未注册的标量标签只产生警告、不阻塞 doc.toString()，故这里是
+ * 一致性与防御性修复（内核两处写入同一文件时都注册了该标签，两侧需对齐）。
+ *
+ * 取证来源：DSH 0.2.0-rc.2 内核写入同一份 `cordis.patch.yml` 的两处均传了同样的
+ * customTags——`@deepseek-ai/dsh-plugin-manager/lib/types/patch.js:23-25`、
+ * `@deepseek-ai/dsh-config-editor/lib/index.js:91-94`。
+ */
+const JS_CUSTOM_TAGS = [{ tag: 'tag:yaml.org,2002:js', resolve: (v) => v }]
 
 /** 判定是否系统内部插件（@deepseek-ai 官方包，不在管理器里启停，避免破坏基础能力）。 */
 function isSystem(entryName) {
@@ -165,7 +182,8 @@ async function setEnabled(ctx, targetId, enabled) {
 
   const path = patchPathOf(ctx)
   const text = await readFile(path, 'utf8')
-  const doc = parseDocument(text)
+  // customTags：注册 `!!js`，与内核写入方解析同一种 patch 文件（见 JS_CUSTOM_TAGS）
+  const doc = parseDocument(text, { customTags: JS_CUSTOM_TAGS })
   if (doc.contents === null || !Array.isArray(doc.contents.items)) {
     doc.contents = doc.createNode([])
   }
