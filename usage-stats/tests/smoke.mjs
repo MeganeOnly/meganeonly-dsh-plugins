@@ -1,4 +1,4 @@
-// tests/smoke.mjs
+﻿// tests/smoke.mjs
 // 冒烟测试：模拟 browser 加载 bundle，调用 UsageStatsPage / UsageStatsPageBody 渲染 mock 数据。
 // 目的：保证拆分后的 source files 拼接产物在 apply 路径与渲染路径上都抛错为 0。
 
@@ -21,19 +21,34 @@ const React = {
   useState(init) { return [init, () => {}] },
   useEffect() {},
   useCallback(fn) { return fn },
+  useRef(init) { return { current: init } },
   createElement
 }
 
-// mock fetch：返回一份最小可用的 summary payload
+// mock fetch：返回一份最小可用的 summary payload（含 v0.5.0 扫描/新鲜度字段）
 const fakePayload = {
   ok: true,
-  home: '/mock/dsh/home',
   sessionCount: 3,
+  rawSessionCount: 5,
   turns: 7,
   decoded: 1,
   reused: 2,
   durationMs: 50,
   generatedAt: Date.now(),
+  dataAsOf: Date.now() - 1000,
+  lastScanAt: Date.now() - 500,
+  scanning: false,
+  scanProgress: { phase: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, changed: 0, reused: 3, removed: 0 },
+  legacy: false,
+  legacyCount: 0,
+  stale: false,
+  discovery: 'listGenerations',
+  discoveryMs: 120,
+  storeVersion: 1,
+  retention: { minuteHours: 48, hourDays: 15, dayWindow: 30 },
+  limits: { topSessions: 12, topTools: 10 },
+  restartFolds: 0,
+  errorCount: 0,
   errors: [],
   totals: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, cacheWriteTokens: 0, reasoningTokens: 50, requests: 5 },
   steps: 6,
@@ -42,8 +57,12 @@ const fakePayload = {
   byDay: [
     { day: '2026-08-18', inputTokens: 100, outputTokens: 50, cacheReadTokens: 20, cacheWriteTokens: 0, reasoningTokens: 5, requests: 1 }
   ],
+  byDayAll: [
+    { day: '2026-08-18', inputTokens: 100, outputTokens: 50, cacheReadTokens: 20, cacheWriteTokens: 0, reasoningTokens: 5, requests: 1 }
+  ],
+  byTrend: { day: [{ bucket: '2026-08-18', inputTokens: 100, outputTokens: 50, cacheReadTokens: 20, cacheWriteTokens: 0, reasoningTokens: 5, requests: 1 }], hour: [], minute: [], week: [] },
   byModel: [{ model: 'mock/model-a', sessions: 1, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, reasoningTokens: 50, requests: 5, days: {} }],
-  topSessions: [{ id: 'sess-1', title: 'mock session', cwd: '/mock/cwd', createdAt: Date.now() - 86400000, requests: 5, outputTokens: 500, tokens: 1700 }],
+  topSessions: [{ id: 'sess-1', title: 'mock session', cwd: '/mock/cwd', createdAt: Date.now() - 86400000, requests: 5, outputTokens: 500, tokens: 1700, childCount: 0 }],
   tools: [{ name: 'mock-tool', calls: 3, ms: 1500 }]
 }
 globalThis.fetch = () => Promise.resolve({ json: () => Promise.resolve(fakePayload) })

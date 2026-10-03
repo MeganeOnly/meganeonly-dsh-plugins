@@ -14,6 +14,8 @@
       var setVisibility = visibilityState[1];
       var setPanelOpen = panelOpenState[1];
       var setHeatmapModel = heatmapModelState[1];
+      // 轮询计数（上限保护）：载荷仍在扫描 / 仍是旧缓存占位时用
+      var pollCount = React.useRef(0);
 
       var load = React.useCallback(function (mode) {
         setLoading(true);
@@ -205,17 +207,21 @@
             ),
             panelOpen ? VisibilityPanel(visibility, setVisibility) : null
           ),
-          React.createElement("button", { style: s.btn, onClick: function () { reload(false); } }, "刷新"),
-          React.createElement("button", { style: s.btn, onClick: function () { reload(true); }, title: "忽略缓存，强制重新解码全部会话" }, "强制重算")
+          React.createElement("button", { style: s.btn, onClick: function () { reload("force"); }, title: "立即比对会话日志修订（只重折有变化的会话）" }, "刷新"),
+          React.createElement("button", { style: s.btn, onClick: function () { reload("rebuild"); }, title: "丢弃现有统计存储，从日志重新折叠全部会话（耗时较长，界面会显示进度）" }, "全量重算")
         )
       );
 
-      // 元信息：上下文 + 数据源
+      // 元信息：扫描来源 + 折叠/复用 + 数据新鲜度（v0.5.0：不再有 home 字段）
+      var discoveryLabel = d.discovery === "listGenerations"
+        ? "框架世代枚举"
+        : (d.discovery === "walk" ? "目录扫描" : (d.discovery === "sessionQuery" ? "框架列表（慢路径）" : "未知"));
       var metaNode = React.createElement(
         "div",
         { style: Object.assign({}, s.meta, { marginTop: "8px" }) },
-        "数据源 ", React.createElement("span", { style: { fontFamily: "var(--ds-font-family-code, monospace)" } }, d.home),
-        " · 解码 ", d.decoded, " / 复用 ", d.reused,
+        "扫描 ", discoveryLabel,
+        " · 本次重折 ", d.decoded, " / 复用 ", d.reused,
+        " · 数据截至 ", d.dataAsOf != null ? fmtTime(d.dataAsOf) : "—",
         " · 生成于 ", fmtTime(d.generatedAt), "（", fmtDuration(d.durationMs), "）"
       );
 
@@ -435,6 +441,7 @@
         "div",
         { style: { maxWidth: "1080px" } },
         header,
+        ScanStatus(d),
         errorBox,
         sectionNodes.length === 0
           ? React.createElement("div", { style: Object.assign({}, s.meta, { marginTop: "20px" }) }, "已隐藏全部数据块，点右上角「显示」重新选择。")

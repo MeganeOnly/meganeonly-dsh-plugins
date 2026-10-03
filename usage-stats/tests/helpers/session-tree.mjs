@@ -149,13 +149,30 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * 触发一次扫描并等它跑完（复刻客户端行为：先 force 触发，再用非 force 轮询看进度）。
+ *
  * 非 force 请求在 15s 节流窗口内不会重新起扫描，因此轮询读数稳定。
+ * 判定"跑完"要求**连续两次**读到 scanning=false 且 lastScanAt 不变 —— 单次读到
+ * false 可能落在"上一轮刚结束、排队中的下一轮尚未开始"的瞬间（force 排队语义）。
  */
 export async function scanAndSettle(handler, options = {}) {
   const base = options.url || '/api/usage-stats/summary'
   const trigger = options.rebuild === true ? `${base}?rebuild=1` : `${base}?force=1`
   let payload = await callHandler(handler, trigger)
-  for (let i = 0; i < (options.maxPolls || 400) && payload.scanning === true; i += 1) {
+  let previousScanAt = null
+  let stableReads = 0
+  for (let i = 0; i < (options.maxPolls || 400); i += 1) {
+    if (payload.scanning === false) {
+      if (previousScanAt === payload.lastScanAt) {
+        stableReads += 1
+        if (stableReads >= 2) return payload
+      } else {
+        stableReads = 1
+        previousScanAt = payload.lastScanAt
+      }
+    } else {
+      stableReads = 0
+      previousScanAt = null
+    }
     await sleep(options.pollMs || 5)
     payload = await callHandler(handler, base)
   }

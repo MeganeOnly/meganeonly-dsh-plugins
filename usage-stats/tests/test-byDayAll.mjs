@@ -1,4 +1,4 @@
-// tests/test-byDayAll.mjs
+﻿// tests/test-byDayAll.mjs
 // v0.3.9 新增：覆盖「距离现在超过 30 天」时 all 图表和热力图仍能正确显示数据。
 //
 // 背景：
@@ -312,6 +312,7 @@ const { rootsDaysAll } = await import('../lib/index.js')
     },
     useEffect() {},
     useCallback(fn) { return fn },
+    useRef(init) { return { current: init } },
     createElement,
   }
   globalThis.fetch = () => Promise.resolve({ json: () => Promise.resolve(fakePayload) })
@@ -499,6 +500,7 @@ const { rootsDaysAll } = await import('../lib/index.js')
       },
       useEffect() {},
       useCallback(fn) { return fn },
+      useRef(init) { return { current: init } },
       createElement: createElementLocal,
     }
     const loadedLocal = []

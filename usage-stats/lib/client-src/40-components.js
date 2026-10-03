@@ -25,6 +25,7 @@
           else pieces.push("发现会话中");
           if (progress.changed != null) pieces.push("本次重折 " + progress.changed + " · 复用 " + progress.reused);
         }
+        if (legacy) pieces.push("当前展示旧缓存占位数据，重算完成后自动替换");
       } else if (legacy) {
         pieces.push("当前展示旧缓存数据，等待重算完成");
       } else {

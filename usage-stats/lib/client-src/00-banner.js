@@ -100,4 +100,20 @@
  *   热力图能看到 8 周前那一格；之前这两个组件都因超过 30 天零填充而空白。
  *   `CACHE_VERSION` 不变（6 → 6）；aggregateSession 输出的 `agg.days` 始终完整，
  *   byDayAll 派生不需要重解码已有缓存——用户首次请求自然走 re-derive 路径。
+ *
+ * v0.5.0 架构切换（host 半段重写，客户端随之适配）：
+ *   host 从"单体缓存 + 整文件重解码 + 每次请求重算"改为
+ *   "每会话记录（水位 + 前缀锚）+ 帧级续读 + 快照 memo"：
+ *     (a) 失效键从 header.createdAt（永不变化 → 活跃会话被永久冻结）
+ *         改为文件修订令牌 dev:ino:size:mtimeNs:ctimeNs + 日志世代号；
+ *     (b) 只读新增字节、只解新增 zstd 帧（水位 lastSeq 去重，撕裂尾帧丢弃重读）；
+ *     (c) 分钟桶 48h / 小时桶 15d 裁剪，桶表不再无界增长；
+ *     (d) 请求永远立即返回"已发布快照"，扫描在后台单飞推进。
+ *   客户端因此新增：
+ *     - ScanStatus 状态行（scanning 进度 / legacy 旧缓存占位 / idle 新鲜度 /
+ *       errorCount 警示配色），渲染在标题行下方；
+ *     - scanning 或 legacy 时 2s 轮询（上限 60 次），完成后自动停在最新数据；
+ *     - 「刷新」= ?force=1（只重折有变化的会话）、「全量重算」= ?rebuild=1
+ *       （旧存储整体改名后从零重算，界面显示进度）；
+ *     - 元信息行改用 discovery / decoded / reused / dataAsOf（host 已移除 home 字段）。
  */

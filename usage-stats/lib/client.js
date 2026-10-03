@@ -100,6 +100,22 @@
  *   热力图能看到 8 周前那一格；之前这两个组件都因超过 30 天零填充而空白。
  *   `CACHE_VERSION` 不变（6 → 6）；aggregateSession 输出的 `agg.days` 始终完整，
  *   byDayAll 派生不需要重解码已有缓存——用户首次请求自然走 re-derive 路径。
+ *
+ * v0.5.0 架构切换（host 半段重写，客户端随之适配）：
+ *   host 从"单体缓存 + 整文件重解码 + 每次请求重算"改为
+ *   "每会话记录（水位 + 前缀锚）+ 帧级续读 + 快照 memo"：
+ *     (a) 失效键从 header.createdAt（永不变化 → 活跃会话被永久冻结）
+ *         改为文件修订令牌 dev:ino:size:mtimeNs:ctimeNs + 日志世代号；
+ *     (b) 只读新增字节、只解新增 zstd 帧（水位 lastSeq 去重，撕裂尾帧丢弃重读）；
+ *     (c) 分钟桶 48h / 小时桶 15d 裁剪，桶表不再无界增长；
+ *     (d) 请求永远立即返回"已发布快照"，扫描在后台单飞推进。
+ *   客户端因此新增：
+ *     - ScanStatus 状态行（scanning 进度 / legacy 旧缓存占位 / idle 新鲜度 /
+ *       errorCount 警示配色），渲染在标题行下方；
+ *     - scanning 或 legacy 时 2s 轮询（上限 60 次），完成后自动停在最新数据；
+ *     - 「刷新」= ?force=1（只重折有变化的会话）、「全量重算」= ?rebuild=1
+ *       （旧存储整体改名后从零重算，界面显示进度）；
+ *     - 元信息行改用 discovery / decoded / reused / dataAsOf（host 已移除 home 字段）。
  */window.__ModuleLoader__.load({
   id: "dsh-usage-stats",
   factory: (require) => {
@@ -316,6 +332,12 @@
       sectionHint: { marginLeft: "8px", fontSize: "11px", color: C.text3, fontWeight: 400 },
       // 错误
       errBox: { padding: "8px 12px", borderRadius: "5px", background: C.errSoft, border: "1px solid rgba(176,42,55,0.25)", color: C.err, fontSize: "12px", marginBottom: "12px" },
+      // 扫描状态行（v0.5.0：后台重算进度 / 旧缓存占位 / 数据新鲜度）
+      statusBar: { display: "flex", alignItems: "center", gap: "10px", marginTop: "10px", padding: "7px 11px", borderRadius: "5px", border: "1px solid " + C.hairline, background: C.faint, fontSize: "11px", color: C.text2, fontVariantNumeric: "tabular-nums" },
+      statusWarn: { borderColor: "rgba(176,42,55,0.25)", background: C.errSoft, color: C.err },
+      statusDot: { width: "7px", height: "7px", borderRadius: "50%", background: C.accent, flex: "0 0 auto" },
+      statusTrack: { flex: "1 1 120px", height: "3px", borderRadius: "2px", background: C.hairlineSoft, overflow: "hidden", minWidth: "80px" },
+      statusFill: { height: "100%", borderRadius: "2px", background: C.accent },
       // 图表
       chartSection: { marginTop: "4px" },
       chartLegend: { display: "flex", alignItems: "center", gap: "14px", fontSize: "11px", color: C.text2, marginBottom: "12px" },
@@ -381,6 +403,60 @@
       heatmapModelSelect: { padding: "3px 8px", fontSize: "11px", borderRadius: "4px", border: "1px solid " + C.hairline, background: "transparent", color: "inherit", cursor: "pointer", fontVariantNumeric: "tabular-nums" },
       heatmapEmpty: { fontSize: "11px", color: C.text3, padding: "16px 0" }
     };    // ===== components =====
+    /**
+     * v0.5.0 扫描状态行。
+     *
+     * host 半段每次请求都立即返回"已发布快照"，后台扫描在单飞推进；因此客户端需要
+     * 一个进度与新鲜度的可视入口：
+     *   - scanning：后台重算中（done/total + 进度条），首次安装或全量重建时会持续一段时间
+     *   - legacy：当前展示的是 v0.4.x 旧缓存的占位数据，等重算完成后自动被真实值覆盖
+     *   - 常态：数据截至时间 + 上次扫描耗时 + 生命周期空洞诊断计数
+     *   - errorCount > 0：切换成警示配色并提示条数（明细在 errors 盒里）
+     */
+    function ScanStatus(d) {
+      var scanning = d.scanning === true;
+      var legacy = d.legacy === true;
+      var progress = d.scanProgress || null;
+      var pct = 0;
+      if (progress != null && progress.total > 0) {
+        pct = Math.max(0, Math.min(100, Math.round((progress.done / progress.total) * 100)));
+      }
+      var pieces = [];
+      if (scanning) {
+        pieces.push("后台重算中");
+        if (progress != null) {
+          if (progress.total > 0) pieces.push(progress.done + "/" + progress.total + " 会话");
+          else pieces.push("发现会话中");
+          if (progress.changed != null) pieces.push("本次重折 " + progress.changed + " · 复用 " + progress.reused);
+        }
+        if (legacy) pieces.push("当前展示旧缓存占位数据，重算完成后自动替换");
+      } else if (legacy) {
+        pieces.push("当前展示旧缓存数据，等待重算完成");
+      } else {
+        pieces.push("数据已是最新");
+        if (d.dataAsOf != null) pieces.push("截至 " + fmtTime(d.dataAsOf));
+        if (d.lastScanAt != null) pieces.push("上次扫描 " + fmtTime(d.lastScanAt));
+        if (d.reused != null && d.reused > 0) pieces.push("复用 " + d.reused + " 个会话");
+      }
+      if (d.restartFolds > 0) pieces.push(d.restartFolds + " 个会话日志被改写，已重折叠");
+      if (d.errorCount > 0) pieces.push(d.errorCount + " 个会话失败");
+
+      var warn = d.errorCount > 0;
+      return React.createElement(
+        "div",
+        { style: warn ? Object.assign({}, s.statusBar, s.statusWarn) : s.statusBar, "data-usage-stats-status": scanning ? "scanning" : (legacy ? "legacy" : "idle") },
+        React.createElement("span", { style: s.statusDot }),
+        React.createElement("span", null, pieces.join(" · ")),
+        scanning && progress != null && progress.total > 0
+          ? React.createElement(
+            "span",
+            { style: s.statusTrack },
+            React.createElement("span", { style: Object.assign({}, s.statusFill, { width: pct + "%" }) })
+          )
+          : null
+      );
+    }
+
     function Card(label, value, sub) {
       return React.createElement(
         "div",
@@ -1032,11 +1108,19 @@
       var setVisibility = visibilityState[1];
       var setPanelOpen = panelOpenState[1];
       var setHeatmapModel = heatmapModelState[1];
+      // 轮询计数（上限保护）：载荷仍在扫描 / 仍是旧缓存占位时用
+      var pollCount = React.useRef(0);
 
-      var load = React.useCallback(function (force) {
+      var load = React.useCallback(function (mode) {
         setLoading(true);
         setError(null);
-        fetch(API + (force ? "?force=1&t=" + Date.now() : "?t=" + Date.now()))
+        // v0.5.0：mode false/undefined = 常规刷新；"force" = 绕过节流重新比对修订；
+        // "rebuild" = 让 host 把旧存储整体改名后从零重算（原「强制重算」按钮的语义）。
+        // 兼容旧调用：true 等价于 "force"。
+        var query = "?t=" + Date.now();
+        if (mode === "rebuild") query = "?rebuild=1&t=" + Date.now();
+        else if (mode === "force" || mode === true) query = "?force=1&t=" + Date.now();
+        fetch(API + query)
           .then(function (res) { return res.json(); })
           .then(function (payload) {
             if (!payload.ok) throw new Error(payload.error || "summary failed");
@@ -1050,6 +1134,22 @@
       }, []);
 
       React.useEffect(function () { load(false); }, [load]);
+
+      // v0.5.0 轮询：host 的响应永远立即返回"已发布快照"，后台扫描在单飞推进。
+      // 只要载荷还在 scanning 或仍是 legacy 占位，就 2s 后再拉一次；上限 60 次
+      // （约 2 分钟）避免任何异常情况下无限轮询；载荷对象每次 fetch 都换身份，
+      // 因此 effect 会随新载荷重新排期。
+      React.useEffect(function () {
+        var current = data[0];
+        if (current == null) return undefined;
+        if (!current.scanning && !current.legacy) { pollCount.current = 0; return undefined; }
+        if (pollCount.current >= 60) return undefined;
+        var timer = setTimeout(function () {
+          pollCount.current += 1;
+          load(false);
+        }, 2000);
+        return function () { clearTimeout(timer); };
+      }, [data[0], load]);
 
       // 显示偏好变更后写回 localStorage（首次 mount 的初始值也会触发一次，无害）
       React.useEffect(function () {
@@ -1201,17 +1301,21 @@
             ),
             panelOpen ? VisibilityPanel(visibility, setVisibility) : null
           ),
-          React.createElement("button", { style: s.btn, onClick: function () { reload(false); } }, "刷新"),
-          React.createElement("button", { style: s.btn, onClick: function () { reload(true); }, title: "忽略缓存，强制重新解码全部会话" }, "强制重算")
+          React.createElement("button", { style: s.btn, onClick: function () { reload("force"); }, title: "立即比对会话日志修订（只重折有变化的会话）" }, "刷新"),
+          React.createElement("button", { style: s.btn, onClick: function () { reload("rebuild"); }, title: "丢弃现有统计存储，从日志重新折叠全部会话（耗时较长，界面会显示进度）" }, "全量重算")
         )
       );
 
-      // 元信息：上下文 + 数据源
+      // 元信息：扫描来源 + 折叠/复用 + 数据新鲜度（v0.5.0：不再有 home 字段）
+      var discoveryLabel = d.discovery === "listGenerations"
+        ? "框架世代枚举"
+        : (d.discovery === "walk" ? "目录扫描" : (d.discovery === "sessionQuery" ? "框架列表（慢路径）" : "未知"));
       var metaNode = React.createElement(
         "div",
         { style: Object.assign({}, s.meta, { marginTop: "8px" }) },
-        "数据源 ", React.createElement("span", { style: { fontFamily: "var(--ds-font-family-code, monospace)" } }, d.home),
-        " · 解码 ", d.decoded, " / 复用 ", d.reused,
+        "扫描 ", discoveryLabel,
+        " · 本次重折 ", d.decoded, " / 复用 ", d.reused,
+        " · 数据截至 ", d.dataAsOf != null ? fmtTime(d.dataAsOf) : "—",
         " · 生成于 ", fmtTime(d.generatedAt), "（", fmtDuration(d.durationMs), "）"
       );
 
@@ -1431,6 +1535,7 @@
         "div",
         { style: { maxWidth: "1080px" } },
         header,
+        ScanStatus(d),
         errorBox,
         sectionNodes.length === 0
           ? React.createElement("div", { style: Object.assign({}, s.meta, { marginTop: "20px" }) }, "已隐藏全部数据块，点右上角「显示」重新选择。")
