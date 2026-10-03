@@ -4,6 +4,25 @@ dsh-test 的变更记录。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.4] - 2026-10-03
+
+### 兼容性
+
+- 已对照 DSH 0.2.0-rc.2 实际安装源码（`@deepseek-ai/dsh` 及同目录下的 `@deepseek-ai/*` 依赖包）核验，本插件无代码变更：
+  - **包清单四项硬必需齐备**：`dsh.bundle.patch`（`./cordis.patch.yml`，文件存在）、`dsh.client.platform = "web"`、`exports["./client"]` 与 `lib/client.js` 均在位；客户端 bundle 以 `__ModuleLoader__.load({ id: "dsh-test", factory })` 信封收尾，`id` 与包名一致。
+  - **host 契约未变**：`export const inject = ['webServer']` 的服务名在 0.2.0-rc.2 中仍可解析；`ctx.webServer.register({ kind: 'exact', path: '/api/test/hello' })` 的签名与 `exact` Map 形态未变，注册前查重守卫（`ctx.webServer.exact.has(path)` 命中则告警并跳过）继续成立；handler 的 `(req, res)` 形态与 405 方法守卫未变。
+  - **客户端契约未变**：仅注入一枚徽标 DOM 并通过同源 `fetch('/api/test/hello')` 轮询，不使用 `ctx.slots` / `slots.inject` / `data-slot` 锚点，不命中 0.2.x 变更的任何 slot key。
+- **本插件当前未安装进任何 profile**：本机两个 profile（`web` / `headless`）的 `dependencies` 与 `dsh.profile.bundles` 中都没有 `dsh-test`，profile 的 `cordis.patch.yml` 里也没有它的条目，因此运行实例上完全不加载——直接请求 `GET /api/test/hello` 得到 401 是未通过浏览器鉴权栅栏 / SPA fallback 的响应，不是路由级问题。启用需 `dsh plugin --profile web add dsh-test`，或手工把包名写进 profile 的 `dependencies` 与 `dsh.profile.bundles` 后重启 DSH。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.1.3 → 0.1.4）
+
+### 验证
+
+- `node tools/check-dsh-contract.cjs`：`PASS  dsh-test`
+
 ## [Unreleased]
 
 ### 兼容性
