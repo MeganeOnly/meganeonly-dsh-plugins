@@ -165,8 +165,8 @@ payload.js 归并 rollup.js（子代理沿 parentSession 归到 root）
 | 734 次 `stat` 修订比较 | 81 ms |
 | 首响应（空库、返回 scanning 快照） | 23 ms |
 | 热 payload 组装（快照命中） | 3 ms |
-| 全量重算（734 会话 / 439 MB） | 65.0 s，峰值 RSS 320 MB（起始 52 MB） |
-| 无变更时 `?force=1` 一趟 | 约 190 ms，`decoded=0` / 全部按修订复用 |
+| 全量重算（734 会话 / 439 MB） | 65-80 s（两次实测 65.0 s / 66.8 s），峰值 RSS 290-320 MB（起始约 52 MB） |
+| 无变更时 `?force=1` 一趟 | 约 354 ms（发现 107 ms + 734 次 stat 81 ms + 至多一个变更会话的折叠；测量含 100 ms 轮询粒度） |
 
 对照 v0.4.x：框架 `listSessions()` 约 30 s、全量重建 10-15 分钟且曾 OOM。
 
