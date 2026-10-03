@@ -4,6 +4,26 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.5] - 2026-10-03
+
+### 兼容性
+
+- 已对照 DSH 0.2.0-rc.2 实际安装源码（`@deepseek-ai/dsh` 及同目录下的 `@deepseek-ai/*` 依赖包）核验，本插件无代码变更：
+  - **host 契约未变**：`ctx.webServer.register({ kind, path, handler })` 签名、`kind: 'exact'` 对应的 `ctx.webServer.exact` Map 形态、重复 `(kind, path)` 直接抛错的行为均与 0.1.5-rc.1 逐字节等价；13 条 `/api/git-hub/*` 路由的注册前查重守卫（`ctx.webServer.exact.has(path)` 命中则告警并跳过）继续成立。
+  - **13 条路由在运行实例上全部注册成功**（只读探测）：6 条 GET 路由 `config` / `repos` / `push-status` / `commit-status` / `repos/branches?path=…` / `repos/merge-status` 实测 200；7 条 POST 专用路由（`repos/refresh` / `push-all` / `repos/push` / `commit` / `repos/merge` / `repos/pull` / `repos/merge-abort`）以 GET 探测均返回 405 `method-not-allowed`，说明路由存在且方法守卫先于任何 git 操作执行。全盘扫描类路由耗时属正常范围（`/repos` 约 13 s、`/commit-status` 约 10 s）。
+  - **不依赖 DSH subprocess 服务**：git 调用走 Node 内置 `child_process`（`execFile`）在插件进程内完成，0.2.x 关于 subprocess handle 形态的变更不命中本插件。
+  - **客户端契约未变**：19 个 `lib/client-src/*.js` 中除 `window.__ModuleLoader__.load({ id, factory })` 信封外，不使用 `ctx.slots` / `slots.inject` / `data-slot` 锚点，也不 `require` 平台模块（客户端为原生 DOM + 同源 fetch）；`dsh.bundle.patch` / `dsh.client.platform = "web"` / `exports["./client"]` 三项硬必需齐备。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.5.4 → 0.5.5）
+
+### 验证
+
+- `node tools/check-dsh-contract.cjs`：`PASS  dsh-git-hub`
+- `node lib/verify-client.cjs`：`BYTE-IDENTICAL ✓`（`lib/client.js` 100200 字节，与 HEAD 一致，本轮未改动任何客户端源码）
+
 ## [Unreleased]
 
 ### 兼容性
