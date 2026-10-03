@@ -21,7 +21,7 @@
     // 隐藏粒度（0.2.x 修正）：老版本 DSH 的 dock 行里只有 slot 出口一个子节点，隐藏出口 ==
     // 隐藏统计行。0.2.x 起 DSH 把 ContextMeter（上下文占用计量器）作为**后继兄弟**放进同一
     // dock 行（`[slotOutlet, ContextMeter]` 两个 flex 子项），只隐藏出口会把它留下——CSS 侧
-    // 因此追加一条以出口为锚的通用兄弟选择器 `[data-slot="..."] ~ *`，把出口之后的同级节点
+    // 因此追加一条以出口为锚的通用兄弟选择器 `[data-slot="<slot key>"] ~ *`，把出口之后的同级节点
     // 一并隐藏；老版本上该兄弟节点不存在，规则零命中。代价：若将来第三方插件也往
     // composer.dock 注册条目，top/hidden 时会连带隐藏（已在 tweak description 与 README 注明）。
     // 边界：出口只在 composer 变体渲染（`variant === "composer"` 且 input / sessionId 齐备），
