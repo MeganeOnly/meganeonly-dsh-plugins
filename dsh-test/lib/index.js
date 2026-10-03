@@ -22,8 +22,26 @@ function json(res, status, body) {
   res.end(JSON.stringify(body))
 }
 
+/**
+ * 注册 HTTP 路由；路径已被其他插件占用时跳过并告警。
+ *
+ * DSH 的 webServer 对重复 (kind, path) 直接 throw —— 一旦发生会把本次启动打崩，
+ * 因此所有路由统一走这里，而不是直接调 ctx.webServer.register。
+ * 守卫不可用时（表结构缺失）退回直接注册：宁可重复报错，也不要静默不注册。
+ */
+function registerRoute(ctx, route) {
+  const table = route.kind === 'exact' ? ctx.webServer.exact : ctx.webServer.prefixes
+  if (table !== undefined && table !== null && typeof table.has === 'function' && table.has(route.path)) {
+    const message = `dsh-test: 路由 ${route.path} 已被其他插件注册，跳过注册以避免启动失败`
+    if (ctx.logger !== undefined && typeof ctx.logger.warn === 'function') ctx.logger.warn(message)
+    else console.warn(`[dsh-test] ${message}`)
+    return () => {}
+  }
+  return ctx.webServer.register(route)
+}
+
 export function apply(ctx) {
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: API_HELLO,
     handler: (req, res) => {

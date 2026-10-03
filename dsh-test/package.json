@@ -1,6 +1,6 @@
 {
   "name": "dsh-test",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": "MeganeOnly",
   "description": "DSH 插件开发者用的最小管道健康检查器：装上后浏览器右下角出现一枚状态徽标——绿底表示 host 半端、client bundle、cordis 名册三层全跑通，红底表示哪一层断了；用于排查「插件失踪」问题时先确认管道本身是否健康，再排查自己的代码。",
   "license": "MIT",
