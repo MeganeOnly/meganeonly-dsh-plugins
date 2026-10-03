@@ -300,22 +300,37 @@ function applySessionHeader(agg, event) {
 /**
  * 按序折叠一批事件。
  *
- * @returns {{ applied: number, duplicate: number, skipped: number, gap: boolean, gapAt: number|null }}
- *   gap=true 时本批**未应用**任何事件（水位不变），调用方应重建折叠状态做全量重折叠。
+ * @param options.continueOnGap true = 遇到 seq 空洞也照常应用（全量折叠语义：
+ *   日志本身就不连续时，拒绝折叠只会让该会话永远停在旧值；改为"折叠所见 + 记警告"）。
+ *   false（默认）= 立即返回 gap，由调用方决定是否作用域内全量重折叠。
+ * @returns {{ applied: number, duplicate: number, skipped: number, gap: boolean, gapAt: number|null, sawGap: boolean }}
+ *   gap=true 时本批**未应用**任何事件（水位不变）；sawGap=true 表示 continueOnGap 下跳过了空洞。
  */
-export function foldEvents(fold, events) {
+export function foldEvents(fold, events, options = {}) {
+  const continueOnGap = options.continueOnGap === true
   let applied = 0
   let duplicate = 0
   let skipped = 0
-  if (!Array.isArray(events)) return { applied, duplicate, skipped, gap: false, gapAt: null }
+  let sawGap = false
+  if (!Array.isArray(events)) return { applied, duplicate, skipped, gap: false, gapAt: null, sawGap }
   for (const event of events) {
     const outcome = applyEvent(fold, event)
-    if (outcome === 'gap') return { applied, duplicate, skipped, gap: true, gapAt: toFiniteNumber(event.seq) }
+    if (outcome === 'gap') {
+      if (!continueOnGap) return { applied, duplicate, skipped, gap: true, gapAt: toFiniteNumber(event.seq), sawGap }
+      // 断点续折：把水位退到 seq-1 再应用该事件（它携带的 usage 不能丢）
+      sawGap = true
+      fold.agg.lastSeq = toFiniteNumber(event.seq) - 1
+      const retry = applyEvent(fold, event)
+      if (retry === 'applied') applied += 1
+      else if (retry === 'duplicate') duplicate += 1
+      else skipped += 1
+      continue
+    }
     if (outcome === 'applied') applied += 1
     else if (outcome === 'duplicate') duplicate += 1
     else skipped += 1
   }
-  return { applied, duplicate, skipped, gap: false, gapAt: null }
+  return { applied, duplicate, skipped, gap: false, gapAt: null, sawGap }
 }
 
 /* ------------------------------------------------------------------ *

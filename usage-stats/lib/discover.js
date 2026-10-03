@@ -45,8 +45,19 @@ export function fileRevisionOf(stats) {
 
 /** 读取一个日志文件的修订令牌；文件不存在返回 null。 */
 export async function statRevision(path) {
+  const info = await statInfo(path)
+  return info === null ? null : info.rev
+}
+
+/**
+ * 读取一个日志文件的修订令牌 + 体积 + mtime（一次 stat 拿全，供续读判定与优先级排序）。
+ * bigint 避免大文件的 size/mtime 精度丢失。
+ * @returns {Promise<{rev: string, size: number, mtimeMs: number}|null>}
+ */
+export async function statInfo(path) {
   try {
-    return fileRevisionOf(await stat(path, { bigint: true }))
+    const stats = await stat(path, { bigint: true })
+    return { rev: fileRevisionOf(stats), size: Number(stats.size), mtimeMs: Number(stats.mtimeMs) }
   } catch {
     return null
   }
