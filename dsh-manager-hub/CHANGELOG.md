@@ -4,6 +4,23 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.5] - 2026-10-03
+
+### 兼容性
+
+- 已对照本机安装的 DSH v0.2.0-rc.2 源码逐条核验，本插件接口契约全部成立，**无需改动任何代码**：
+  - 宿主半端仍是零逻辑：`export const inject = []`（`lib/index.js:15`）、`apply()` 为空函数体（L17-19），不注册路由、不读写磁盘；离线契约自检中"无 `webServer.register` 调用即无需查重守卫"这一项照旧成立。
+  - client 半端只经 `ctx.slots.inject("settings.section", ...)` 注册设置页入口（源码 `lib/client-src/Z0-apply.js:3`，产物 `lib/client.js:805`）。该 slot key 在 0.2.0-rc.2 的 slot catalog 中仍为 `list` / `root`（`@deepseek-ai/dsh-cordis-client-runner/lib/client.js:4710-4712`），**未重命名**。
+  - 注册参数与 catalog 契约一致且本轮未变：`id: "manager-hub"`、`order: 30`、`label: () => "管理"`（源码 `lib/client-src/Z0-apply.js:7-9`，产物 `lib/client.js:808-811`）。catalog 的 `registerOptions` 仍接受 `id`（required, string）/ `order`（optional, number）/ `label`（optional, `string | (() => string)`，thunk 每次投影重读）（同文件 L4715-4734）；`settings.section` 现有 5 个官方占位者（`agent-presets` / `account` / `general` / `models` / `plugins`，同文件 L4750-4756），本插件以自有 `id` 并列新增，不与之冲突。
+  - 客户端 slots API 形状未变：`inject(key, callback): () => void`（`@deepseek-ai/dsh-cordis-client-runner/lib/client.js:1384`）、`SlotCore.register(options, component)` 的两个重载（同文件 L2159 内），本插件的 `inject → register` 组合写法照旧。
+  - 三个子插件的探测逻辑未受影响：`ManagerHubPage` 仍只在挂载时请求一次 `/api/plugin-manager/list`，按返回 `entries[].id === "skill-manager" | "mcp-manager"` 的 `enabled === true` 决定对应子 tab 是否可见，plugin-manager 自身 404 时三个 tab 全部不可用并落到聚合提示（产物 `lib/client.js:711-764`）；三个数据源常量 `/api/plugin-manager`、`/api/skill-manager`、`/api/mcp-manager` 未变（源码 `lib/client-src/20-constants.js:2-4`）。这三条路由由三个子插件各自注册，本插件不注册任何路由——DSH 侧变化不触及本插件的探测路径。
+- **client 半端未改**：`lib/client-src/*.js` 与产物 `lib/client.js` 本轮均未编辑，因此**未跑** `node lib/build-client.cjs` / `node lib/verify-client.cjs`（无源改动即无需重建，避免无谓的产物扰动）。
+
+### 改动文件
+
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.1.4 → 0.1.5）
+
 ## [Unreleased]
 
 ### 修复
