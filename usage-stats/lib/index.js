@@ -749,6 +749,24 @@ function json(res, status, body) {
   res.end(JSON.stringify(body))
 }
 
+/**
+ * 注册 HTTP 路由；路径已被其他插件占用时跳过并告警。
+ *
+ * DSH 的 webServer 对重复 (kind, path) 直接 throw —— 一旦发生会把本次启动打崩，
+ * 因此路由统一走这里，而不是直接调 ctx.webServer.register。
+ * 守卫不可用时（表结构缺失）退回直接注册：宁可重复报错，也不要静默不注册。
+ */
+function registerRoute(ctx, route) {
+  const table = route.kind === 'exact' ? ctx.webServer.exact : ctx.webServer.prefixes
+  if (table !== undefined && table !== null && typeof table.has === 'function' && table.has(route.path)) {
+    const message = `usage-stats: 路由 ${route.path} 已被其他插件注册，跳过注册以避免启动失败`
+    if (ctx.logger !== undefined && typeof ctx.logger.warn === 'function') ctx.logger.warn(message)
+    else console.warn(`[usage-stats] ${message}`)
+    return () => {}
+  }
+  return ctx.webServer.register(route)
+}
+
 export function apply(ctx) {
   const cachePath = join(profileRoot(ctx), CACHE_FILENAME)
   let cache = { sessions: {} } // SessionId -> { createdAt: number, agg: agg }
@@ -948,7 +966,7 @@ export function apply(ctx) {
   // 启动即预热一次（装好缓存，首次打开设置页就快）
   chain = chain.then(() => summary(false)).catch(() => {})
 
-  ctx.webServer.register({
+  registerRoute(ctx, {
     kind: 'exact',
     path: API_SUMMARY,
     handler: (req, res) => {
