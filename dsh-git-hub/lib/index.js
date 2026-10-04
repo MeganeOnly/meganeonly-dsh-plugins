@@ -8,8 +8,10 @@
  *   2) 对每个仓库跑 git 命令集（branch / upstream / dirty / unpushed /
  *      今日 commit 数 / 最新 commit），单 repo 串行执行，每个命令 5 秒
  *      timeout，失败 fallback 不阻塞；
- *   3) 后台 spawn daily-push.cjs（不阻塞 HTTP 响应，立即返回 PID + startedAt）；
- *   4) 配置（扫描根路径列表 + toolPath 探测结果）持久化到 profile 根
+ *   3) 后台 spawn 配置的 push 工具（约定名 daily-push.cjs；路径按
+ *      「配置文件 > 环境变量」解析，未配置时按钮禁用、不 spawn。不阻塞
+ *      HTTP 响应，立即返回 PID + startedAt）；
+ *   4) 配置（扫描根路径列表 + push 工具路径）持久化到 profile 根
  *      .git-hub-config.json（原子写）；
  *   5) v0.3.0 新增 merge / pull / abort-merge：读 .git/MERGE_HEAD 与
  *      rebase-merge/rebase-apply 检测冲突态；git merge [--no-ff] / git pull
@@ -65,8 +67,27 @@ export const inject = ['webServer']
 
 const CONFIG_FILENAME = '.git-hub-config.json'
 
-const DEFAULT_SCAN_ROOTS = ['F:\\AllWorkSpace', 'E:\\']
-const DEFAULT_PUSH_TOOL = 'F:\\AllWorkSpace\\tools\\daily-push.cjs'
+// 机器相关路径不写死在源码里：扫描根与 push 工具路径都按
+// 「配置文件 > 环境变量 > 未配置」三级解析（详见 loadConfig / resolvePushTool）：
+//   配置文件：profile 根的 .git-hub-config.json（`scanRoots` / `pushTool` 字段）
+//   环境变量：DSH_GIT_HUB_SCAN_ROOTS（逗号或分号分隔）、DSH_GIT_HUB_PUSH_TOOL
+// 两级都没给时退化为空——面板显示"没有仓库"、push 按钮禁用并在 title 里说明原因，
+// 不再把某一台机器的盘符与目录当成所有人的默认值。
+const ENV_SCAN_ROOTS = 'DSH_GIT_HUB_SCAN_ROOTS'
+const ENV_PUSH_TOOL = 'DSH_GIT_HUB_PUSH_TOOL'
+
+/**
+ * 解析环境变量里的扫描根列表（逗号 / 分号 / 换行分隔）；未设置返回空数组。
+ * 每个条目与配置文件字段走同一套 normalizePath：不做的话 `D:` 这种写法会
+ * 被当成"D 盘当前目录"（依赖 Node cwd）而不是盘符根，扫不到用户期望的范围。
+ */
+function scanRootsFromEnv(raw) {
+  if (typeof raw !== 'string' || raw.trim() === '') return []
+  return raw.split(/[,;\r\n]+/).map((s) => normalizePath(s.trim())).filter(Boolean)
+}
+
+const DEFAULT_SCAN_ROOTS = scanRootsFromEnv(process.env[ENV_SCAN_ROOTS])
+const DEFAULT_PUSH_TOOL = normalizePath((process.env[ENV_PUSH_TOOL] || '').trim()) || ''
 // 手动 commit 按钮操作的源仓库（dsh-plugins monorepo 工作区）；
 // 通过环境变量 DSH_GIT_HUB_COMMIT_CWD 配置；未设置时占位（client 通常会传 cwd，fallback 几乎走不到）
 const DEFAULT_COMMIT_CWD = process.env.DSH_GIT_HUB_COMMIT_CWD || '<set DSH_GIT_HUB_COMMIT_CWD env var>'
@@ -251,22 +272,53 @@ async function loadConfig() {
     const roots = Array.isArray(parsed.scanRoots)
       ? parsed.scanRoots.map(normalizePath).filter(Boolean)
       : []
-    return { scanRoots: roots.length > 0 ? roots : DEFAULT_SCAN_ROOTS }
+    const toolRaw = typeof parsed.pushTool === 'string' ? parsed.pushTool.trim() : ''
+    return {
+      scanRoots: roots.length > 0 ? roots : DEFAULT_SCAN_ROOTS,
+      pushTool: toolRaw ? normalizePath(toolRaw) || toolRaw : DEFAULT_PUSH_TOOL,
+    }
   } catch {
-    return { scanRoots: DEFAULT_SCAN_ROOTS }
+    return { scanRoots: DEFAULT_SCAN_ROOTS, pushTool: DEFAULT_PUSH_TOOL }
   }
 }
 
-async function saveConfig(scanRoots) {
+async function saveConfig(scanRoots, pushTool) {
   if (!configPath) throw new Error('[dsh-git-hub] configPath not initialized; apply(ctx) must run first')
   const cleaned = Array.isArray(scanRoots)
     ? scanRoots.map(normalizePath).filter(Boolean)
     : []
-  const next = { scanRoots: cleaned.length > 0 ? cleaned : DEFAULT_SCAN_ROOTS }
+  // 先把旧文件读回来做基底：面板保存只提交 scanRoots，pushTool 等其它字段
+  // 必须原样保留，否则用户手写的 pushTool 会被一次保存抹掉。
+  let prev = {}
+  try {
+    const parsed = JSON.parse(await readFile(configPath, 'utf8'))
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) prev = parsed
+  } catch {
+    // 文件不存在（首次配置）/ 内容损坏：以空对象为基底重写
+  }
+  const next = { ...prev, scanRoots: cleaned.length > 0 ? cleaned : DEFAULT_SCAN_ROOTS }
+  if (typeof pushTool === 'string') {
+    const t = pushTool.trim()
+    // 显式传空串 = 清除该字段，回落到环境变量 / 未配置
+    if (t === '') delete next.pushTool
+    else next.pushTool = normalizePath(t) || t
+  }
   const tmp = configPath + '.tmp'
   await writeFile(tmp, JSON.stringify(next, null, 2), 'utf8')
   await rename(tmp, configPath)
   return next
+}
+
+/**
+ * 解析 push 工具路径与可用性。路径已在 loadConfig 里按
+ * 「配置文件 > 环境变量」定好；未配置或文件不存在都返回 available: false，
+ * 调用方据此禁用按钮 / 返回 503，而不是等到 spawn 时才失败。
+ *
+ * 按请求实时解析（不缓存在 apply 里）：用户补上路径后无需重启 DSH。
+ */
+function resolvePushTool(cfg) {
+  const toolPath = cfg && typeof cfg.pushTool === 'string' ? cfg.pushTool : ''
+  return { toolPath, toolAvailable: toolPath !== '' && existsSync(toolPath) }
 }
 
 /* ------------------------------------------------------------------ *
@@ -446,11 +498,19 @@ async function getAllRepos(force) {
 
 const lastPush = { startedAt: 0, pid: null, exitCode: null, repo: null, scope: null }
 
-function spawnPush(args, scopeLabel, repoPath) {
+/**
+ * push 工具不可用时的可操作文案：区分「从未配置」与「配了但文件不在」，
+ * 两种情况都直接告诉用户去哪里补，而不是只报一个空路径。
+ */
+function describePushToolMissing(toolPath) {
+  if (toolPath) return 'daily-push.cjs not found at ' + toolPath
+  return 'daily-push.cjs 未配置：在 ' + CONFIG_FILENAME + ' 里设 pushTool 字段，或设环境变量 ' + ENV_PUSH_TOOL
+}
+
+function spawnPush(toolPath, args, scopeLabel, repoPath) {
   return new Promise((resolve) => {
-    const toolPath = DEFAULT_PUSH_TOOL
-    if (!existsSync(toolPath)) {
-      resolve({ ok: false, error: 'daily-push.cjs not found at ' + toolPath })
+    if (!toolPath || !existsSync(toolPath)) {
+      resolve({ ok: false, error: describePushToolMissing(toolPath) })
       return
     }
     let child
@@ -508,11 +568,8 @@ function registerRoute(ctx, route) {
 }
 
 export function apply(ctx) {
-  // 启动期一次性探测 daily-push.cjs 工具
-  const toolAvailable = existsSync(DEFAULT_PUSH_TOOL)
-  if (!toolAvailable) {
-    console.warn('[dsh-git-hub] daily-push.cjs not found at', DEFAULT_PUSH_TOOL, '; push buttons will be disabled')
-  }
+  // push 工具路径不再在启动期探测 / 缓存：handler 里按请求走 resolvePushTool()
+  // 实时解析（配置文件 > 环境变量），用户补上路径后无需重启 DSH。
 
   // 配置持久化路径（按 ctx.baseUrl 解析 profile 根；不能用 import.meta.url 上溯——
   // junction 模式下 Node ESM 透明，拿到的是真实源路径而非 node_modules 路径，
@@ -530,7 +587,13 @@ export function apply(ctx) {
       try {
         if (req.method === 'GET') {
           const cfg = await loadConfig()
-          json(res, 200, { ok: true, ...cfg, toolPath: DEFAULT_PUSH_TOOL, toolAvailable })
+          const tool = resolvePushTool(cfg)
+          json(res, 200, {
+            ok: true,
+            scanRoots: cfg.scanRoots,
+            toolPath: tool.toolPath,
+            toolAvailable: tool.toolAvailable,
+          })
           return
         }
         if (req.method === 'POST') {
@@ -539,7 +602,11 @@ export function apply(ctx) {
             json(res, 400, { ok: false, error: 'invalid-body' })
             return
           }
-          const next = await saveConfig(body.scanRoots)
+          // pushTool 可选：面板只提交 scanRoots，外部调用可直接写 pushTool
+          const next = await saveConfig(
+            body.scanRoots,
+            typeof body.pushTool === 'string' ? body.pushTool : undefined
+          )
           // 配置改了清缓存，下次 GET /repos 重扫
           scanCache = { at: 0, repos: [] }
           json(res, 200, { ok: true, ...next })
@@ -598,11 +665,12 @@ export function apply(ctx) {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return
         }
-        if (!toolAvailable) {
-          json(res, 503, { ok: false, error: 'daily-push.cjs unavailable' })
+        const tool = resolvePushTool(await loadConfig())
+        if (!tool.toolAvailable) {
+          json(res, 503, { ok: false, error: describePushToolMissing(tool.toolPath) })
           return
         }
-        const result = await spawnPush(['--all', '--yes'], 'all', null)
+        const result = await spawnPush(tool.toolPath, ['--all', '--yes'], 'all', null)
         if (!result.ok) {
           json(res, 500, { ok: false, error: result.error })
           return
@@ -624,8 +692,9 @@ export function apply(ctx) {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return
         }
-        if (!toolAvailable) {
-          json(res, 503, { ok: false, error: 'daily-push.cjs unavailable' })
+        const tool = resolvePushTool(await loadConfig())
+        if (!tool.toolAvailable) {
+          json(res, 503, { ok: false, error: describePushToolMissing(tool.toolPath) })
           return
         }
         const body = await readJsonBody(req)
@@ -638,7 +707,7 @@ export function apply(ctx) {
           json(res, 400, { ok: false, error: 'invalid-path' })
           return
         }
-        const result = await spawnPush(['--repo', path, '--yes'], 'repo', path)
+        const result = await spawnPush(tool.toolPath, ['--repo', path, '--yes'], 'repo', path)
         if (!result.ok) {
           json(res, 500, { ok: false, error: result.error })
           return
@@ -660,9 +729,10 @@ export function apply(ctx) {
           json(res, 405, { ok: false, error: 'method-not-allowed' })
           return
         }
+        const tool = resolvePushTool(await loadConfig())
         json(res, 200, {
           ok: true,
-          toolAvailable,
+          toolAvailable: tool.toolAvailable,
           lastPush: {
             startedAt: lastPush.startedAt || null,
             pid: lastPush.pid,

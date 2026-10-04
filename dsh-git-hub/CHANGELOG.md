@@ -4,6 +4,37 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.6] - 2026-10-04
+
+### 修复
+
+- **默认路径不再写死在源码里**：`DEFAULT_SCAN_ROOTS` / `DEFAULT_PUSH_TOOL` 此前是硬编码的具体目录与脚本路径，等于把某一台机器的布局当成所有人的默认值——换个环境装上之后，默认扫描的是不存在的目录、推送按钮指向一个不存在的脚本。现在两项都按 **配置文件 > 环境变量 > 未配置** 解析：
+  - 配置文件：profile 根 `.git-hub-config.json` 的 `scanRoots` / `pushTool` 字段；
+  - 环境变量：`DSH_GIT_HUB_SCAN_ROOTS`（逗号或分号分隔）、`DSH_GIT_HUB_PUSH_TOOL`；
+  - 两级都没有时退化为空：面板显示"没有仓库"、推送按钮禁用，tooltip 与接口错误消息直接给出该去哪里补配置。
+  - 环境变量里的路径与配置字段走同一套 `normalizePath`（`/` → `\`、盘符根补尾 `\`），`D:` 不会被当成"D 盘当前目录"（依赖 Node cwd）。
+
+### 改动
+
+- `saveConfig(scanRoots, pushTool?)` 改为「读回旧文件 → 合并写入」：面板保存只提交 `scanRoots`，手写的 `pushTool` 与其它未知字段原样保留（此前会把整个文件重写成只剩 `scanRoots`）。`pushTool` 传空串 = 清除该字段、回落环境变量。
+- `POST /api/git-hub/config` 新增可选 `pushTool` 字段；`GET /api/git-hub/config` 的 `scanRoots` / `toolPath` / `toolAvailable` 三个键保持不变（客户端契约不变，本轮未改动任何 `client-src`）。
+- push 工具路径改为**按请求实时解析**，不再在 `apply()` 启动期探测一次后缓存：补上路径后无需重启 DSH 即可用；`push-all` / `repos/push` 的失败文案区分「从未配置」与「配了但文件不在」。
+- `spawnPush(args, scopeLabel, repoPath)` → `spawnPush(toolPath, args, scopeLabel, repoPath)`，路径由调用方解析后传入。
+- README 新增 §配置（两项配置的字段 / 环境变量 / 未配置时的行为 / 推送脚本调用约定）。
+
+### 改动文件
+
+- `lib/index.js`
+- `README.md`（新增 §配置）
+- `CHANGELOG.md`（本段）
+- `package.json`（version 0.5.5 → 0.5.6）
+
+### 验证
+
+- `node tools/check-dsh-contract.cjs`：`PASS  dsh-git-hub`（全仓 12/12）
+- `node lib/verify-client.cjs`：`BYTE-IDENTICAL ✓`（`lib/client.js` 100200 字节，本轮未改动客户端源码）
+- 离线集成核对（临时 harness 直接 import `lib/index.js` + 假 `ctx` / 假 `req,res`，7 组场景 22 条断言全过）：无配置时的空态与 503 文案 / 配置文件两项生效 / 面板只提交 `scanRoots` 时 `pushTool` 保留 / 环境变量兜底（含分号分隔与盘符根归一化）/ 配置覆盖环境变量 + 空串清除 / 旧配置文件（只有 `scanRoots`）向后兼容 / 配置文件损坏时仍可覆盖保存。
+
 ## [0.5.5] - 2026-10-03
 
 ### 兼容性
