@@ -40,6 +40,19 @@
     "build:patch": "node scripts/aggregate.cjs",
     "verify:patch": "node scripts/aggregate.cjs --check"
   },
+  "dependencies": {
+    "dsh-git-hub": "file:../dsh-git-hub",
+    "dsh-manager-hub": "file:../dsh-manager-hub",
+    "dsh-mcp-manager": "file:../mcp-manager",
+    "dsh-peak-hour-lock": "file:../peak-hour-lock",
+    "dsh-plugin-manager": "file:../plugin-manager",
+    "dsh-skill-manager": "file:../skill-manager",
+    "dsh-task-pool": "file:../dsh-task-pool",
+    "dsh-test": "file:../dsh-test",
+    "dsh-ui-tweaks": "file:../dsh-ui-tweaks",
+    "dsh-update-checker": "file:../dsh-update-checker",
+    "dsh-usage-stats": "file:../usage-stats"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

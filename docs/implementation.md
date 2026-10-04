@@ -13,7 +13,7 @@
 两条约束：
 
 - **同一个包不要登记两次**。宿主侧按行 id 建条目，同名 id 重复插入会被 `EntryGroup.update` 的 id 映射合并成一条（不报错）；报错的是同一包被两个**不同行 id** 指向——`dsh-client-modules` 的 `reconcilePackage` 按包名归并来源，多于一个活跃来源时抛 `client-modules: package <包名> resolves from multiple active Loader sources ...; remove one entry`。被聚合收录的插件因此应当从 `dsh.profile.bundles` 移除。
-- **聚合包只负责"报名"，不负责把包装进 profile"**。行里的 `name` 仍由 loader 从 profile 根解析，成员包必须仍是 profile 的依赖——除非改用"成员只作本包传递依赖"的装法（本包与成员都走 `file:`），那时成员由 pnpm 递归装进 profile 的 `node_modules`，无需再单独列进 `dependencies`。
+- **聚合包只负责"报名"，不负责把包装进 profile"**。行里的 `name` 仍由 loader 从 profile 根解析，成员包必须仍是 profile 的依赖。参照的全家桶（`@linxin666/dsh-web-ui-all`）只让使用者登记一个依赖，是因为它的成员在 npm 上、以**版本号**声明，pnpm 才会递归安装；本仓库成员是本地目录，实测 `link:`+`link:`、`link:`+`file:`、`file:`+`file:` 三种组合**都不递归**，成员必须由 profile 自己列出。
 
 **官方插件管理页的粒度错位**：`dsh-plugin-manager` 的 `listBundles()` 把 profile `dependencies` 里每个带 `dsh.bundle` 的包都列成一张卡，`enabled` 取"包名是否在 `dsh.profile.bundles` 里"。成员改为经聚合包登记后就不再单独列入 `bundles`，于是会在「已安装」分组里显示成**已关闭**——那是包级标签，成员的行其实照常挂载。停用成员要用 profile `cordis.patch.yml` 的 id 定向覆盖，不要用那张卡上的开关（开关会把包名加回 `bundles`，制造两个来源）。
 
@@ -73,5 +73,6 @@
 - 浏览器半段格式：`window.__ModuleLoader__.load({ id, factory })`，依赖经 `require()` 从 shell 模块表取得，可手写、无需构建工具；
 - 覆盖官方同 key 渲染器须显式 `priority: -1`（最小 priority 成为 shadow winner），否则与官方 priority 0 冲突抛错；
 - 宿主端注册 HTTP 路由用 `ctx.webServer.register({ kind: 'exact', path, handler })`；
-- pnpm 11 的 `file:` 依赖按**硬链接**落盘（不是整目录拷贝）：原地修改已有文件会立刻反映到 `node_modules`；**新增 / 删除文件不会同步**，`pnpm install` 也不感知内容变化，需要重装（`link:` 则始终是活链接，但不会安装被链接包自己的依赖）；
+- pnpm 11 的本地目录依赖落盘方式取决于卷：与 pnpm store **同卷**时按**硬链接**复制（原地改已有文件会反映到 `node_modules`，**新增 / 删除文件不同步**，`pnpm install` 也不感知内容变化）；**跨卷**时退化为指向源目录的 **junction**（始终是活链接）。两种方式都**不递归安装被依赖包自己的 `dependencies`**——只有 registry 版本号才递归；
+- pnpm 不会清理"曾经是依赖、现已移出依赖图"的 `node_modules` 软链：删掉某个包在 profile `dependencies` 里的条目后，它的 junction 仍留在原地，容易让人误判它还在依赖图里；判定以 `pnpm install` 后重新出现为准（可先手工删掉 junction 再装一次验证）；
 - 会话日志 `session.jsonl.zstd` 是**多 frame 拼接**的 zstd 容器（追加写、每批一帧），单 `decompress()` 只得到第一帧；须先按 zstd 帧头/块头结构性扫描边界再逐帧解（usage-stats 的 `scanZstdFrames`），Node 22 内置 `node:zlib` 即可，零依赖。
