@@ -10,10 +10,12 @@
 
 `dsh-plugins-all` 只做这件事：它的 `cordis.patch.yml` 由 `scripts/aggregate.cjs` 从 `aggregate.json` 与各成员自己的 `cordis.patch.yml` 生成（逐行投影 insert 块，只剥注释与空行，不解析 YAML 语义，因此 `config` 之类的字段原样保留）。本包不自插名册行，也不声明 `dsh.client`——没有浏览器半段。
 
-两条硬约束：
+两条约束：
 
-- **同一个包不能注册两次**。client bundle 的注册 id 就是包名，名册里出现两次会让 bundle 执行两次，浏览器端抛 `client-modules: duplicate factory registration for "<包名>"`；同名行 id 则在构建客户端图时抛 `duplicate graph entry`。被聚合收录的插件必须从 `dsh.profile.bundles` 移除。
-- **聚合包只负责"报名"，不负责把包装进 profile"**。行里的 `name` 仍由 loader 从 profile 根解析，成员包必须仍是 profile 的依赖。
+- **同一个包不要登记两次**。宿主侧按行 id 建条目，同名 id 重复插入会被 `EntryGroup.update` 的 id 映射合并成一条（不报错）；报错的是同一包被两个**不同行 id** 指向——`dsh-client-modules` 的 `reconcilePackage` 按包名归并来源，多于一个活跃来源时抛 `client-modules: package <包名> resolves from multiple active Loader sources ...; remove one entry`。被聚合收录的插件因此应当从 `dsh.profile.bundles` 移除。
+- **聚合包只负责"报名"，不负责把包装进 profile"**。行里的 `name` 仍由 loader 从 profile 根解析，成员包必须仍是 profile 的依赖——除非改用"成员只作本包传递依赖"的装法（本包与成员都走 `file:`），那时成员由 pnpm 递归装进 profile 的 `node_modules`，无需再单独列进 `dependencies`。
+
+**官方插件管理页的粒度错位**：`dsh-plugin-manager` 的 `listBundles()` 把 profile `dependencies` 里每个带 `dsh.bundle` 的包都列成一张卡，`enabled` 取"包名是否在 `dsh.profile.bundles` 里"。成员改为经聚合包登记后就不再单独列入 `bundles`，于是会在「已安装」分组里显示成**已关闭**——那是包级标签，成员的行其实照常挂载。停用成员要用 profile `cordis.patch.yml` 的 id 定向覆盖，不要用那张卡上的开关（开关会把包名加回 `bundles`，制造两个来源）。
 
 行 id 与各插件独立安装时保持一致，profile `cordis.patch.yml` 里已有的按 id 停用条目（`peak-hour-lock` / `mcp-manager` 等）聚合后继续有效；成员的单插件启停仍归 profile 那一层，聚合包不管启停。
 

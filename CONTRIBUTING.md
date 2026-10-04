@@ -34,7 +34,9 @@
 
 生成器会校验：成员目录存在、其 `package.json` 声明了 `dsh.bundle.patch`、insert 行的 `name` 与包名一致、行 id 与包名在清单内都不重复。它同时要求每个成员的 `cordis.patch.yml` **只含一个顶层 `- insert:` 块、且每块只含一行一包**——这样投影出来的行定义与独立安装时逐字一致。
 
-被收录**不等于**可以两边登记：同一个包不能在 profile 的 `dsh.profile.bundles` 里再出现一次，否则它的 client bundle 会执行两次，浏览器端报 `duplicate factory registration`。
+被收录**不等于**可以两边登记：同一个包不要同时在 profile 的 `dsh.profile.bundles` 里出现。同名行 id 重复插入会被 loader 按 id 合并（不报错），但若同一个包被两个**不同行 id** 指向，client 侧会抛 `client-modules: package <包名> resolves from multiple active Loader sources ...; remove one entry`，整页客户端图构建失败。
+
+另外要知道：DSH 自带插件管理页按「包名是否在 `dsh.profile.bundles` 里」判定启用状态，所以被收录的成员会显示成**已关闭**（包级标签，不代表插件的行没跑）。成员的启停请走 profile `cordis.patch.yml` 的 id 定向覆盖。
 
 ## 署名
 

@@ -33,17 +33,30 @@ DSH 启动时按 `dsh.profile.bundles` 的顺序，逐层叠加每个 bundle 包
 
 区别只在于：它们**不再需要**出现在 `dsh.profile.bundles` 里。
 
-## 硬约束：同一个包不能注册两次
+> 成员包直接挂在 profile `dependencies` 下，正是它们会出现在官方插件管理页「已安装」分组里的原因（见下节）。另一种做法是让成员只作为本包的**传递依赖**（本包与成员都用 `file:` 协议安装），成员就不再是 profile 的依赖、管理页里也不会出现——代价是成员源码按硬链接落盘，**新增文件不会同步**，需要重装。
 
-client bundle 的注册 id 就是包名。同一个包如果在名册里出现两次（比如既被本包收录、又单独列在 `bundles` 里），第二次 `__ModuleLoader__.load` 会抛：
+## 约束：同一个包不要登记两次
+
+**被本包收录的插件应当从 `dsh.profile.bundles` 里移除。** 宿主侧按行 id 建条目，同名 id 重复插入会被合并成一条（不报错，也不产生第二份效果）；真正报错的是**同一个包被两个不同行 id 同时指向**——client 侧按包名归并来源，发现多个活跃来源时直接抛：
 
 ```
-client-modules: duplicate factory registration for "<包名>" (bundle executed twice without invalidate?)
+client-modules: package <包名> resolves from multiple active Loader sources: ...; remove one entry
 ```
 
-同名行 id 则在构建客户端图时抛 `client-modules: duplicate graph entry "<行 id>"`。
+## 关于插件管理页里的「已关闭」
 
-所以：**被本包收录的插件必须从 `dsh.profile.bundles` 里移除，两边不能同时登记。**
+DSH 自带的插件管理页（设置 → 插件）把 profile `dependencies` 里**每个带 `dsh.bundle` 的包**都列成一张卡，并用「包名是否在 `dsh.profile.bundles` 里」当作启用状态。本包收录后，成员包不再单独列入 `bundles`，于是它们会出现在「已安装」分组里并标成**已关闭**。
+
+这是**包级标签，不代表插件真的停了**——成员的宿主半段与浏览器半段照常加载，名字册行正是由本包插入的。判据以实际行为准：页面上的功能入口在、`/api/<插件>/...` 有响应，就是跑着的。
+
+要停用某个成员，别用那张卡上的开关（它会把包名加回 `bundles`，制造上面说的「两个来源」），改用 profile `cordis.patch.yml` 的 id 定向覆盖：
+
+```yaml
+- id: <行 id>
+  disabled: true
+```
+
+本包自己那张卡（`dsh-plugins-all`）才是这套登记方式的真实开关：关掉它，全部成员的行一起消失。
 
 ## 安装
 

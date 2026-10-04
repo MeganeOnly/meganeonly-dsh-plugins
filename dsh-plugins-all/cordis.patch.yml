@@ -9,10 +9,13 @@
 #   ../<插件目录>/cordis.patch.yml  每一行 id / name / config 的定义
 # 改完跑：npm run build:patch
 #
-# 硬约束：同一个包不能在同一份 profile 名册里出现两次。client bundle 的注册
-# id 就是包名，第二次 __ModuleLoader__.load 会抛 "duplicate factory
-# registration"（同名行 id 抛 "duplicate graph entry"）。被本包收录的插件必须
-# 从 dsh.profile.bundles 里移除，两边不能同时登记。
+# 约束：被本包收录的插件应当从 dsh.profile.bundles 里移除，两边不要同时登记。
+# 名册里出现两次、且两次行 id **不同**时，client 侧会把它算成两个来源并直接抛
+#   client-modules: package <包名> resolves from multiple active Loader sources
+# 行 id **相同**的重复插入会被 loader 按 id 合并成一条，不报错。
+# 另：插件管理页的「已安装」分组按 profile dependencies 列举、按 bundles 判定
+# 启用状态，所以被收录的成员会显示为「已关闭」——那是包级标签，不代表它的行没跑。
+# 成员的单插件启停请用 profile cordis.patch.yml 的 id 定向覆盖。
 
 # ---- dsh-manager-hub —— 设置页统一「管理」入口（UI 聚合，需要下面三个 manager 在场）
 - insert:
