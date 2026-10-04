@@ -2,6 +2,21 @@
 
 > 本文档承接根 README「开发」一节，逐插件记录**实现层面的细节**（机制、数据格式、边界行为）。面向插件开发者与排障，不面向终端用户。维护规范见 [maintainability.md](maintainability.md)。
 
+## dsh-plugins-all — 名册聚合（跨插件）
+
+本仓库各插件的登记方式有两条路：各自在 `dsh.profile.bundles` 里占一行，或统一由 `dsh-plugins-all` 收口。
+
+机制：DSH 启动时按 `dsh.profile.bundles` 的顺序，把每个 bundle 包 `dsh.bundle.patch` 指向的 patch 文件当作一层叠加。patch 文件是 YAML 数组，**可以含任意多个 `- insert:` 块**，每块向名册插入一行 `{ id, name }`——`name` 是包名，loader 以 profile 根为解析基准定位它的 `package.json`。因此一个包可以为 N 个包"报名"。
+
+`dsh-plugins-all` 只做这件事：它的 `cordis.patch.yml` 由 `scripts/aggregate.cjs` 从 `aggregate.json` 与各成员自己的 `cordis.patch.yml` 生成（逐行投影 insert 块，只剥注释与空行，不解析 YAML 语义，因此 `config` 之类的字段原样保留）。本包不自插名册行，也不声明 `dsh.client`——没有浏览器半段。
+
+两条硬约束：
+
+- **同一个包不能注册两次**。client bundle 的注册 id 就是包名，名册里出现两次会让 bundle 执行两次，浏览器端抛 `client-modules: duplicate factory registration for "<包名>"`；同名行 id 则在构建客户端图时抛 `duplicate graph entry`。被聚合收录的插件必须从 `dsh.profile.bundles` 移除。
+- **聚合包只负责"报名"，不负责把包装进 profile"**。行里的 `name` 仍由 loader 从 profile 根解析，成员包必须仍是 profile 的依赖。
+
+行 id 与各插件独立安装时保持一致，profile `cordis.patch.yml` 里已有的按 id 停用条目（`peak-hour-lock` / `mcp-manager` 等）聚合后继续有效；成员的单插件启停仍归 profile 那一层，聚合包不管启停。
+
 ## dsh-manager-hub — 统一管理
 
 设置页唯一「管理」入口（settings.section id=`manager-hub`，order=30），顶部 tab：插件（默认）/ Skill / MCP，点击切换三个管理视图。数据源分别是 `/api/plugin-manager`、`/api/skill-manager`、`/api/mcp-manager`——即三个老插件（plugin-manager / skill-manager / mcp-manager）的宿主 API。本插件**只做 UI 聚合，不重复任何宿主逻辑**；三个视图是三个老插件客户端视图的适配副本。
@@ -26,7 +41,7 @@
 
 ## usage-stats — 使用统计
 
-设置页「使用统计」页：总量卡片（输入 / 输出 / 推理 / 缓存读取 / 请求数 / 生成速度）、近 30 天用量柱状图、按模型分解表、会话用量 Top 12、工具调用 Top 10。数据源是 `~/.dsh/sessions` 的会话日志（`session.jsonl.zstd`，**多 frame 拼接容器**），token 数取自 `assistant/message` 事件的 `usage` 字段——**模型侧精确值**，非估算。增量缓存：每个会话文件按 `(size, mtimeMs)` 记在 profile 目录 `.usage-stats-cache.json`（原子写），没变不重解——全量冷解约数秒，之后近零开销。宿主半段启动即预热一次。
+设置页「使用统计」页：总量卡片（输入 / 输出 / 推理 / 缓存读取 / 请求数 / 生成速度）、近 30 天用量柱状图、按模型分解表、会话用量 Top 12、工具调用 Top 10。数据源是 `ctx.sessionQuery`（web profile 挂载 `dsh-session-query-sqlite`）——**日志格式、zstd 解压与 replay 校验全部由框架负责**，插件只在事件流上做业务聚合；token 数取自 `assistant/message` 事件的 `usage` 字段——**模型侧精确值**，非估算。增量缓存：按 session header 的 `id` + `createdAt` 记在 profile 目录 `.usage-stats-cache.json`（原子写），没变不重解。宿主半段启动即预热一次。磁盘上的会话日志自 DSH 0.2.0 起为 `session.v4.jsonl.zstd`（旧文件仍是 `session.v3.jsonl.zstd`，同目录并存、读时由框架透明迁移），插件不感知版本差异。
 
 ## dsh-update-checker — 更新检查
 
@@ -56,5 +71,5 @@
 - 浏览器半段格式：`window.__ModuleLoader__.load({ id, factory })`，依赖经 `require()` 从 shell 模块表取得，可手写、无需构建工具；
 - 覆盖官方同 key 渲染器须显式 `priority: -1`（最小 priority 成为 shadow winner），否则与官方 priority 0 冲突抛错；
 - 宿主端注册 HTTP 路由用 `ctx.webServer.register({ kind: 'exact', path, handler })`；
-- pnpm 11 的 `file:` 依赖是拷贝（非硬链接），改源码后需手动同步到 `node_modules\<包名>` 对应文件（pnpm install 不会感知内容变化）；
+- pnpm 11 的 `file:` 依赖按**硬链接**落盘（不是整目录拷贝）：原地修改已有文件会立刻反映到 `node_modules`；**新增 / 删除文件不会同步**，`pnpm install` 也不感知内容变化，需要重装（`link:` 则始终是活链接，但不会安装被链接包自己的依赖）；
 - 会话日志 `session.jsonl.zstd` 是**多 frame 拼接**的 zstd 容器（追加写、每批一帧），单 `decompress()` 只得到第一帧；须先按 zstd 帧头/块头结构性扫描边界再逐帧解（usage-stats 的 `scanZstdFrames`），Node 22 内置 `node:zlib` 即可，零依赖。

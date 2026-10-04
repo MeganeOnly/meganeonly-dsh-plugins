@@ -24,6 +24,18 @@
 4. **测试**：host half 在 ESM 模块里**不要**用 `require('node:fs')`——DSH 启动时检测不到错，bug 会静默触发（参考 `DECISIONS.md` E007 决策）。
 5. **推送**：fork 后提 PR，按你团队流程。
 
+## 被聚合包收录
+
+新插件若希望随 `dsh-plugins-all` 一起被装上（而不是让使用者逐个往 `dsh.profile.bundles` 里加名字）：
+
+1. 在 `dsh-plugins-all/aggregate.json` 的 `members` 里加一条——`dir` 是相对仓库根的目录名，`note` 是一句话说明；
+2. 在 `dsh-plugins-all/` 下跑 `npm run build:patch` 重新生成 `cordis.patch.yml`；
+3. 生成结果与清单一起提交（`npm run verify:patch` 可在提交前确认两者一致）。
+
+生成器会校验：成员目录存在、其 `package.json` 声明了 `dsh.bundle.patch`、insert 行的 `name` 与包名一致、行 id 与包名在清单内都不重复。它同时要求每个成员的 `cordis.patch.yml` **只含一个顶层 `- insert:` 块、且每块只含一行一包**——这样投影出来的行定义与独立安装时逐字一致。
+
+被收录**不等于**可以两边登记：同一个包不能在 profile 的 `dsh.profile.bundles` 里再出现一次，否则它的 client bundle 会执行两次，浏览器端报 `duplicate factory registration`。
+
 ## 署名
 
 仓库作者 MeganeOnly。贡献者在 PR 里加 `Co-authored-by:` 行即可共同署名。

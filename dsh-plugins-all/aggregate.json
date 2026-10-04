@@ -1,0 +1,21 @@
+{
+  "_comment": "dsh-plugins-all 聚合清单 —— 收录哪些插件。scripts/aggregate.cjs 读本文件，再去各插件目录取 package.json 与 cordis.patch.yml 生成 cordis.patch.yml。新增/移除插件只改这里，然后 npm run build:patch。",
+  "_fields": {
+    "dir": "相对于本仓库根的插件目录名（必需；目录名不一定等于包名，例如 plugin-manager 的包名是 dsh-plugin-manager）",
+    "note": "写进生成结果的 YAML 注释，一句话说明该插件的用途（可选）",
+    "disabled": "true 时在插入的行里加 disabled: true（行存在但不挂载）（可选）"
+  },
+  "members": [
+    { "dir": "dsh-manager-hub", "note": "设置页统一「管理」入口（UI 聚合，需要下面三个 manager 在场）" },
+    { "dir": "plugin-manager", "note": "插件管理：列出 loader 全部非组条目，一键启用 / 暂停" },
+    { "dir": "skill-manager", "note": "Skill 管理：用户级 skill 一键启用 / 停用" },
+    { "dir": "mcp-manager", "note": "MCP 管理：服务器连接状态 + 工具清单" },
+    { "dir": "usage-stats", "note": "使用统计：跨会话 token 用量、趋势、会话与工具排行" },
+    { "dir": "dsh-update-checker", "note": "更新检查：当前 DSH 版本 vs npm latest，一键升级" },
+    { "dir": "dsh-task-pool", "note": "任务池：右侧抽屉本地收集想法（零 token），卡片可发到当前对话" },
+    { "dir": "dsh-git-hub", "note": "Git/GitHub 管理面板：扫描本地仓库，一键推送 / 推到对话" },
+    { "dir": "dsh-ui-tweaks", "note": "外观微调合集：对话列右缩让位、简洁模式等（全部持久化到 localStorage）" },
+    { "dir": "peak-hour-lock", "note": "高峰时段拦截发送，消息暂存、结束后自动补发（行自带 config.lockModels）" },
+    { "dir": "dsh-test", "disabled": true, "note": "最小管道健康检查器（右下角状态徽标）；按需启用，默认关闭" }
+  ]
+}

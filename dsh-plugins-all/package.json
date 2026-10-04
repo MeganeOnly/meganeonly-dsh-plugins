@@ -1,0 +1,48 @@
+{
+  "name": "dsh-plugins-all",
+  "version": "0.1.0",
+  "author": "MeganeOnly",
+  "description": "DSH 常驻插件聚合包：用一份 cordis.patch.yml 把本仓库各插件的名册行一次性插入 web profile，profile 侧只需登记本包一个 bundle。本包不含宿主逻辑与浏览器半段——行定义由 scripts/aggregate.cjs 从各插件自己的 cordis.patch.yml 投影生成，两处永远同源。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins.git",
+    "directory": "dsh-plugins-all"
+  },
+  "bugs": {
+    "url": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/issues"
+  },
+  "homepage": "https://github.com/MeganeOnly/meganeonly-dsh-plugins/tree/main/dsh-plugins-all#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "bundle",
+    "aggregate",
+    "meta-package",
+    "roster"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "scripts": {
+    "build:patch": "node scripts/aggregate.cjs",
+    "verify:patch": "node scripts/aggregate.cjs --check"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
