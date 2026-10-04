@@ -61,3 +61,15 @@ workbench-check/
 LEGACY-LOCATION*.md
 *legacy-location*.md
 
+# 文档处理 scratch（论文 / 讲稿的一次性提取产物，不入库）
+temp_*.txt
+temp_*.xml
+temp_*.docx
+temp_*.pdf
+temp_*.csv
+temp_*.md
+paper_imgs/
+
+# 方案草稿（不入库）
+plans/
+
